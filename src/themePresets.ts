@@ -1,0 +1,53 @@
+// src/themePresets.ts
+export type ThemeName = "default" | "ocean" | "lavender" | "warm";
+
+export const Themes: Record<ThemeName, Record<string, string>> = {
+  default: {
+    "--background": "0 0% 100%",
+    "--foreground": "180 40% 15%",
+    "--card": "0 0% 100%",
+    "--card-foreground": "215 25% 27%",
+    "--primary": "257 90% 60%",
+    "--primary-foreground": "0 0% 100%",
+    "--secondary": "200 60% 55%",
+    "--secondary-foreground": "215 25% 27%",
+    "--accent": "340 70% 60%",
+    "--accent-foreground": "215 25% 27%",
+  },
+  ocean: {
+    "--background": "200 94% 98%",
+    "--foreground": "210 20% 18%",
+    "--card": "200 96% 99%",
+    "--card-foreground": "210 25% 20%",
+    "--primary": "200 92% 50%",
+    "--primary-foreground": "0 0% 100%",
+    "--secondary": "180 70% 55%",
+    "--secondary-foreground": "210 20% 18%",
+    "--accent": "160 70% 55%",
+    "--accent-foreground": "210 20% 18%",
+  },
+  lavender: {
+    "--background": "260 100% 98%",
+    "--foreground": "260 30% 18%",
+    "--card": "260 100% 99%",
+    "--card-foreground": "260 25% 20%",
+    "--primary": "270 88% 62%",
+    "--primary-foreground": "0 0% 100%",
+    "--secondary": "290 60% 58%",
+    "--secondary-foreground": "260 25% 20%",
+    "--accent": "300 75% 64%",
+    "--accent-foreground": "260 20% 18%",
+  },
+  warm: {
+    "--background": "35 100% 96%",
+    "--foreground": "25 60% 18%",
+    "--card": "35 100% 98%",
+    "--card-foreground": "25 50% 16%",
+    "--primary": "10 85% 55%",
+    "--primary-foreground": "0 0% 100%",
+    "--secondary": "35 90% 60%",
+    "--secondary-foreground": "25 60% 18%",
+    "--accent": "5 85% 58%",
+    "--accent-foreground": "25 60% 18%",
+  },
+};
