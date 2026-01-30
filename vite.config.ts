@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'autoUpdate',
 
+      base: "/Saathi/",
+      scope: "/Saathi/",
+
       includeAssets: [
         "favicon.ico",
         "robots.txt",
@@ -24,8 +27,8 @@ export default defineConfig(({ mode }) => ({
         short_name: "Saathi",
         description: "Mood tracker, journal and meditations by Ansh Verma.",
 
-        start_url: ".",
-        scope: ".",
+        start_url: "/Saathi/",
+        scope: "/Saathi/",
         display: "standalone",
         background_color: "#ffffff",
         theme_color: "#2a8f6b",
