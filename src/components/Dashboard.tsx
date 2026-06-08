@@ -64,25 +64,25 @@ export default function Dashboard(): JSX.Element {
     return "Good Evening";
   };
 
-const getUserName = () => {
-  const storedUser = localStorage.getItem("user");
+  const getUserName = () => {
+    const storedUser = localStorage.getItem("user");
 
-  if (!storedUser) return "Friend";
+    if (!storedUser) return "Friend";
 
-  try {
-    const parsed = JSON.parse(storedUser);
+    try {
+      const parsed = JSON.parse(storedUser);
 
-    // Priority: name → full_name → email
-    const name =
-      parsed?.user?.user_metadata?.name ||
-      parsed?.user?.user_metadata?.full_name ||
-      parsed?.user?.email?.split("@")[0];
+      // Priority: name → full_name → email
+      const name =
+        parsed?.user?.user_metadata?.name ||
+        parsed?.user?.user_metadata?.full_name ||
+        parsed?.user?.email?.split("@")[0];
 
-    return name;
-  } catch {
-    return "";
-  }
-};
+      return name;
+    } catch {
+      return "";
+    }
+  };
 
 
   const features = [
@@ -95,11 +95,11 @@ const getUserName = () => {
       gradient: "from-blue-400 to-blue-600",
     },
     {
-      id: "breathing",
-      title: "Breathing Exercises",
-      description: "Calm your mind with breathwork",
+      id: "NaamJaap",
+      title: "Naam-Jaap Counter",
+      description: "Calm your mind with Mantras",
       icon: Wind,
-      route: "/breathing",
+      route: "/naam-jaap",
       gradient: "from-teal-400 to-emerald-500",
     },
     {
@@ -110,6 +110,7 @@ const getUserName = () => {
       route: "/mood",
       gradient: "from-indigo-400 to-indigo-600",
     },
+
     {
       id: "journal",
       title: "Journaling",
@@ -175,22 +176,22 @@ const getUserName = () => {
         </div>
       </motion.header>
 
-              <motion.section variants={cardAnim} initial="initial" animate="animate" transition={{ delay: 0.05 }}>
-          <div className="glass rounded-3xl border border-white/8 shadow-elevated p-6">
-            <h3 className="font-semibold text-lg text-foreground text-center mb-4">How are you feeling today?</h3>
-            <div className="flex justify-center gap-6">
-              {["😄", "🙂", "😐", "😟", "😣"].map((m, idx) => (
-                <button
-                  key={idx}
-                  className="text-3xl rounded-full w-14 h-14 flex items-center justify-center hover:scale-110 transition-transform"
-                  onClick={() => navigate("/mood")}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+      <motion.section variants={cardAnim} initial="initial" animate="animate" transition={{ delay: 0.05 }}>
+        <div className="glass rounded-3xl border border-white/8 shadow-elevated p-6">
+          <h3 className="font-semibold text-lg text-foreground text-center mb-4">How are you feeling today?</h3>
+          <div className="flex justify-center gap-6">
+            {["😄", "🙂", "😐", "😟", "😣"].map((m, idx) => (
+              <button
+                key={idx}
+                className="text-3xl rounded-full w-14 h-14 flex items-center justify-center hover:scale-110 transition-transform"
+                onClick={() => navigate("/mood")}
+              >
+                {m}
+              </button>
+            ))}
           </div>
-        </motion.section>
+        </div>
+      </motion.section>
 
       <main className="mx-auto max-w-6xl px-6 mt-8 space-y-8">
         {/* Feature grid */}

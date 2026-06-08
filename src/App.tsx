@@ -10,6 +10,7 @@ import OnboardingScreen from "./components/OnboardingScreen";
 import AuthScreen from "./components/AuthScreen";
 import Dashboard from "./components/Dashboard";
 import MoodTracker from "./components/MoodTracker";
+import NaamJaapScreen from "./components/NaamJaapScreen";
 import Journal from "./components/Journal";
 import MeditationScreen from "./components/MeditationScreen";
 import MusicScreen from "./components/MusicScreen";
@@ -76,6 +77,7 @@ export default function App() {
                 {/* Main app */}
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/mood" element={<MoodTracker />} />
+                <Route path="/naam-jaap" element={<NaamJaapScreen />} />
                 <Route path="/journal" element={<Journal />} />
                 <Route path="/meditation" element={<MeditationScreen />} />
                 <Route path="/breathing" element={<MeditationScreen />} />
