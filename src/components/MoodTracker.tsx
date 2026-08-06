@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar, TrendingUp } from "lucide-react";
 import MoodNoteModal from "@/components/mood/MoodNoteModal";
 import { supabase } from "@/supabaseClient";
+import { motion, AnimatePresence } from "motion/react";
 
 type Mood = {
   emoji: string;
@@ -18,8 +19,59 @@ type Mood = {
   color: string;
 };
 
+const pageAnim = {
+  hidden: {
+    opacity: 0,
+    y: 25,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+      ease: "easeOut" as const,
+      staggerChildren: 0.12,
+    },
+  },
+};
+
+const sectionAnim = {
+  hidden: {
+    opacity: 0,
+    y: 20,
+    scale: 0.98,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      type: "spring" as const,
+      stiffness: 120,
+      damping: 18,
+    },
+  },
+};
+
+const moodItem = {
+  hidden: {
+    opacity: 0,
+    x: -25,
+  },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: {
+      type: "spring" as const,
+      stiffness: 280,
+      damping: 22,
+    },
+  },
+};
+
 const MoodTracker = () => {
   const [selectedMood, setSelectedMood] = useState<Mood | null>(null);
+  const [focusMood, setFocusMood] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [weeklyData, setWeeklyData] = useState<number[]>(Array(7).fill(0));
   const [note, setNote] = useState("");
@@ -38,7 +90,7 @@ const MoodTracker = () => {
   const handleMoodSelect = async (mood: Mood) => {
     try {
       setSelectedMood(mood);
-
+      setFocusMood(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -199,151 +251,165 @@ const MoodTracker = () => {
   /* ------------------------------------------- */
 
   return (
-    <div className="min-h-screen bg-background p-6 pb-24">
-      <div className="max-w-md mx-auto space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold text-foreground">
-            Mood Tracker
-          </h1>
-          <p className="text-muted-foreground">
-            How are you feeling today?
-          </p>
-        </div>
+    <>
+      <motion.div
+        variants={pageAnim}
+        initial="hidden"
+        animate="visible"
+        className="min-h-screen bg-background p-6 pb-32 overflow-y-auto"
+      >
+        <div className="max-w-md mx-auto space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-bold text-foreground">
+              Mood Tracker
+            </h1>
+            <p className="text-muted-foreground">
+              How are you feeling today?
+            </p>
+          </div>
 
-        {/* Date */}
-        <Card className="shadow-soft border-0">
-          <CardContent className="p-4 flex items-center justify-center space-x-3">
-            <Calendar className="w-5 h-5 text-primary" />
-            <span className="font-medium">
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </span>
-          </CardContent>
-        </Card>
+          {/* Date */}
+          <motion.div variants={sectionAnim}>
+            <Card className="shadow-soft border-0">
+              <CardContent className="p-4 flex items-center justify-center space-x-3">
+                <Calendar className="w-5 h-5 text-primary" />
+                <span className="font-medium">
+                  {new Date().toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </span>
+              </CardContent>
+            </Card>
+          </motion.div>
 
-        {/* Mood Selection */}
-        <Card className="shadow-elevated border-0">
-          <CardHeader>
-            <CardTitle className="text-center">
-              Select Your Mood
-            </CardTitle>
-            <CardDescription className="text-center">
-              Tap the emotion that best describes you right now
-            </CardDescription>
-          </CardHeader>
+          {/* Mood Selection */}
+          <motion.div variants={sectionAnim}>
+            <Card className="shadow-elevated border-0">
+              <CardHeader>
+                <CardTitle className="text-center">
+                  Select Your Mood
+                </CardTitle>
+                <CardDescription className="text-center">
+                  Tap the emotion that best describes you right now
+                </CardDescription>
+              </CardHeader>
 
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 gap-4">
-              {moods.map((mood) => (
-                <Button
-                  key={mood.label}
-                  variant="ghost"
-                  onClick={() => handleMoodSelect(mood)}
-                  className={`h-16 p-4 rounded-2xl border-2 transition-all duration-300 hover:scale-105 ${selectedMood?.label === mood.label
-                    ? "border-primary bg-primary/10 shadow-soft"
-                    : "border-border/30 hover:border-primary/50"
-                    }`}
-                >
-                  <div className="flex items-center space-x-4 w-full">
-                    <div
-                      className={`w-12 h-12 ${mood.color} rounded-full flex items-center justify-center text-2xl shadow-soft`}
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 gap-4">
+                  {moods.map((mood) => (
+                    <Button
+                      key={mood.label}
+                      variant="ghost"
+                      onClick={() => handleMoodSelect(mood)}
+                      className={`h-16 p-4 rounded-2xl border-2 transition-all duration-300 hover:scale-105 ${selectedMood?.label === mood.label
+                        ? "border-primary bg-primary/10 shadow-soft"
+                        : "border-border/30 hover:border-primary/50"
+                        }`}
                     >
-                      {mood.emoji}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="font-semibold">
-                        {mood.label}
+                      <div className="flex items-center space-x-4 w-full">
+                        <div
+                          className={`w-12 h-12 ${mood.color} rounded-full flex items-center justify-center text-2xl shadow-soft`}
+                        >
+                          {mood.emoji}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="font-semibold">
+                            {mood.label}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {mood.value}/5 energy level
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {mood.value}/5 energy level
-                      </div>
-                    </div>
+                    </Button>
+                  ))}
+                </div>
+
+                {selectedMood && (
+                  <div className="text-center space-y-4 animate-fade-in">
+                    <p className="text-primary font-medium">
+                      Mood logged successfully ✨
+                    </p>
+
+                    <Button
+                      onClick={() => setNoteOpen(true)}
+                      className="w-full bg-gradient-calm"
+                    >
+                      Add Note (Optional)
+                    </Button>
                   </div>
-                </Button>
-              ))}
-            </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
 
-            {selectedMood && (
-              <div className="text-center space-y-4 animate-fade-in">
-                <p className="text-primary font-medium">
-                  Mood logged successfully ✨
-                </p>
+          {/* Progress */}
+          <motion.div variants={sectionAnim}>
+            <Card className="shadow-soft border-0">
+              <CardHeader className="pb-3">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  <CardTitle className="text-lg">
+                    Your Progress
+                  </CardTitle>
+                </div>
+                <CardDescription>
+                  Shows only days you logged a mood
+                </CardDescription>
+              </CardHeader>
 
-                <Button
-                  onClick={() => setNoteOpen(true)}
-                  className="w-full bg-gradient-calm"
-                >
-                  Add Note (Optional)
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between items-end h-20 px-2">
+                  {weeklyData.map((value, index) => (
+                    <div
+                      key={index}
+                      className="w-6 bg-gradient-calm rounded-t transition-all duration-500"
+                      style={{ height: `${value * 16}px` }}
+                    />
+                  ))}
+                </div>
 
-        {/* Progress */}
-        <Card className="shadow-soft border-0">
-          <CardHeader className="pb-3">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">
-                Your Progress
-              </CardTitle>
-            </div>
-            <CardDescription>
-              Shows only days you logged a mood
-            </CardDescription>
-          </CardHeader>
+                <div className="flex justify-between text-xs mt-2">
+                  {weeklyData.map((_, index) => {
+                    const today = new Date();
 
-          <CardContent className="space-y-2">
-            <div className="flex justify-between items-end h-20 px-2">
-              {weeklyData.map((value, index) => (
-                <div
-                  key={index}
-                  className="w-6 bg-gradient-calm rounded-t transition-all duration-500"
-                  style={{ height: `${value * 16}px` }}
-                />
-              ))}
-            </div>
+                    const monday = new Date(today);
+                    const day = monday.getDay();
+                    const diff = day === 0 ? -6 : 1 - day;
+                    monday.setDate(monday.getDate() + diff);
 
-            <div className="flex justify-between text-xs mt-2">
-              {weeklyData.map((_, index) => {
-                const today = new Date();
+                    const d = new Date(monday);
+                    d.setDate(monday.getDate() + index);
 
-                const monday = new Date(today);
-                const day = monday.getDay();
-                const diff = day === 0 ? -6 : 1 - day;
-                monday.setDate(monday.getDate() + diff);
+                    const isToday =
+                      d.toDateString() === today.toDateString();
 
-                const d = new Date(monday);
-                d.setDate(monday.getDate() + index);
+                    return (
+                      <span
+                        key={index}
+                        className={
+                          isToday ? "text-primary font-medium" : ""
+                        }
+                      >
+                        {isToday
+                          ? "Today"
+                          : d.toLocaleDateString("en-US", {
+                            weekday: "short",
+                          })}
+                      </span>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
 
-                const isToday =
-                  d.toDateString() === today.toDateString();
-
-                return (
-                  <span
-                    key={index}
-                    className={
-                      isToday ? "text-primary font-medium" : ""
-                    }
-                  >
-                    {isToday
-                      ? "Today"
-                      : d.toLocaleDateString("en-US", {
-                        weekday: "short",
-                      })}
-                  </span>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        </div>
+      </motion.div>
 
       <MoodNoteModal
         open={noteOpen}
@@ -354,7 +420,7 @@ const MoodTracker = () => {
         onSave={handleSaveNote}
       />
 
-    </div>
+    </>
   );
 };
 export default MoodTracker;

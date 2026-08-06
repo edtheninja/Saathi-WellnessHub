@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, Calendar, BookOpen, Music, MessageCircle, User } from 'lucide-react';
-
+import { HeartPulse } from "lucide-react";
 const BottomNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -11,7 +11,12 @@ const BottomNav = () => {
     { icon: BookOpen, label: 'Journal', path: '/journal' },
     { icon: Music, label: 'Music', path: '/music' },
     { icon: MessageCircle, label: 'Chat', path: '/chat' },
-    { icon: User, label: 'Profile', path: '/profile' }
+    { icon: User, label: 'Profile', path: '/profile' },
+    {
+      icon: HeartPulse,
+      label: "Wellness",
+      path: "/wellness",
+    }
   ];
 
   // Don't show on auth/onboarding screens
@@ -25,16 +30,15 @@ const BottomNav = () => {
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           const IconComponent = item.icon;
-          
+
           return (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
-              className={`flex flex-col items-center space-y-1 p-2 rounded-xl transition-all duration-300 ${
-                isActive 
-                  ? 'bg-gradient-calm text-primary-foreground shadow-soft scale-105' 
+              className={`flex flex-col items-center space-y-1 p-2 rounded-xl transition-all duration-300 ${isActive
+                  ? 'bg-gradient-calm text-primary-foreground shadow-soft scale-105'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-              }`}
+                }`}
             >
               <IconComponent className="w-5 h-5" />
               <span className="text-xs font-medium">{item.label}</span>

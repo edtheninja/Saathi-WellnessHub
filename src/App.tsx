@@ -32,6 +32,10 @@ import About from "./pages/settings/About";
 import Emergency from "./pages/settings/Emergency";
 import DeleteAccount from "./pages/settings/DeleteAccount";
 import AuthCallback from "./pages/AuthCallback";
+import WellnessHub from "./features/wellness/pages/WellnessHub";
+import ConnectDevicePage from "./features/wellness/pages/ConnectDevicePage";
+import Community from "@/pages/Community";
+import CommunityRoomPage from "@/pages/community/CommunityRoomPage";
 
 /* ------------------------------- Layout Wrapper ------------------------------- */
 function LayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -83,11 +87,23 @@ export default function App() {
                 <Route path="/breathing" element={<MeditationScreen />} />
                 <Route path="/music" element={<MusicScreen />} />
                 <Route path="/chat" element={<ChatScreen />} />
-
+                <Route path="/wellness" element={<WellnessHub />} />
+                <Route
+                  path="/connect-device"
+                  element={<ConnectDevicePage />}
+                />
+                <Route
+                  path="/community"
+                  element={<Community />}
+                />
+                <Route
+                  path="/community/:roomType/:roomId"
+                  element={<CommunityRoomPage />}
+                />
                 {/* Profile */}
 
                 <Route path="/profile" element={<ProfileScreen />} />
-                <Route path="/settings" element={<Settings />} /> 
+                <Route path="/settings" element={<Settings />} />
                 <Route path="/set-goal" element={<SetGoalScreen />} />
                 <Route path="/settings/profile" element={<ProfileSettings />} />
                 <Route path="/settings/security" element={<SecuritySettings />} />
