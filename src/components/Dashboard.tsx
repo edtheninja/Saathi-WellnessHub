@@ -19,7 +19,6 @@ import {
   Target,
 } from "lucide-react";
 import Tile from "./Tile/Tile";
-import TileColorPicker from "./Tile/TileColorPicker";
 import ModeSelectorV2 from "@/components/ModeSelectorV2";
 import { HeartPulse } from "lucide-react";
 /* small helper */
@@ -630,19 +629,11 @@ export default function Dashboard(): JSX.Element {
         </section>
 
         {/* Custom tiles */}
+        {/* Custom tiles */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div>
-            <Tile id="mood" title="Mood" description="Quick mood check" />
-            <TileColorPicker id="mood" />
-          </div>
-          <div>
-            <Tile id="journal" title="Journal" description="Write thoughts" />
-            <TileColorPicker id="journal" />
-          </div>
-          <div>
-            <Tile id="relax" title="Relax" description="Play music" />
-            <TileColorPicker id="relax" />
-          </div>
+          <Tile id="mood" title="Mood" description="Quick mood check" />
+          <Tile id="journal" title="Journal" description="Write thoughts" />
+          <Tile id="relax" title="Relax" description="Play music" />
         </section>
       </main>
 
