@@ -627,14 +627,6 @@ export default function Dashboard(): JSX.Element {
 
           </div>
         </section>
-
-        {/* Custom tiles */}
-        {/* Custom tiles */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <Tile id="mood" title="Mood" description="Quick mood check" />
-          <Tile id="journal" title="Journal" description="Write thoughts" />
-          <Tile id="relax" title="Relax" description="Play music" />
-        </section>
       </main>
 
       {/* Share modal */}
