@@ -1,4 +1,3 @@
-// src/pages/Settings.tsx
 import { useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import {
@@ -29,16 +28,14 @@ type RowProps = {
 function Section({ title, children, danger = false }: SectionProps) {
   return (
     <section
-      className={`rounded-2xl border p-4 space-y-2 ${
-        danger
+      className={`space-y-2 rounded-2xl border p-4 ${danger
           ? "border-red-500/20 bg-red-500/5"
           : "border-border/50 bg-card"
-      }`}
+        }`}
     >
       <h3
-        className={`px-3 text-xs font-semibold tracking-wide ${
-          danger ? "text-red-500" : "text-muted-foreground"
-        }`}
+        className={`px-3 text-xs font-semibold tracking-wide ${danger ? "text-red-500" : "text-muted-foreground"
+          }`}
       >
         {title}
       </h3>
@@ -59,17 +56,15 @@ function Row({
     <button
       type="button"
       onClick={onClick}
-      className={`group w-full flex items-center justify-between gap-4 rounded-xl px-3 py-3 text-left transition-colors ${
-        danger
+      className={`group flex w-full items-center justify-between gap-4 rounded-xl px-3 py-3 text-left transition-colors ${danger
           ? "text-red-500 hover:bg-red-500/10"
-          : "hover:bg-muted"
-      }`}
+          : "hover:bg-primary/5"
+        }`}
     >
       <div className="flex min-w-0 items-center gap-3">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-            danger ? "bg-red-500/10" : "bg-muted"
-          }`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${danger ? "bg-red-500/10" : "bg-muted"
+            }`}
         >
           {icon}
         </div>
@@ -80,11 +75,10 @@ function Row({
           </span>
 
           <span
-            className={`block mt-0.5 text-xs ${
-              danger
+            className={`mt-0.5 block text-xs ${danger
                 ? "text-red-500/70"
                 : "text-muted-foreground"
-            }`}
+              }`}
           >
             {description}
           </span>
@@ -118,14 +112,16 @@ export default function Settings() {
         {/* Account */}
         <Section title="ACCOUNT">
           <Row
-            icon={<ShieldCheck className="h-5 w-5" />}
+            icon={
+              <ShieldCheck className="h-5 w-5 text-emerald-400" />
+            }
             label="Profile"
             description="Manage your personal information"
             onClick={() => navigate("/settings/profile")}
           />
 
           <Row
-            icon={<Lock className="h-5 w-5" />}
+            icon={<Lock className="h-5 w-5 text-blue-400" />}
             label="Password & Security"
             description="Keep your account secure"
             onClick={() => navigate("/settings/security")}
@@ -135,14 +131,16 @@ export default function Settings() {
         {/* Wellness */}
         <Section title="WELLNESS">
           <Row
-            icon={<HeartPulse className="h-5 w-5" />}
+            icon={
+              <HeartPulse className="h-5 w-5 text-violet-400" />
+            }
             label="Mood & Meditation"
             description="Personalize your wellness experience"
             onClick={() => navigate("/settings/wellness")}
           />
 
           <Row
-            icon={<Bell className="h-5 w-5" />}
+            icon={<Bell className="h-5 w-5 text-amber-400" />}
             label="Daily Reminders"
             description="Manage your wellness reminders"
             onClick={() => navigate("/settings/reminders")}
@@ -152,14 +150,16 @@ export default function Settings() {
         {/* Privacy */}
         <Section title="PRIVACY">
           <Row
-            icon={<Lock className="h-5 w-5" />}
+            icon={<Lock className="h-5 w-5 text-cyan-400" />}
             label="Journal Privacy"
             description="Control how your journal is protected"
             onClick={() => navigate("/settings/privacy")}
           />
 
           <Row
-            icon={<ShieldCheck className="h-5 w-5" />}
+            icon={
+              <ShieldCheck className="h-5 w-5 text-teal-400" />
+            }
             label="Therapist Access"
             description="Manage shared wellness access"
             onClick={() => navigate("/settings/therapist")}
@@ -169,14 +169,16 @@ export default function Settings() {
         {/* Support */}
         <Section title="SUPPORT">
           <Row
-            icon={<Info className="h-5 w-5" />}
+            icon={<Info className="h-5 w-5 text-sky-400" />}
             label="About Saathi"
             description="Learn more about your companion"
             onClick={() => navigate("/settings/about")}
           />
 
           <Row
-            icon={<HeartPulse className="h-5 w-5" />}
+            icon={
+              <HeartPulse className="h-5 w-5 text-rose-400" />
+            }
             label="Emergency Support"
             description="Find support when you need it"
             onClick={() => navigate("/settings/emergency")}
@@ -186,7 +188,7 @@ export default function Settings() {
         {/* Account actions */}
         <Section title="ACCOUNT">
           <Row
-            icon={<LogOut className="h-5 w-5" />}
+            icon={<LogOut className="h-5 w-5 text-slate-400" />}
             label="Log Out"
             description="Sign out of your Saathi account"
             onClick={() => navigate("/auth")}
@@ -196,7 +198,7 @@ export default function Settings() {
         {/* Danger Zone */}
         <Section title="DANGER ZONE" danger>
           <Row
-            icon={<Trash2 className="h-5 w-5" />}
+            icon={<Trash2 className="h-5 w-5 text-red-400" />}
             label="Delete Account"
             description="Permanently remove your Saathi account"
             danger

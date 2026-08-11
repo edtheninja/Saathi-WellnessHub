@@ -15,6 +15,8 @@ type WheelProps = {
 };
 
 const ITEM_HEIGHT = 44;
+const VISIBLE_ITEMS = 3;
+const SIDE_PADDING = 1;
 
 function Wheel({
   items,
@@ -28,30 +30,62 @@ function Wheel({
   const selectedIndex = Math.max(items.indexOf(value), 0);
 
   const paddedItems = useMemo(
-    () => [null, null, ...items, null, null],
+    () => [
+      ...Array(SIDE_PADDING).fill(null),
+      ...items,
+      ...Array(SIDE_PADDING).fill(null),
+    ],
     [items]
   );
 
+  /*
+   * Keep the selected value aligned with the center
+   * of the visible wheel.
+   */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    container.scrollTo({
-      top: selectedIndex * ITEM_HEIGHT,
-      behavior: "smooth",
-    });
+    const targetScroll =
+      selectedIndex * ITEM_HEIGHT;
+
+    if (Math.abs(container.scrollTop - targetScroll) > 1) {
+      container.scrollTo({
+        top: targetScroll,
+        behavior: "smooth",
+      });
+    }
   }, [selectedIndex]);
 
   const handleScroll = () => {
     const container = containerRef.current;
+
     if (!container || disabled) return;
 
-    const index = Math.round(container.scrollTop / ITEM_HEIGHT);
-    const nextValue = items[index];
+    /*
+     * The first real item begins after SIDE_PADDING.
+     * Remove that padding from the calculated index.
+     */
+    const rawIndex = Math.round(
+      container.scrollTop / ITEM_HEIGHT
+    );
 
-    if (nextValue && nextValue !== value) {
+    const itemIndex = rawIndex;
+
+    const nextValue = items[itemIndex];
+
+    if (
+      nextValue !== undefined &&
+      nextValue !== value
+    ) {
       onChange(nextValue);
     }
+  };
+
+  const handleWheelClick = (item: string) => {
+    if (disabled) return;
+
+    onChange(item);
   };
 
   return (
@@ -60,7 +94,7 @@ function Wheel({
         disabled ? "opacity-40" : ""
       }`}
     >
-      {/* Selection highlight */}
+      {/* Center selection area */}
       <div
         className="pointer-events-none absolute inset-x-0 top-1/2 z-10 h-11 -translate-y-1/2 rounded-xl border border-primary/20 bg-primary/10"
         aria-hidden="true"
@@ -81,34 +115,44 @@ function Wheel({
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        role="listbox"
         aria-label={ariaLabel}
+        aria-disabled={disabled}
         className="relative h-[132px] snap-y snap-mandatory overflow-y-auto overscroll-contain px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={{
           scrollPaddingTop: ITEM_HEIGHT,
           scrollPaddingBottom: ITEM_HEIGHT,
         }}
       >
-        {paddedItems.map((item, index) => (
-          <div
-            key={`${item ?? "empty"}-${index}`}
-            className="flex h-11 snap-center items-center justify-center"
-          >
-            {item && (
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onChange(item)}
-                className={`relative z-30 w-full text-center text-sm font-medium transition-all ${
-                  item === value
-                    ? "scale-105 text-foreground"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {item}
-              </button>
-            )}
-          </div>
-        ))}
+        {paddedItems.map((item, index) => {
+          const isSelected = item === value;
+
+          return (
+            <div
+              key={`${item ?? "empty"}-${index}`}
+              className="flex h-11 snap-center items-center justify-center"
+            >
+              {item && (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  disabled={disabled}
+                  onClick={() =>
+                    handleWheelClick(item)
+                  }
+                  className={`relative z-30 w-full text-center transition-all duration-200 ${
+                    isSelected
+                      ? "scale-110 text-lg font-semibold text-foreground"
+                      : "text-sm font-medium text-muted-foreground/55 hover:text-muted-foreground"
+                  }`}
+                >
+                  {item}
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -119,21 +163,52 @@ const TimeWheelPicker = ({
   onChange,
   disabled = false,
 }: TimeWheelPickerProps) => {
-  const [hour, minute] = value.split(":").map(Number);
+  const [rawHour, rawMinute] = value
+    .split(":")
+    .map(Number);
 
-  const isPM = hour >= 12;
+  const safeHour = Number.isFinite(rawHour)
+    ? rawHour
+    : 20;
 
-  const displayHour = hour % 12 || 12;
+  const safeMinute = Number.isFinite(rawMinute)
+    ? rawMinute
+    : 0;
 
-  const hours = Array.from({ length: 12 }, (_, index) =>
-    String(index + 1).padStart(2, "0")
+  const isPM = safeHour >= 12;
+
+  const displayHour =
+    safeHour % 12 || 12;
+
+  /*
+   * Keep minutes on 5-minute intervals.
+   * Prevent 60 from ever appearing.
+   */
+  const roundedMinute =
+    Math.round(safeMinute / 5) * 5;
+
+  const normalizedMinute =
+    roundedMinute >= 60
+      ? 55
+      : roundedMinute;
+
+  const hours = Array.from(
+    { length: 12 },
+    (_, index) =>
+      String(index + 1).padStart(2, "0")
   );
 
-  const minutes = Array.from({ length: 12 }, (_, index) =>
-    String(index * 5).padStart(2, "0")
+  const minutes = Array.from(
+    { length: 12 },
+    (_, index) =>
+      String(index * 5).padStart(2, "0")
   );
 
   const periods = ["AM", "PM"];
+
+  const currentMinute = String(
+    normalizedMinute
+  ).padStart(2, "0");
 
   const updateTime = (
     nextHour: number,
@@ -143,44 +218,69 @@ const TimeWheelPicker = ({
     let hour24 = nextHour;
 
     if (nextPeriod === "AM") {
-      hour24 = nextHour === 12 ? 0 : nextHour;
+      hour24 =
+        nextHour === 12 ? 0 : nextHour;
     } else {
-      hour24 = nextHour === 12 ? 12 : nextHour + 12;
+      hour24 =
+        nextHour === 12
+          ? 12
+          : nextHour + 12;
     }
 
+    const safeMinute =
+      Math.min(
+        Math.max(nextMinute, 0),
+        55
+      );
+
     onChange(
-      `${String(hour24).padStart(2, "0")}:${String(
-        nextMinute
-      ).padStart(2, "0")}`
+      `${String(hour24).padStart(
+        2,
+        "0"
+      )}:${String(safeMinute).padStart(
+        2,
+        "0"
+      )}`
     );
   };
 
-  const currentMinute = String(
-    Math.round(minute / 5) * 5
-  ).padStart(2, "0");
-
   return (
     <div
-      className={`rounded-2xl border border-border/50 bg-muted/20 px-4 py-5 transition-opacity ${
+      className={`rounded-3xl border border-border/50 bg-card px-4 py-5 shadow-sm transition-opacity ${
         disabled ? "opacity-50" : ""
       }`}
     >
-      <div className="flex items-center justify-center gap-2">
+      {/* Header */}
+      <div className="mb-4 text-center">
+        <p className="text-sm font-medium">
+          Set reminder time
+        </p>
+
+        <p className="mt-1 text-xs text-muted-foreground">
+          Scroll or swipe to choose
+        </p>
+      </div>
+
+      {/* Wheels */}
+      <div className="flex items-center justify-center gap-1 sm:gap-3">
         <Wheel
           items={hours}
-          value={String(displayHour).padStart(2, "0")}
+          value={String(displayHour).padStart(
+            2,
+            "0"
+          )}
           disabled={disabled}
           ariaLabel="Select hour"
           onChange={(nextHour) =>
             updateTime(
               Number(nextHour),
-              minute,
+              normalizedMinute,
               isPM ? "PM" : "AM"
             )
           }
         />
 
-        <span className="text-2xl font-light text-muted-foreground">
+        <span className="pb-1 text-2xl font-light text-muted-foreground">
           :
         </span>
 
@@ -198,24 +298,55 @@ const TimeWheelPicker = ({
           }
         />
 
-        <Wheel
-          items={periods}
-          value={isPM ? "PM" : "AM"}
-          disabled={disabled}
-          ariaLabel="Select AM or PM"
-          onChange={(nextPeriod) =>
-            updateTime(
-              displayHour,
-              minute,
-              nextPeriod as "AM" | "PM"
-            )
-          }
-        />
+        {/* AM / PM */}
+        <div className="ml-2 flex flex-col gap-1 rounded-xl border border-border/50 bg-muted/30 p-1">
+          {periods.map((period) => {
+            const selected =
+              (isPM ? "PM" : "AM") === period;
+
+            return (
+              <button
+                key={period}
+                type="button"
+                disabled={disabled}
+                onClick={() =>
+                  updateTime(
+                    displayHour,
+                    normalizedMinute,
+                    period as "AM" | "PM"
+                  )
+                }
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                  selected
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-background hover:text-foreground"
+                }`}
+              >
+                {period}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        Scroll or swipe to choose your time
-      </p>
+      {/* Selected time */}
+      <div className="mt-5 text-center">
+        <p className="text-lg font-semibold tracking-wide">
+          {String(displayHour).padStart(
+            2,
+            "0"
+          )}
+          :
+          {currentMinute}{" "}
+          {isPM ? "PM" : "AM"}
+        </p>
+
+        <p className="mt-1 text-xs text-muted-foreground">
+          {isPM
+            ? "A gentle evening check-in"
+            : "A calm start to your day"}
+        </p>
+      </div>
     </div>
   );
 };
