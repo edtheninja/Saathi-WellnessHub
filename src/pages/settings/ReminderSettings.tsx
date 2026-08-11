@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Check, Clock, Moon, Sun } from "lucide-react";
-
+import TimeWheelPicker from "@/components/settings/TimeWheelPicker";
 type ReminderPreferences = {
   dailyReminders: boolean;
   reminderTime: string;
@@ -138,11 +138,10 @@ function WheelColumn({
               aria-selected={isSelected}
               disabled={disabled}
               onClick={() => onSelect(value)}
-              className={`flex h-12 w-full snap-center items-center justify-center text-center transition-all duration-200 ${
-                isSelected
-                  ? "relative z-20 scale-110 text-lg font-semibold text-foreground"
-                  : "text-sm font-medium text-muted-foreground/60 hover:text-muted-foreground"
-              }`}
+              className={`flex h-12 w-full snap-center items-center justify-center text-center transition-all duration-200 ${isSelected
+                ? "relative z-20 scale-110 text-lg font-semibold text-foreground"
+                : "text-sm font-medium text-muted-foreground/60 hover:text-muted-foreground"
+                }`}
             >
               {format(value)}
             </button>
@@ -215,9 +214,8 @@ function AndroidTimePicker({
 
   return (
     <div
-      className={`rounded-3xl border border-border/50 bg-card p-5 shadow-sm transition-opacity ${
-        disabled ? "opacity-50" : ""
-      }`}
+      className={`rounded-3xl border border-border/50 bg-card p-5 shadow-sm transition-opacity ${disabled ? "opacity-50" : ""
+        }`}
     >
       <div className="mb-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
         <Clock className="h-4 w-4 text-primary" />
@@ -254,11 +252,10 @@ function AndroidTimePicker({
               type="button"
               disabled={disabled}
               onClick={() => selectPeriod(option)}
-              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                period === option
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-background hover:text-foreground"
-              }`}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${period === option
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-background hover:text-foreground"
+                }`}
             >
               {option}
             </button>
@@ -341,7 +338,7 @@ const ReminderSettings = () => {
 
         <section className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
                 <Bell className="h-5 w-5 text-primary" />
               </div>
@@ -366,18 +363,16 @@ const ReminderSettings = () => {
                   !preferences.dailyReminders,
                 )
               }
-              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                preferences.dailyReminders
-                  ? "bg-primary"
-                  : "bg-muted"
-              }`}
+              className={`relative h-7 w-12 shrink-0 overflow-hidden rounded-full transition-colors ${preferences.dailyReminders
+                ? "bg-primary"
+                : "bg-muted"
+                }`}
             >
               <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                  preferences.dailyReminders
-                    ? "translate-x-6"
-                    : "translate-x-1"
-                }`}
+                className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${preferences.dailyReminders
+                  ? "translate-x-5"
+                  : "translate-x-0"
+                  }`}
               />
             </button>
           </div>
@@ -399,14 +394,13 @@ const ReminderSettings = () => {
             </div>
           </div>
 
-          <AndroidTimePicker
+          <TimeWheelPicker
             value={preferences.reminderTime}
             onChange={(value) =>
               updatePreference("reminderTime", value)
             }
             disabled={!preferences.dailyReminders}
           />
-
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {TIME_PRESETS.map((preset) => {
               const Icon = preset.icon;
@@ -426,19 +420,17 @@ const ReminderSettings = () => {
                       preset.time,
                     )
                   }
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    isSelected
-                      ? "border-primary/40 bg-primary/10"
-                      : "border-border/50 bg-background hover:border-primary/30 hover:bg-muted/40"
-                  }`}
+                  className={`rounded-xl border p-3 text-left transition-all ${isSelected
+                    ? "border-primary/40 bg-primary/10"
+                    : "border-border/50 bg-background hover:border-primary/30 hover:bg-muted/40"
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <Icon
-                      className={`h-4 w-4 ${
-                        isSelected
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
+                      className={`h-4 w-4 ${isSelected
+                        ? "text-primary"
+                        : "text-muted-foreground"
+                        }`}
                     />
 
                     {isSelected && (
@@ -495,7 +487,7 @@ const ReminderSettings = () => {
                 key={item.key}
                 className="flex items-center justify-between gap-4"
               >
-                <div>
+                <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-medium">
                     {item.title}
                   </h3>
@@ -514,18 +506,16 @@ const ReminderSettings = () => {
                       !preferences[item.key],
                     )
                   }
-                  className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                    preferences[item.key]
+                  className={`relative h-7 w-12 shrink-0 rounded-full p-1 transition-colors duration-200 ${preferences[item.key]
                       ? "bg-primary"
                       : "bg-muted"
-                  }`}
+                    }`}
                 >
                   <span
-                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                      preferences[item.key]
-                        ? "translate-x-6"
-                        : "translate-x-1"
-                    }`}
+                    className={`block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${preferences[item.key]
+                        ? "translate-x-5"
+                        : "translate-x-0"
+                      }`}
                   />
                 </button>
               </div>
