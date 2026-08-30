@@ -382,7 +382,7 @@ export default function Dashboard(): JSX.Element {
                   </div>
                   {/* Title */}
                   <div className="mt-12">
-                    <h3 className="text-2xl font-bold tracking-tight font-bold tracking-tight">
+                    <h3 className="text-2xl font-bold tracking-tight ">
                       {f.title}
                     </h3>
 

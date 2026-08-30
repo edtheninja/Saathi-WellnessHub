@@ -1,6 +1,6 @@
 import JournalService from "./JournalService";
 import MeditationService from "./MeditationService";
-import GoalService from "./GoalService";
+import GoalService, {type Goal} from "./GoalService";
 import WellnessScoreEngine from "./WellnessScoreEngine";
 import JournalAnalytics, {
   type JournalAnalytics as JournalAnalyticsType,
@@ -9,6 +9,7 @@ import MoodEngine from "./MoodEngine";
 import WellnessStreakService, {
   type WellnessStreak,
 } from "./WellnessStreakService";
+import { GoalCategory } from "@/context/GoalsContext";
 export interface WellnessSnapshot {
   journal: {
     totalEntries: number;
@@ -31,7 +32,7 @@ meditation: {
   minutes: number;
 };
 
-goal: any;
+goal: Goal;
 
 score: {
   score: number;

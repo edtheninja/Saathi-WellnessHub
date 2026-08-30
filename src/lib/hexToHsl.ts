@@ -8,7 +8,7 @@ export default function hexToHSL(hex:string) {
   const b = parseInt(hex.substr(4,2),16)/255;
   const max = Math.max(r,g,b), min = Math.min(r,g,b);
   let h = 0, s = 0;
-  let l = (max + min) / 2;
+  const l = (max + min) / 2;
 
   if (max === min) {
     h = s = 0;

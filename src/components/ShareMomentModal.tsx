@@ -10,13 +10,21 @@ import JourneyCard from "./JourneyCard";
 
 import { shareToSocial } from "@/utils/shareToSocial";
 
+type WellnessStats = {
+  moodAverage: number;
+  happiestDay: string;
+  streak: number;
+  bestStreak?: number;
+  summary?: string;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
-  stats: any;
+  stats: WellnessStats;
 };
 
-function ShareCard({ stats }: { stats: any }) {
+function ShareCard({ stats }: { stats: WellnessStats }) {
   if (!stats) return null;
 
   return (

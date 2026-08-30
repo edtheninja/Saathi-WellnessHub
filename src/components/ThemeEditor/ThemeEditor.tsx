@@ -1,13 +1,13 @@
 // src/components/ThemeEditor/ThemeEditor.tsx
 import React, { useEffect, useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
-import { Themes } from "../../themePresets";
+import { Themes, ThemeName } from "../../themePresets";
 import hexToHSL from "../../lib/hexToHsl.ts";
 
 function clamp(n:number, a=0, b=100){ return Math.min(b, Math.max(a, n)); }
 
 export default function ThemeEditor({ userId }: { userId?: string }) {
-  const { theme, applyTheme, applyCustomVars, saveThemeToUser } = useTheme();
+const { theme, applyTheme, applyCustomVars } = useTheme();
 
   // primary color represented as H S% L%
   const [h, setH] = useState(257);
@@ -42,8 +42,10 @@ export default function ThemeEditor({ userId }: { userId?: string }) {
     try {
       const tmp = hslToHex(h,s,l);
       setHex(tmp);
-    } catch {}
-  }, [h,s,l]);
+    } catch (err) {
+      console.error("Failed to convert HSL to hex:", err);
+    }
+  }, [h,s,l, applyCustomVars]);  
 
   const onHexChange = (hexIn:string) => {
     setHex(hexIn);
@@ -52,20 +54,16 @@ export default function ThemeEditor({ userId }: { userId?: string }) {
     if (!Number.isNaN(hh)) { setH(Math.round(hh)); setS(Math.round(ss)); setL(Math.round(ll)); }
   };
 
-  const saveToUser = async () => {
-    if (userId && typeof saveThemeToUser === "function") {
-      await saveThemeToUser(userId);
-    } else {
-      // local save already done in theme provider
-      alert("Theme applied locally. To persist across devices, enable Supabase saving.");
-    }
-  };
+  const saveToUser = () => {
+  // Theme is already persisted to localStorage by ThemeProvider on every change.
+  alert("Theme saved.");
+};
 
   return (
     <div className="bg-card text-card-foreground p-4 rounded-lg shadow-elevated space-y-3">
       <div className="flex items-center gap-2">
         <strong>Theme:</strong>
-        <select value={theme} onChange={(e)=>applyTheme(e.target.value as any)} className="p-1 rounded border border-border bg-background">
+        <select value={theme} onChange={(e)=>applyTheme(e.target.value as ThemeName)} className="p-1 rounded border border-border bg-background">
           {Object.keys(Themes).map(k => <option key={k} value={k}>{k}</option>)}
         </select>
       </div>

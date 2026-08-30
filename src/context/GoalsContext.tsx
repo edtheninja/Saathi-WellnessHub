@@ -74,6 +74,9 @@ export function GoalsProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components -- useGoals is tightly
+// coupled to GoalsProvider/GoalsContext; splitting into a separate file would require
+// updating every import across the codebase. Only affects dev Fast Refresh, not production.*/
 export function useGoals() {
   const ctx = useContext(GoalsContext);
   if (!ctx) throw new Error("useGoals must be used inside GoalsProvider");

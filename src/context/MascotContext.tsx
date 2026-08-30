@@ -28,5 +28,8 @@ export const MascotProvider = ({ children }: { children: React.ReactNode }) => {
     </MascotContext.Provider>
   );
 };
-
+/* eslint-disable-next-line react-refresh/only-export-components -- useMascot is tightly
+// coupled to MascotProvider/MascotContext; splitting into a separate file would require
+// updating every import across the codebase. Only affects dev Fast Refresh, not production.*/
 export const useMascot = () => useContext(MascotContext);
+

@@ -1,6 +1,6 @@
 import { supabase } from "@/supabaseClient";
 
-interface JournalEntry {
+export interface JournalEntry {
   id: string;
   mood: number;
   label: string;

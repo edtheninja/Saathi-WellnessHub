@@ -6,6 +6,7 @@ import {
   Target,
   Flame,
   Smile,
+  type LucideIcon,
 } from "lucide-react";
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
 const tagConfig: Record<
   string,
   {
-    icon: any;
+    icon: LucideIcon;
     color: string;
   }
 > = {

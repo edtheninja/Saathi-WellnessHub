@@ -23,5 +23,5 @@ const Toaster = ({ ...props }: ToasterProps) => {
     />
   );
 };
-
+// eslint-disable-next-line react-refresh/only-export-components -- standard shadcn/ui pattern; dev-only Fast Refresh impact
 export { Toaster, toast };

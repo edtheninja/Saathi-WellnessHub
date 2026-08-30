@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -62,37 +63,40 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
-  const applyVars = (vars: Record<string, string>) =>
+  const applyVars = useCallback((vars: Record<string, string>) => {
     Object.entries(vars).forEach(([k, v]) =>
       document.documentElement.style.setProperty(k, v)
     );
+  }, []);
 
-  const applyTheme = (name: ThemeName) => {
+  const applyTheme = useCallback((name: ThemeName) => {
     const preset = Themes[name];
     if (!preset) return;
 
     applyVars(preset);
     setTheme(name);
     localStorage.setItem(STORAGE_THEME, name);
-  };
+  }, [applyVars]);
 
-  const updateDocumentMode = (mode: ThemeMode) => {
+  const updateDocumentMode = useCallback((mode: ThemeMode) => {
     const applied = mode === "system" ? getSystemTheme() : mode;
     document.documentElement.classList.toggle("dark", applied === "dark");
-  };
+  }, []);
 
-  const setThemeMode = (mode: ThemeMode) => {
+  const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeModeState(mode);
     localStorage.setItem(STORAGE_MODE, mode);
     updateDocumentMode(mode);
-  };
+  }, [updateDocumentMode]);
 
   /* ✅ Persist tile colors safely */
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_TILES, JSON.stringify(tileColors));
       applyTileColors(tileColors);
-    } catch {}
+    } catch (err) {
+      console.error("Failed to persist tile colors:", err);
+    }
   }, [tileColors]);
 
   /* Load on Startup */
@@ -110,7 +114,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     /* ✅ Apply tiles only (do NOT reset state) */
     const savedTiles = JSON.parse(localStorage.getItem(STORAGE_TILES) || "{}");
     applyTileColors(savedTiles);
-  }, []);
+  }, [applyTheme, setThemeMode, updateDocumentMode]);
 
   const setTileColor = (id: string, hsl: HSL) => {
     setTileColors((prev) => {
@@ -121,7 +125,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const getTileColor = (id: string) => tileColors[id] || null;
+  const getTileColor = useCallback(
+    (id: string) => tileColors[id] || null,
+    [tileColors]
+  );
 
   const value = useMemo(
     () => ({
@@ -133,12 +140,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setTileColor,
       getTileColor,
     }),
-    [theme, themeMode, tileColors]
+    [theme, themeMode, applyVars, applyTheme, setThemeMode, getTileColor]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
+/* eslint-disable-next-line react-refresh/only-export-components -- useTheme is tightly
+   coupled to ThemeProvider/ThemeContext; splitting into a separate file would require
+   updating every import across the codebase. Only affects dev Fast Refresh, not production. */
 export function useTheme() {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");

@@ -1,4 +1,4 @@
-import JournalService from "./JournalService";
+import JournalService, { type JournalEntry } from "./JournalService";
 
 export interface JournalAnalytics {
   totalEntries: number;
@@ -61,7 +61,7 @@ class JournalAnalyticsService {
 
 }
 
-function calculateJournalStreak(entries: any[]) {
+function calculateJournalStreak(entries: JournalEntry[]) {
 
   if (entries.length === 0)
     return 0;

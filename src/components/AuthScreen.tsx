@@ -65,8 +65,9 @@ const AuthScreen = () => {
 
         navigate('/dashboard');
       }
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+      alert(message);
     } finally {
       setIsLoading(false);
     }

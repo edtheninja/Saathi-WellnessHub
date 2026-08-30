@@ -12,7 +12,7 @@ const AuthCallback = () => {
         navigate("/dashboard");
       }
     });
-  }, []);
+  }, [navigate]);
 
   return <p>Verifying email...</p>;
   

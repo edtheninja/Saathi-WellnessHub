@@ -12,7 +12,11 @@ class MoodService {
         return {};
       }
 
-      const moods = JSON.parse(raw);
+      interface MoodEntry {
+        value: number;
+      }
+
+      const moods = JSON.parse(raw) as MoodEntry[];
 
       if (!Array.isArray(moods) || moods.length === 0) {
         return {};
@@ -21,7 +25,7 @@ class MoodService {
       const latestMood = moods[moods.length - 1]?.value;
 
       const total = moods.reduce(
-        (sum: number, mood: any) => sum + (mood.value || 0),
+        (sum, mood) => sum + (mood.value || 0),
         0
       );
 

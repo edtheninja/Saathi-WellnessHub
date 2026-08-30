@@ -1,10 +1,10 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight , type LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface Props {
   title: string;
   description: string;
-  icon: any;
+  icon: LucideIcon;
   gradient: string;
   onClick?: () => void;
 }

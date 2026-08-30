@@ -1,6 +1,6 @@
 import { useTheme } from "@/context/ThemeContext";
 import { motion } from "framer-motion";
-import { Moon, Sun, Monitor, Check } from "lucide-react";
+import { Moon, Sun, Monitor, Check , type LucideIcon} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -30,7 +30,7 @@ export default function ModeSelectorV2() {
     label,
   }: {
     mode: "light" | "dark" | "system";
-    icon: any;
+    icon: LucideIcon;
     label: string;
   }) => {
     const active = selectedMode === mode;

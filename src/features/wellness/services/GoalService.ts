@@ -1,4 +1,9 @@
 import { supabase } from "@/supabaseClient";
+export interface Goal {
+  id?: string;
+  completed?: boolean;
+  [key: string]: unknown; // covers other columns from select("*") we don't use yet
+}
 
 class GoalService {
 
