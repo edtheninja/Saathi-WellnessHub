@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from "path"
 
 export default defineConfig(({ mode }) => ({
-  base: mode === "production" ? "/Saathi/" : "/",
+  base: process.env.VERCEL ? "/" : mode === "production" ? "/Saathi/" : "/",
 
   plugins: [
     react(),
