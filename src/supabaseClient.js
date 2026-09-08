@@ -35,6 +35,9 @@ const auth = {
 		return { data: payload, error: null };
 	},
 	async getUser() {
+		if (!localStorage.getItem(tokenKey)) {
+			return { data: { user: null }, error: null };
+		}
 		try {
 			const payload = await request('/auth/me');
 			return { data: { user: payload.user }, error: null };

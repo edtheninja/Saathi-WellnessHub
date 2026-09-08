@@ -33,18 +33,21 @@ export function GoalsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) setGoalState(JSON.parse(saved));
-    supabase
-      .from("goals")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setGoalState(data as Goal);
-          persist(data as Goal);
-        }
-      });
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      return supabase
+        .from("goals")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setGoalState(data as Goal);
+            persist(data as Goal);
+          }
+        });
+    });
   }, []);
 
   const persist = (g: Goal | null) => {

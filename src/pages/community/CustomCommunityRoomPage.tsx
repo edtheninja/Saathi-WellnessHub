@@ -1,12 +1,12 @@
 import { Navigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import ChatRoom from "@/components/community/chat/ChatRoom";
-import type { ChatRoom } from "@/components/community/chat/types";
+import type { ChatRoom as ChatRoomModel } from "@/components/community/chat/types";
 import { getCommunity } from "@/lib/communityApi";
 
 export default function CustomCommunityRoomPage() {
   const { roomId } = useParams();
-  const [room, setRoom] = useState<ChatRoom | null>(null);
+  const [room, setRoom] = useState<ChatRoomModel | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
