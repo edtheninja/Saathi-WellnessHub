@@ -7,6 +7,8 @@ import TypingIndicator from "./TypingIndicator";
 import { ChatMessage, ChatRoom as Room } from "./types";
 import SuperReactSheet from "./SuperReactSheet";
 import { BubbleMessage } from "./MessageBubble";
+import { supabase } from "@/supabaseClient";
+import { getCommunitySocket } from "@/lib/communitySocket";
 interface Props {
     room: Room;
 }
@@ -18,7 +20,10 @@ export default function ChatRoom({ room }: Props) {
         sender: string;
         text: string;
     } | null>(null);
-    const [isTyping] = useState(false);
+    const [isTyping, setIsTyping] = useState(false);
+    const [onlineCount, setOnlineCount] = useState(room.memberCount ?? 0);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [currentUserName, setCurrentUserName] = useState("You");
     const bottomRef = useRef<HTMLDivElement>(null);
     const [supportTarget, setSupportTarget] =
         useState<BubbleMessage | null>(null);
@@ -37,12 +42,109 @@ export default function ChatRoom({ room }: Props) {
     const [supportAnchor, setSupportAnchor] =
         useState<HTMLElement | null>(null);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadMessages() {
+            const [{ data: user }, { data }] = await Promise.all([
+                supabase.auth.getUser(),
+                supabase
+                    .from("chat_messages")
+                    .select("*")
+                    .eq("room_id", room.id)
+                    .order("created_at", { ascending: true }),
+            ]);
+
+            if (cancelled) return;
+
+            setCurrentUserId(user?.user?.id ?? null);
+            setCurrentUserName(user?.user?.user_metadata?.name ?? "You");
+
+            setMessages((data ?? []).map((item) => ({
+                id: item.id,
+                roomId: item.room_id,
+                sender: {
+                    id: item.sender_id,
+                    name: item.sender_name ?? "Saathi member",
+                    avatar: item.sender_avatar,
+                },
+                type: item.type ?? "text",
+                content: item.content,
+                createdAt: item.created_at,
+                isMine: item.sender_id === user?.user?.id,
+                replyTo: item.reply_to,
+                support: item.support,
+                reactions: item.reactions ?? [],
+                supportReactions: item.support_reactions ?? [],
+            })));
+        }
+
+        void loadMessages();
+        return () => { cancelled = true; };
+    }, [room.id]);
+
+    useEffect(() => {
+        const socket = getCommunitySocket();
+        socket.emit("room:join", room.id);
+
+        const onMessage = (item: Record<string, any>) => {
+            const incoming: ChatMessage = {
+                id: item.id,
+                roomId: item.room_id,
+                sender: { id: item.sender_id, name: item.sender_name ?? "Saathi member" },
+                type: item.type ?? "text",
+                content: item.content,
+                createdAt: item.created_at,
+                isMine: item.sender_id === currentUserId,
+                replyTo: item.reply_to,
+                support: item.support,
+                reactions: item.reactions ?? [],
+            };
+            setMessages((previous) => previous.some((message) => message.id === incoming.id) ? previous : [...previous, incoming]);
+        };
+        const onReaction = ({ messageId, reactions }: { messageId: string; reactions: ChatMessage["reactions"] }) => {
+            setMessages((previous) => previous.map((message) => message.id === messageId ? { ...message, reactions } : message));
+        };
+        const onTyping = ({ userId, typing }: { userId: string; typing: boolean }) => {
+            if (userId !== currentUserId) setIsTyping(typing);
+        };
+
+        socket.on("message:new", onMessage);
+        socket.on("message:reaction", onReaction);
+        socket.on("typing:update", onTyping);
+        socket.on("room:presence", ({ count }: { count: number }) => setOnlineCount(count));
+        return () => {
+            socket.emit("room:leave", room.id);
+            socket.off("message:new", onMessage);
+            socket.off("message:reaction", onReaction);
+            socket.off("typing:update", onTyping);
+        };
+    }, [room.id, currentUserId]);
+
     const handleReact = (message: BubbleMessage) => {
         setSupportTarget(message);
         setShowSupport(true);
     };
     // Demo typing animation
 
+
+    const saveMessage = async (message: ChatMessage) => {
+        const { data: user } = await supabase.auth.getUser();
+        if (!user.user) return;
+
+        await supabase.from("chat_messages").insert({
+            id: message.id,
+            room_id: message.roomId,
+            sender_id: user.user.id,
+            sender_name: message.sender.name,
+            type: message.type,
+            content: message.content,
+            reply_to: message.replyTo,
+            support: message.support,
+            reactions: message.reactions ?? [],
+            support_reactions: message.supportReactions ?? [],
+        });
+    };
 
     const handleSend = (text: string) => {
         const newMessage: ChatMessage = {
@@ -73,6 +175,17 @@ export default function ChatRoom({ room }: Props) {
         };
 
         setMessages((prev) => [...prev, newMessage]);
+        const socket = getCommunitySocket();
+        if (socket.connected) {
+            socket.emit("message:send", {
+                id: newMessage.id,
+                roomId: room.id,
+                senderName: currentUserName,
+                type: newMessage.type,
+                content: newMessage.content,
+                replyTo: newMessage.replyTo,
+            });
+        } else void saveMessage(newMessage);
 
         setReply(null);
     };
@@ -117,6 +230,18 @@ export default function ChatRoom({ room }: Props) {
         };
 
         setMessages((prev) => [...prev, supportMessage]);
+        const socket = getCommunitySocket();
+        if (socket.connected) {
+            socket.emit("message:send", {
+                id: supportMessage.id,
+                roomId: room.id,
+                senderName: currentUserName,
+                type: supportMessage.type,
+                content: supportMessage.content,
+                replyTo: supportMessage.replyTo,
+                support: supportMessage.support,
+            });
+        } else void saveMessage(supportMessage);
 
         setSupportTarget(null);
         setShowSupport(false);
@@ -164,10 +289,18 @@ export default function ChatRoom({ room }: Props) {
                     }
                 }
 
-                return {
+                const updated = {
                     ...item,
                     reactions,
                 };
+
+                void supabase
+                    .from("chat_messages")
+                    .update({ reactions })
+                    .eq("id", item.id);
+                getCommunitySocket().emit("message:react", { roomId: room.id, messageId: item.id, reactions });
+
+                return updated;
             })
         );
     };
@@ -175,7 +308,7 @@ export default function ChatRoom({ room }: Props) {
         <div className="flex h-[calc(100vh-72px)] flex-col bg-background">
 
             {/* Header */}
-            <ChatHeader room={room} />
+            <ChatHeader room={{ ...room, memberCount: onlineCount }} />
 
             {/* Messages */}
             <div
@@ -236,6 +369,7 @@ export default function ChatRoom({ room }: Props) {
                 />
                 <ChatComposer
                     onSend={handleSend}
+                            onTyping={(typing) => getCommunitySocket().emit(typing ? "typing:start" : "typing:stop", room.id)}
                     reply={reply}
                     onCancelReply={() => setReply(null)}
                 />

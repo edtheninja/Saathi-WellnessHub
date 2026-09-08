@@ -9,6 +9,7 @@ import HighlightCard from "./HighlightCard";
 import JourneyCard from "./JourneyCard";
 
 import { shareToSocial } from "@/utils/shareToSocial";
+import { supabase } from "@/supabaseClient";
 
 type WellnessStats = {
   moodAverage: number;
@@ -79,7 +80,7 @@ Happiest Day: ${stats?.happiestDay ?? "-"}`,
     }
   };
 
-  const handleCommunityShare = () => {
+  const handleCommunityShare = async () => {
     const post = {
       title,
       reflection,
@@ -88,7 +89,17 @@ Happiest Day: ${stats?.happiestDay ?? "-"}`,
       stats,
     };
 
-    console.log("Community Post:", post);
+    const { data: user } = await supabase.auth.getUser();
+    if (user.user) {
+      await supabase.from("community_posts").insert({
+        title,
+        body: reflection,
+        mood: selectedMood,
+        visibility,
+        type: "reflection",
+        stats,
+      });
+    }
 
     onClose();
 

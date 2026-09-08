@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { HeartPulse, BookOpen, Brain, BarChart3 } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
+import { readUserSetting, writeUserSetting } from "@/lib/userPersistence";
 
 type WellnessPreferences = {
   moodCheckIn: boolean;
@@ -36,6 +37,9 @@ const WellnessSettings = () => {
     } catch {
       // Keep default preferences if stored data is invalid.
     }
+    void readUserSetting(STORAGE_KEY, defaultPreferences).then((saved) => {
+      setPreferences((current) => ({ ...current, ...saved }));
+    });
   }, []);
 
   const updatePreference = (
@@ -49,6 +53,7 @@ const WellnessSettings = () => {
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      void writeUserSetting(STORAGE_KEY, updated);
 
       return updated;
     });

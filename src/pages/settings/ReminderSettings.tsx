@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Check, Clock, Moon, Sun } from "lucide-react";
 import TimeWheelPicker from "@/components/settings/TimeWheelPicker";
+import { readUserSetting, writeUserSetting } from "@/lib/userPersistence";
 type ReminderPreferences = {
   dailyReminders: boolean;
   reminderTime: string;
@@ -297,7 +298,14 @@ const ReminderSettings = () => {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    void writeUserSetting(STORAGE_KEY, preferences);
   }, [preferences]);
+
+  useEffect(() => {
+    void readUserSetting(STORAGE_KEY, DEFAULT_PREFERENCES).then((saved) => {
+      setPreferences((current) => ({ ...current, ...saved }));
+    });
+  }, []);
 
   const updatePreference = <K extends keyof ReminderPreferences>(
     key: K,
@@ -317,6 +325,7 @@ const ReminderSettings = () => {
 
   const handleSave = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    void writeUserSetting(STORAGE_KEY, preferences);
     setSaved(true);
 
     window.setTimeout(() => {

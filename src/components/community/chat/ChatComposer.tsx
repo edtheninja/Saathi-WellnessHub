@@ -16,12 +16,14 @@ interface ReplyMessage {
 
 interface Props {
   onSend: (text: string) => void;
+  onTyping?: (typing: boolean) => void;
   reply?: ReplyMessage | null;
   onCancelReply?: () => void;
 }
 
 export default function ChatComposer({
   onSend,
+  onTyping,
   reply = null,
   onCancelReply,
 }: Props) {
@@ -45,6 +47,7 @@ export default function ChatComposer({
     if (!text.trim()) return;
 
     onSend(text.trim());
+    onTyping?.(false);
     onCancelReply?.();
 
     setText("");
@@ -254,6 +257,7 @@ export default function ChatComposer({
           placeholder="Type a message..."
           onChange={(e) => {
             setText(e.target.value);
+            onTyping?.(e.target.value.trim().length > 0);
             resize();
           }}
           onClick={() => setShowEmojiPicker(false)}

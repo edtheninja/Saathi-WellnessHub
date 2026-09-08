@@ -6,6 +6,16 @@ import path from "path"
 export default defineConfig(({ mode }) => ({
   base: process.env.VERCEL ? "/" : mode === "production" ? "/Saathi/" : "/",
 
+  server: {
+    proxy: {
+      "/api": "http://localhost:4000",
+      "/socket.io": {
+        target: "http://localhost:4000",
+        ws: true,
+      },
+    },
+  },
+
   plugins: [
     react(),
 

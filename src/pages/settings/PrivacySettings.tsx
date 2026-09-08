@@ -10,6 +10,7 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { readUserSetting, writeUserSetting } from "@/lib/userPersistence";
 
 const STORAGE_KEY = "saathi_privacy_settings_v1";
 
@@ -44,6 +45,9 @@ const PrivacySettings = () => {
     } catch {
       // Keep the safe defaults if stored data is unavailable or invalid.
     }
+    void readUserSetting(STORAGE_KEY, DEFAULT_PREFERENCES).then((saved) => {
+      setPreferences((current) => ({ ...current, ...saved }));
+    });
   }, []);
 
   const updatePreference = (
@@ -57,6 +61,7 @@ const PrivacySettings = () => {
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      void writeUserSetting(STORAGE_KEY, updated);
 
       return updated;
     });

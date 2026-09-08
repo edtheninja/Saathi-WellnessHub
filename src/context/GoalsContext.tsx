@@ -1,5 +1,6 @@
 // src/context/GoalsContext.tsx
 import { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/supabaseClient";
 
 
 export type GoalCategory = "Meditation" | "Yoga" | "Self Care" | "Fitness";
@@ -32,6 +33,18 @@ export function GoalsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) setGoalState(JSON.parse(saved));
+    supabase
+      .from("goals")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setGoalState(data as Goal);
+          persist(data as Goal);
+        }
+      });
   }, []);
 
   const persist = (g: Goal | null) => {
@@ -42,6 +55,7 @@ export function GoalsProvider({ children }: { children: React.ReactNode }) {
   const setGoal = (g: Goal) => {
     setGoalState(g);
     persist(g);
+    void supabase.from("goals").insert(g);
   };
 
   const updateProgress = (minutes: number) => {
@@ -55,6 +69,7 @@ export function GoalsProvider({ children }: { children: React.ReactNode }) {
 
     setGoalState(updated);
     persist(updated);
+    void supabase.from("goals").update(updated).eq("id", updated.id);
   };
 
   const completeGoal = () => {
@@ -63,6 +78,7 @@ export function GoalsProvider({ children }: { children: React.ReactNode }) {
     const updated = { ...goal, progress: goal.duration, completed: true };
     setGoalState(updated);
     persist(updated);
+    void supabase.from("goals").update(updated).eq("id", updated.id);
   };
 
   return (
