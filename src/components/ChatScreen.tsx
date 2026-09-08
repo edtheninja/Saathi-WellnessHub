@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, Bot, User } from 'lucide-react';
+import { AlertTriangle, Phone } from 'lucide-react';
 
 interface Message {
   id: number;
@@ -10,6 +11,8 @@ interface Message {
   isBot: boolean;
   timestamp: Date;
 }
+
+const apiBase = import.meta.env.VITE_API_URL || "/api";
 
 const ChatScreen = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -22,17 +25,7 @@ const ChatScreen = () => {
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-
-  const botResponses = [
-    "I understand how you're feeling. It's completely normal to have these emotions.",
-    "Thank you for sharing that with me. Your feelings are valid and important.",
-    "Have you tried any breathing exercises today? They can be really helpful for managing stress.",
-    "Remember that small steps forward are still progress. You're doing great.",
-    "It sounds like you're going through a challenging time. How can I best support you right now?",
-    "Your mental health journey is unique to you. What self-care activities make you feel better?",
-    "I'm here to listen without judgment. Feel free to share whatever is on your mind.",
-    "That's a wonderful insight. How does it make you feel to recognize that about yourself?"
-  ];
+  const [showSupport, setShowSupport] = useState(false);
 
   const quickResponses = [
     "I'm feeling anxious",
@@ -42,8 +35,11 @@ const ChatScreen = () => {
     "I need motivation"
   ];
 
-  const sendMessage = (text: string) => {
+  const sendMessage = async (text: string) => {
     if (!text.trim()) return;
+
+    const safetySignal = /suicide|kill myself|self[- ]harm|hurt myself|end my life|can't go on/i.test(text);
+    if (safetySignal) setShowSupport(true);
 
     // Add user message
     const userMessage: Message = {
@@ -57,17 +53,43 @@ const ChatScreen = () => {
     setInputText('');
     setIsTyping(true);
 
-    // Simulate bot response
-    setTimeout(() => {
-      const botResponse: Message = {
-        id: messages.length + 2,
-        text: botResponses[Math.floor(Math.random() * botResponses.length)],
+    try {
+      const token = localStorage.getItem("saathi_access_token");
+      const response = await fetch(`${apiBase}/ai/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          messages: [
+            ...messages.map((message) => ({
+              role: message.isBot ? "assistant" : "user",
+              content: message.text,
+            })),
+            { role: "user", content: text },
+          ],
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "AI response failed");
+      setMessages((prev) => [...prev, {
+        id: Date.now() + 1,
+        text: payload.message,
         isBot: true,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, botResponse]);
+        timestamp: new Date(),
+      }]);
+    } catch (error) {
+      console.error("AI chat error:", error);
+      setMessages((prev) => [...prev, {
+        id: Date.now() + 1,
+        text: "I am having trouble connecting right now. Please take a slow breath and try again in a moment.",
+        isBot: true,
+        timestamp: new Date(),
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 1000 + Math.random() * 2000);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -155,6 +177,21 @@ const ChatScreen = () => {
       </div>
 
       {/* Quick Responses */}
+      {showSupport && (
+        <div className="mx-4 mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+            <div className="space-y-2">
+              <p className="text-sm font-semibold">You deserve immediate human support.</p>
+              <p className="text-xs text-muted-foreground">Saathi is not emergency care. If you may hurt yourself, contact local emergency services or Tele-MANAS now.</p>
+              <a href="tel:14416" className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white">
+                <Phone className="h-4 w-4" /> Call Tele-MANAS 14416
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="px-4 pb-4">
         <div className="flex flex-wrap gap-2 mb-4">
           {quickResponses.map((response, index) => (

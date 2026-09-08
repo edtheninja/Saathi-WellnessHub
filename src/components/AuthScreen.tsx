@@ -8,6 +8,8 @@ import { Mail, Lock, User } from 'lucide-react';
 import saathiLogo from '@/assets/saathi-logo.png';
 import { supabase } from '@/supabaseClient';
 
+const apiBase = import.meta.env.VITE_API_URL || '/api';
+
 const AuthScreen = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -15,6 +17,17 @@ const AuthScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+
+  const handleOAuth = async (provider: 'google' | 'apple') => {
+    try {
+      const response = await fetch(`${apiBase}/auth/oauth/${provider}/start`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || `${provider} login is unavailable`);
+      window.location.assign(payload.url);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'OAuth login is unavailable');
+    }
+  };
 
   const handleAuth = async (type: 'login' | 'signup') => {
     setIsLoading(true);
@@ -176,6 +189,15 @@ const AuthScreen = () => {
                 </div>
               </TabsContent>
             </Tabs>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <Button type="button" variant="outline" onClick={() => void handleOAuth('google')}>
+                Continue with Google
+              </Button>
+              <Button type="button" variant="outline" onClick={() => void handleOAuth('apple')}>
+                Continue with Apple
+              </Button>
+            </div>
 
             <div className="text-center mt-6">
               <Button

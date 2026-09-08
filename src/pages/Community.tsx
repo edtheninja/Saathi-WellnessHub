@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import CommunityHero from "@/components/community/CommunityHero";
@@ -20,12 +20,22 @@ import SupportGroups from "@/components/community/SupportGroups";
 
 import { communitySections } from "@/data/community";
 import { communityRoutes } from "@/components/community/utils/routes";
+import CreateCommunityDialog from "@/components/community/CreateCommunityDialog";
+import { getCommunities, type CreatedCommunity } from "@/lib/communityApi";
+import AnonymousThoughts from "@/components/community/AnonymousThoughts";
 
 export default function Community() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] =
     useState<CommunityTab>("feed");
+  const [createdCommunities, setCreatedCommunities] = useState<CreatedCommunity[]>([]);
+
+  useEffect(() => {
+    void getCommunities().then(({ data }) => {
+      setCreatedCommunities(data.filter((community) => !["daily", "meditation", "sleep", "anxiety", "mindfulness", "grief"].includes(community.id)));
+    });
+  }, []);
 
   // IDs MUST match communityRooms.ts
   const moods = [
@@ -62,7 +72,12 @@ export default function Community() {
   return (
     <main className="max-w-7xl mx-auto px-6 py-8 pb-32 space-y-12">
 
-      <CommunityHero />
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <CommunityHero />
+        <CreateCommunityDialog
+          onCreated={(community) => setCreatedCommunities((current) => [community, ...current])}
+        />
+      </div>
 
       <CommunityTabs
         active={activeTab}
@@ -75,6 +90,25 @@ export default function Community() {
         {activeTab === "discover" && <Discover />}
         {activeTab === "events" && <Events />}
       </CommunityLayout>
+
+        {createdCommunities.length > 0 && (
+          <section className="rounded-[32px] border bg-card p-8">
+            <h2 className="mb-5 text-2xl font-bold">Your Communities</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {createdCommunities.map((community) => (
+                <button
+                  key={community.id}
+                  onClick={() => navigate(`/community/custom/${community.id}`)}
+                  className="rounded-2xl border p-5 text-left transition hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <h3 className="font-semibold">{community.name}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{community.topic || community.description || "Community chat"}</p>
+                  <p className="mt-3 text-xs text-muted-foreground">{community.member_count} member</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
       {/* Daily Discussion */}
       <DailyDiscussion
@@ -100,6 +134,8 @@ export default function Community() {
           navigate(communityRoutes.support(id))
         }
       />
+
+      <AnonymousThoughts />
 
     </main>
   );

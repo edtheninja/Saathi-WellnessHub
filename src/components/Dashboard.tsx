@@ -21,6 +21,7 @@ import {
 import Tile from "./Tile/Tile";
 import ModeSelectorV2 from "@/components/ModeSelectorV2";
 import { HeartPulse } from "lucide-react";
+import { isDemoMode } from "@/features/wellness/services/DemoMode";
 /* small helper */
 function hslToCss(hsl: HSL) {
   return `hsl(${hsl.h}deg ${hsl.s}% ${hsl.l}%)`;
@@ -208,6 +209,14 @@ export default function Dashboard(): JSX.Element {
           </h1>
         </div>
       </motion.header>
+
+      {isDemoMode() && (
+        <div className="mx-auto mt-4 max-w-6xl px-6">
+          <div className="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+            Demo Mode is active. Wellness data is seeded for presentation.
+          </div>
+        </div>
+      )}
 
       <motion.section variants={cardAnim} initial="initial" animate="animate" transition={{ delay: 0.05 }}>
         <div className="glass rounded-3xl border border-white/8 shadow-elevated p-6">

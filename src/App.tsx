@@ -36,6 +36,7 @@ import WellnessHub from "./features/wellness/pages/WellnessHub";
 import ConnectDevicePage from "./features/wellness/pages/ConnectDevicePage";
 import Community from "@/pages/Community";
 import CommunityRoomPage from "@/pages/community/CommunityRoomPage";
+import CustomCommunityRoomPage from "@/pages/community/CustomCommunityRoomPage";
 
 /* ------------------------------- Layout Wrapper ------------------------------- */
 function LayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -99,6 +100,10 @@ export default function App() {
                 <Route
                   path="/community/:roomType/:roomId"
                   element={<CommunityRoomPage />}
+                />
+                <Route
+                  path="/community/custom/:roomId"
+                  element={<CustomCommunityRoomPage />}
                 />
                 {/* Profile */}
 

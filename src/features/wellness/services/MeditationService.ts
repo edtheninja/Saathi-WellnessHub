@@ -1,8 +1,10 @@
 import { supabase } from "@/supabaseClient";
+import { getDemoMeditation, isDemoMode } from "./DemoMode";
 
 class MeditationService {
 
   async getSummary() {
+    if (isDemoMode()) return getDemoMeditation();
 
     const {
       data: { user },

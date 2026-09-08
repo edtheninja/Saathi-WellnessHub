@@ -1,4 +1,5 @@
 import { supabase } from "@/supabaseClient";
+import { getDemoJournals, isDemoMode } from "./DemoMode";
 
 export interface JournalEntry {
   id: string;
@@ -9,6 +10,7 @@ export interface JournalEntry {
 
 class JournalService {
   async getSummary() {
+    if (isDemoMode()) return { totalEntries: getDemoJournals().length };
 
     const {
       data: { user },
@@ -28,6 +30,7 @@ class JournalService {
   }
 
   async getEntries(): Promise<JournalEntry[]> {
+    if (isDemoMode()) return getDemoJournals();
 
     const {
       data: { user },

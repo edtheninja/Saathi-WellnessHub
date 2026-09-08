@@ -1,4 +1,5 @@
 import type { WellnessSnapshot } from "./WellnessEngine";
+import HealthDataStore from "./HealthDataStore";
 
 export interface WellnessScore {
   score: number;
@@ -39,7 +40,13 @@ class WellnessScoreEngine {
       breakdown.goals = 12;
     }
 
-    breakdown.health = 0;
+    const health = HealthDataStore.getMetrics();
+    if (health) {
+      breakdown.health = Math.min(
+        (health.steps ?? 0) / 1000 + (health.exerciseMinutes ?? 0) / 4 + (health.sleepHours ?? 0),
+        20,
+      );
+    }
 
     const score =
       breakdown.journal +

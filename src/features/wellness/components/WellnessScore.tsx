@@ -3,9 +3,15 @@ import { HeartPulse } from "lucide-react";
 
 interface Props {
   score?: number;
+  breakdown?: {
+    journal: number;
+    meditation: number;
+    goals: number;
+    health: number;
+  };
 }
 
-export default function WellnessScore({ score }: Props) {
+export default function WellnessScore({ score, breakdown }: Props) {
   const size = 240;
   const strokeWidth = 12;
   const radius = (size - strokeWidth) / 2;
@@ -93,6 +99,31 @@ export default function WellnessScore({ score }: Props) {
           </div>
 
         </div>
+
+        {breakdown && (
+          <div className="mt-8 w-full space-y-3 border-t pt-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">How your score is built</h3>
+              <span className="text-xs text-muted-foreground">out of 100</span>
+            </div>
+            {[
+              ["Journal", breakdown.journal, "25%"],
+              ["Meditation", breakdown.meditation, "30%"],
+              ["Goals", breakdown.goals, "25%"],
+              ["Health", breakdown.health, "20%"],
+            ].map(([label, value, weight]) => (
+              <div key={label as string}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span>{label as string}</span>
+                  <span className="text-muted-foreground">{value as number} pts · {weight as string}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(Number(value) * 4, 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
       </div>
 

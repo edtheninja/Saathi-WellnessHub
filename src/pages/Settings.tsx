@@ -9,7 +9,11 @@ import {
   LogOut,
   ShieldCheck,
   Trash2,
+  Sparkles,
 } from "lucide-react";
+import { useState } from "react";
+import { Switch } from "@/components/ui/switch";
+import { disableDemoMode, enableDemoMode, isDemoMode } from "@/features/wellness/services/DemoMode";
 
 type SectionProps = {
   title: string;
@@ -94,6 +98,14 @@ function Row({
 
 export default function Settings() {
   const navigate = useNavigate();
+  const [demoMode, setDemoMode] = useState(isDemoMode());
+
+  const toggleDemoMode = (enabled: boolean) => {
+    if (enabled) enableDemoMode();
+    else disableDemoMode();
+    setDemoMode(enabled);
+    window.location.reload();
+  };
 
   return (
     <main className="min-h-screen bg-background px-4 py-6 pb-32">
@@ -130,6 +142,19 @@ export default function Settings() {
 
         {/* Wellness */}
         <Section title="WELLNESS">
+          <div className="flex items-center justify-between gap-4 rounded-xl px-3 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-sm font-medium">Demo Mode</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Load realistic wellness data for presentations</span>
+              </div>
+            </div>
+            <Switch checked={demoMode} onCheckedChange={toggleDemoMode} aria-label="Demo Mode" />
+          </div>
+
           <Row
             icon={
               <HeartPulse className="h-5 w-5 text-violet-400" />

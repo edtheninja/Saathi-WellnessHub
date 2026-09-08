@@ -1,4 +1,5 @@
 import { supabase } from "@/supabaseClient";
+import { getDemoGoal, isDemoMode } from "./DemoMode";
 export interface Goal {
   id?: string;
   completed?: boolean;
@@ -8,6 +9,7 @@ export interface Goal {
 class GoalService {
 
   async getSummary() {
+    if (isDemoMode()) return getDemoGoal();
 
     const {
       data: { user },

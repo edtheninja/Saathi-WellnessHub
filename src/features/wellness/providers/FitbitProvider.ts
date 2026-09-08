@@ -3,13 +3,25 @@ import type { IHealthProvider } from "./IHealthProvider";
 
 class FitbitProvider implements IHealthProvider {
 
+  private apiBase = import.meta.env.VITE_API_URL || "/api";
+
+  private headers() {
+    const token = localStorage.getItem("saathi_access_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   async isAvailable(): Promise<boolean> {
-    return false;
+    return true;
   }
 
   async connect(): Promise<boolean> {
-    console.log("Connecting Fitbit...");
-    return false;
+    const response = await fetch(`${this.apiBase}/integrations/fitbit/start`, {
+      headers: this.headers(),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Fitbit is not configured");
+    window.location.assign(payload.url);
+    return true;
   }
 
   async requestPermissions(): Promise<boolean> {
@@ -17,10 +29,20 @@ class FitbitProvider implements IHealthProvider {
   }
 
   async getHealthData(): Promise<HealthMetrics | null> {
-    return null;
+    const response = await fetch(`${this.apiBase}/integrations/fitbit/metrics`, {
+      headers: this.headers(),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Unable to sync Fitbit data");
+    return payload.data as HealthMetrics;
   }
 
-  async disconnect(): Promise<void> {}
+  async disconnect(): Promise<void> {
+    await fetch(`${this.apiBase}/integrations/fitbit`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+  }
 }
 
 export default new FitbitProvider();

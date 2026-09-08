@@ -48,7 +48,7 @@ export default function WellnessHub() {
 
       {/* Top Summary Cards */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <WellnessScore score={data?.score.score ?? 0} />
+        <WellnessScore score={data?.score.score ?? 0} breakdown={data?.score.breakdown} />
         {data?.mood && <MoodCard mood={data.mood} />}
         {data?.streak && <WellnessStreakCard streak={data.streak} />}
       </div>

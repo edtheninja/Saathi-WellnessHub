@@ -52,7 +52,7 @@ export default function ConnectDevicePage() {
             platform="fitbit"
             title="Fitbit"
             description="Google Fitbit devices"
-            status="Coming Soon"
+            status="Available"
           />
 
           <DeviceProviderCard

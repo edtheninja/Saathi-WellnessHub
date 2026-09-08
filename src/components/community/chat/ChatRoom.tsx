@@ -13,6 +13,19 @@ interface Props {
     room: Room;
 }
 
+interface SocketMessagePayload {
+    id: string;
+    room_id: string;
+    sender_id: string;
+    sender_name?: string;
+    type?: ChatMessage["type"];
+    content: string;
+    created_at: string;
+    reply_to?: ChatMessage["replyTo"];
+    support?: ChatMessage["support"];
+    reactions?: ChatMessage["reactions"];
+}
+
 export default function ChatRoom({ room }: Props) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [reply, setReply] = useState<{
@@ -87,7 +100,7 @@ export default function ChatRoom({ room }: Props) {
         const socket = getCommunitySocket();
         socket.emit("room:join", room.id);
 
-        const onMessage = (item: Record<string, any>) => {
+        const onMessage = (item: SocketMessagePayload) => {
             const incoming: ChatMessage = {
                 id: item.id,
                 roomId: item.room_id,
