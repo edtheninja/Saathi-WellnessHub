@@ -108,13 +108,68 @@ export default function ChatRoom({ room }: Props) {
                 sender: supportTarget.senderName,
                 text: supportTarget.text,
             },
+
+            // IMPORTANT: preserve the selected support
+            support: {
+                emoji: support.emoji,
+                title: support.title,
+            },
         };
 
         setMessages((prev) => [...prev, supportMessage]);
 
         setSupportTarget(null);
-
         setShowSupport(false);
+    };
+    const handleEmoji = (
+        message: BubbleMessage,
+        emoji: string
+    ) => {
+        setMessages((prev) =>
+            prev.map((item) => {
+                if (item.id !== message.id) {
+                    return item;
+                }
+
+                const reactions = [...(item.reactions ?? [])];
+
+                const existingIndex = reactions.findIndex(
+                    (reaction) => reaction.emoji === emoji
+                );
+
+                if (existingIndex === -1) {
+                    reactions.push({
+                        emoji,
+                        users: ["me"],
+                    });
+                } else {
+                    const existingReaction = reactions[existingIndex];
+
+                    const alreadyReacted = existingReaction.users.includes("me");
+
+                    if (alreadyReacted) {
+                        existingReaction.users =
+                            existingReaction.users.filter(
+                                (userId) => userId !== "me"
+                            );
+
+                        if (existingReaction.users.length === 0) {
+                            reactions.splice(existingIndex, 1);
+                        }
+                    } else {
+                        existingReaction.users = [
+                            ...existingReaction.users,
+                            "me",
+                        ];
+                    }
+                }
+
+                return {
+                    ...item,
+                    reactions,
+                };
+            })
+        );
     };
     return (
         <div className="flex h-[calc(100vh-72px)] flex-col bg-background">
@@ -145,7 +200,10 @@ export default function ChatRoom({ room }: Props) {
                                     text: message.text,
                                 })
                             }
-                            onReact={(message) => handleReact(message)}
+                            onSupport={(message) => handleReact(message)}
+                            onEmoji={(message, emoji) =>
+                                handleEmoji(message, emoji)
+                            }
                         />
 
                         {isTyping && <TypingIndicator />}

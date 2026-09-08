@@ -10,13 +10,16 @@ interface Props {
 
   onReply?: (message: BubbleMessage) => void;
 
-  onReact?: (message: BubbleMessage) => void;
+  onSupport?: (message: BubbleMessage) => void;
+
+  onEmoji?: (message: BubbleMessage, emoji: string) => void;
 }
 
 export default function MessageList({
   messages,
   onReply,
-  onReact,
+  onSupport,
+  onEmoji,
 }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -26,15 +29,10 @@ export default function MessageList({
         {messages.map((message) => {
           const bubble: BubbleMessage = {
             id: message.id,
-
             text: message.content,
-
             senderName: message.sender.name,
-
             avatar: message.sender.avatar,
-
             timestamp: formatTime(message.createdAt),
-
             isMine: message.isMine,
 
             type: message.type as
@@ -59,7 +57,11 @@ export default function MessageList({
                 count: r.users.length,
               })) ?? [],
 
-            supportReactions: [],
+            supportReactions: message.supportReactions?.map((r) => ({
+              emoji: r.emoji,
+              label: r.label,
+              count: r.count,
+            })) ?? [],
           };
 
           return (
@@ -73,8 +75,8 @@ export default function MessageList({
                 isMine={bubble.isMine}
                 showActions={hoveredId === bubble.id}
                 onReply={() => onReply?.(bubble)}
-                onSupport={() => onReact?.(bubble)}
-                onEmoji={() => onReact?.(bubble)}
+                onSupport={() => onSupport?.(bubble)}
+                onEmoji={(emoji) => onEmoji?.(bubble, emoji)}
               />
             </div>
           );

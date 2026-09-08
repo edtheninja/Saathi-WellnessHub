@@ -1,6 +1,5 @@
-import { MessageCircle, ArrowRight } from "lucide-react";
+import { ArrowRight, Sun } from "lucide-react";
 import { motion } from "framer-motion";
-import { Sun } from "lucide-react";
 
 interface DailyDiscussionProps {
   question: string;
@@ -23,58 +22,54 @@ export default function DailyDiscussion({
         w-full
         rounded-[32px]
         border
-        border-white/40
-        bg-white/60
-        backdrop-blur-2xl
+        border-border/60
+        bg-card/70
         p-8
         text-left
         shadow-lg
-        hover:-translate-y-1
-        hover:shadow-2xl
+        backdrop-blur-2xl
         transition-all
         duration-300
-        "
+
+        hover:shadow-2xl
+
+        dark:border-white/[0.12]
+        dark:bg-white/[0.06]
+        dark:hover:bg-white/[0.09]
+      "
     >
-      <div className="flex justify-between items-start">
-
+      <div className="flex items-start justify-between">
         <div>
-
-          <div className="flex items-center gap-3 mb-4">
-            <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-yellow-300 via-amber-300 to-orange-400 shadow-lg">
-
+          <div className="mb-4 flex items-center gap-3">
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-yellow-300 via-amber-300 to-orange-400 shadow-lg">
               <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-200 to-orange-300 shadow-md" />
 
               <Sun
-                className="relative w-8 h-8 text-amber-700"
+                className="relative h-8 w-8 text-amber-700"
                 strokeWidth={2}
               />
-
             </div>
-            <h2 className="text-2xl font-bold">
+
+            <h2 className="text-2xl font-bold text-foreground">
               Daily Discussion
             </h2>
           </div>
 
-          <p className="text-lg font-medium">
+          <p className="text-lg font-medium text-foreground">
             {question}
           </p>
 
           <p className="mt-3 text-muted-foreground">
             {replies} replies
           </p>
-
         </div>
 
         <div className="flex items-center gap-2">
-
-          <span className="text-sm font-medium text-primary opacity-0 group-hover:opacity-100 transition">
+          <span className="text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
             Join
           </span>
 
-          <ArrowRight
-            className="group-hover:translate-x-1 transition"
-          />
-
+          <ArrowRight className="h-5 w-5 text-foreground transition-transform group-hover:translate-x-1" />
         </div>
       </div>
     </motion.button>

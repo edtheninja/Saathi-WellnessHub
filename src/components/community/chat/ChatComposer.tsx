@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Smile,
   Mic,
-  SendHorizonal,
+  SendHorizontal,
   X,
 } from "lucide-react";
 import EmojiPicker from "./EmojiPicker";
+
 interface ReplyMessage {
   id: string;
   sender: string;
@@ -15,9 +16,7 @@ interface ReplyMessage {
 
 interface Props {
   onSend: (text: string) => void;
-
   reply?: ReplyMessage | null;
-
   onCancelReply?: () => void;
 }
 
@@ -28,25 +27,27 @@ export default function ChatComposer({
 }: Props) {
   const [text, setText] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const resize = () => {
     if (!textareaRef.current) return;
 
     textareaRef.current.style.height = "0px";
-    textareaRef.current.style.height =
-      Math.min(textareaRef.current.scrollHeight, 140) + "px";
+
+    textareaRef.current.style.height = `${Math.min(
+      textareaRef.current.scrollHeight,
+      140
+    )}px`;
   };
+
   const handleSend = () => {
     if (!text.trim()) return;
 
     onSend(text.trim());
-
     onCancelReply?.();
 
     setText("");
-
-    // Close emoji picker
     setShowEmojiPicker(false);
 
     if (textareaRef.current) {
@@ -54,224 +55,323 @@ export default function ChatComposer({
       textareaRef.current.focus();
     }
   };
+
+  const handleEmojiSelect = (emoji: string) => {
+    const textarea = textareaRef.current;
+
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    const newText =
+      text.substring(0, start) +
+      emoji +
+      text.substring(end);
+
+    setText(newText);
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+
+      const position = start + emoji.length;
+
+      textarea.setSelectionRange(position, position);
+      resize();
+    });
+
+    setShowEmojiPicker(false);
+  };
+
   return (
     <motion.div
-      initial={{ y: 40, opacity: 0 }}
+      initial={{ y: 30, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="px-4 pb-4 pt-2"
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="relative px-3 pb-4 pt-2 sm:px-4"
     >
-      {/* Emoji Picker */}
+      {/* ───────────────── Reply Preview ───────────────── */}
+
       <AnimatePresence>
         {reply && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: .18 }}
-
+            initial={{ opacity: 0, height: 0, y: 8 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
+            exit={{ opacity: 0, height: 0, y: 8 }}
+            transition={{ duration: 0.2 }}
             className="
-        border-b
-        border-border/50
-        bg-muted/40
-        backdrop-blur-xl
-      "
+              mb-2
+              overflow-hidden
+              rounded-2xl
+              border
+              border-border/60
+              bg-card/80
+              backdrop-blur-xl
+
+              dark:border-white/[0.10]
+              dark:bg-white/[0.04]
+            "
           >
-            <div className="flex items-start px-5 py-3">
+            <div className="flex items-start gap-3 px-4 py-3">
+              <div className="mt-1 h-10 w-1 shrink-0 rounded-full bg-gradient-to-b from-sky-400 to-cyan-400" />
 
-              <div className="w-1 rounded-full bg-sky-400 mr-4" />
-
-              <div className="flex-1">
-
-                <p className="text-sm font-semibold">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">
                   Replying to {reply.sender}
                 </p>
 
-                <p className="text-sm text-muted-foreground line-clamp-2">
+                <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
                   {reply.text}
                 </p>
-
               </div>
 
               <button
+                type="button"
                 onClick={onCancelReply}
+                aria-label="Cancel reply"
                 className="
-            rounded-full
-            p-2
-            hover:bg-muted
-          "
+                  flex
+                  h-8
+                  w-8
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-full
+                  text-muted-foreground
+                  transition
+                  hover:bg-muted
+                  hover:text-foreground
+                "
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </button>
-
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ───────────────── Composer ───────────────── */}
+
       <div
         className="
-      rounded-[32px]
-      overflow-hidden
-      border
-      border-white/40
-      bg-background/80
-      backdrop-blur-2xl
-      shadow-xl
-    "
-      ></div>
-      <div
-        className="
+          relative
+          flex
+          min-h-[68px]
+          items-end
+          gap-2
           rounded-[30px]
           border
-          border-white/40
-          bg-background/80
+          border-border/70
+          bg-background/85
+          px-3
+          py-2
+          shadow-lg
           backdrop-blur-2xl
-          shadow-xl
-          px-4
-          py-3
+          transition-all
+          duration-300
+
+          focus-within:border-primary/50
+          focus-within:shadow-xl
+
+          dark:border-white/[0.12]
+          dark:bg-white/[0.045]
+          dark:focus-within:border-primary/50
+          dark:focus-within:bg-white/[0.06]
+
+          sm:gap-3
+          sm:px-4
         "
       >
-        <div className="flex items-end gap-3">
+        {/* ───────────── Emoji Button ───────────── */}
 
-          {/* Emoji */}
-
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setShowEmojiPicker((prev) => !prev)}
-            className="
-              h-10
-              w-10
-              rounded-full
-              hover:bg-muted
-              transition
-              flex
-              items-center
-              justify-center
-            "
-          >
-
-            <AnimatePresence>
-              {showEmojiPicker && (
-                <EmojiPicker
-                  onSelect={(emoji) => {
-                    const textarea = textareaRef.current;
-
-                    if (!textarea) return;
-
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-
-                    const newText =
-                      text.substring(0, start) +
-                      emoji +
-                      text.substring(end);
-
-                    setText(newText);
-
-                    requestAnimationFrame(() => {
-                      textarea.focus();
-
-                      const pos = start + emoji.length;
-
-                      textarea.setSelectionRange(pos, pos);
-                    });
-                    setShowEmojiPicker(false);
-                    requestAnimationFrame(() => {
-                      textareaRef.current?.focus();
-                    });
-                  }}
-                />
-              )}
-            </AnimatePresence>
-
-            <Smile className="w-5 h-5" />
-          </button>
-          {/* Input */}
-
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={text}
-            placeholder="Type a message..."
-            onChange={(e) => {
-              setText(e.target.value);
-              resize();
-            }}
-            onClick={() => setShowEmojiPicker(false)}
-            className="
-              flex-1
-              resize-none
-              bg-transparent
-              outline-none
-              leading-6
-              min-h-[44px]
-              max-h-[140px]
-              overflow-y-auto
-              py-2
-            "
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-
-          {/* Right Button */}
-
-          <AnimatePresence mode="wait">
-
-            {text.trim() ? (
-
-              <motion.button
-                key="send"
-                initial={{ scale: .7, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: .7, opacity: 0 }}
-                transition={{ duration: .18 }}
-                whileTap={{ scale: .9 }}
-                onClick={handleSend}
+        <div className="relative shrink-0">
+          <AnimatePresence>
+            {showEmojiPicker && (
+              <motion.div
+                initial={{
+                  opacity: 0,
+                  scale: 0.95,
+                  y: 8,
+                }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                  y: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.95,
+                  y: 8,
+                }}
+                transition={{ duration: 0.16 }}
                 className="
-                  h-11
-                  w-11
-                  rounded-full
-                  bg-primary
-                  text-primary-foreground
-                  shadow-lg
-                  flex
-                  items-center
-                  justify-center
+                  absolute
+                  bottom-14
+                  left-0
+                  z-50
                 "
               >
-                <SendHorizonal className="w-5 h-5" />
-              </motion.button>
-
-            ) : (
-              <motion.button
-                key="mic"
-                initial={{ scale: .7, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: .7, opacity: 0 }}
-                className="
-                  h-11
-                  w-11
-                  rounded-full
-                  hover:bg-muted
-                  transition
-                  flex
-                  items-center
-                  justify-center
-                "
-              >
-                <Mic className="w-5 h-5" />
-              </motion.button>
-
+                <EmojiPicker onSelect={handleEmojiSelect} />
+              </motion.div>
             )}
-
           </AnimatePresence>
 
+          <motion.button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() =>
+              setShowEmojiPicker((prev) => !prev)
+            }
+            whileTap={{ scale: 0.92 }}
+            aria-label="Open emoji picker"
+            className="
+              flex
+              h-11
+              w-11
+              items-center
+              justify-center
+              rounded-full
+              text-muted-foreground
+              transition-all
+              duration-200
+
+              hover:bg-muted
+              hover:text-foreground
+
+              dark:hover:bg-white/[0.08]
+            "
+          >
+            <Smile className="h-5 w-5" />
+          </motion.button>
         </div>
+
+        {/* ───────────── Input ───────────── */}
+
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          value={text}
+          placeholder="Type a message..."
+          onChange={(e) => {
+            setText(e.target.value);
+            resize();
+          }}
+          onClick={() => setShowEmojiPicker(false)}
+          onFocus={() => setShowEmojiPicker(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          className="
+            min-h-[44px]
+            max-h-[140px]
+            flex-1
+            resize-none
+            overflow-y-auto
+            bg-transparent
+            py-2
+            text-[15px]
+            leading-6
+            text-foreground
+            outline-none
+            placeholder:text-muted-foreground/70
+
+            sm:text-base
+          "
+        />
+
+        {/* ───────────── Right Action ───────────── */}
+
+        <AnimatePresence mode="wait" initial={false}>
+          {text.trim() ? (
+            <motion.button
+              key="send"
+              type="button"
+              onClick={handleSend}
+              initial={{
+                scale: 0.7,
+                opacity: 0,
+              }}
+              animate={{
+                scale: 1,
+                opacity: 1,
+              }}
+              exit={{
+                scale: 0.7,
+                opacity: 0,
+              }}
+              whileHover={{
+                scale: 1.05,
+              }}
+              whileTap={{
+                scale: 0.9,
+              }}
+              aria-label="Send message"
+              className="
+                flex
+                h-11
+                w-11
+                shrink-0
+                items-center
+                justify-center
+                rounded-full
+                bg-gradient-to-br
+                from-primary
+                to-violet-500
+                text-primary-foreground
+                shadow-lg
+                shadow-primary/25
+                transition-shadow
+
+                hover:shadow-xl
+                hover:shadow-primary/35
+              "
+            >
+              <SendHorizontal className="h-5 w-5" />
+            </motion.button>
+          ) : (
+            <motion.button
+              key="mic"
+              type="button"
+              initial={{
+                scale: 0.7,
+                opacity: 0,
+              }}
+              animate={{
+                scale: 1,
+                opacity: 1,
+              }}
+              exit={{
+                scale: 0.7,
+                opacity: 0,
+              }}
+              whileTap={{
+                scale: 0.92,
+              }}
+              aria-label="Voice message"
+              className="
+                flex
+                h-11
+                w-11
+                shrink-0
+                items-center
+                justify-center
+                rounded-full
+                text-muted-foreground
+                transition-all
+
+                hover:bg-muted
+                hover:text-foreground
+
+                dark:hover:bg-white/[0.08]
+              "
+            >
+              <Mic className="h-5 w-5" />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );

@@ -1,21 +1,20 @@
 import { motion } from "framer-motion";
 import { HeartHandshake } from "lucide-react";
 import BubbleFooter from "./BubbleFooter";
-import QuotedBlock from "./QuotedBlock";
+
+interface QuotedMessage {
+  id: string;
+  sender: string;
+  text: string;
+}
 
 interface SupportBubbleProps {
   emoji: string;
   title: string;
   message: string;
-
-  quoted?: {
-    sender: string;
-    text: string;
-  };
-
+  quoted?: QuotedMessage;
   timestamp: string;
-
-  isMine?: boolean;
+  isMine: boolean;
 }
 
 export default function SupportBubble({
@@ -24,15 +23,14 @@ export default function SupportBubble({
   message,
   quoted,
   timestamp,
-  isMine = true,
+  isMine,
 }: SupportBubbleProps) {
   return (
     <motion.div
-      layout
       initial={{
         opacity: 0,
-        y: 14,
-        scale: 0.97,
+        y: 10,
+        scale: 0.98,
       }}
       animate={{
         opacity: 1,
@@ -41,140 +39,150 @@ export default function SupportBubble({
       }}
       transition={{
         type: "spring",
-        stiffness: 320,
-        damping: 28,
+        stiffness: 260,
+        damping: 24,
       }}
-      className={`
-        relative
+      className="
+        w-full max-w-[440px]
         overflow-hidden
-
-        max-w-[78%]
-
         rounded-[30px]
 
         border
-        border-emerald-200/70
+        border-slate-700/70
+        bg-[#0B1220]
 
-        bg-gradient-to-br
-        from-emerald-50
-        via-white
-        to-cyan-50
-
-        shadow-[0_14px_35px_rgba(16,185,129,.12)]
-      `}
+        dark:border-teal-400/20
+        dark:bg-[#0B1220]
+      "
     >
-      {/* Decorative glow */}
-      <div
-        className="
-          absolute
-          -right-12
-          -top-12
-
-          h-32
-          w-32
-
-          rounded-full
-
-          bg-emerald-200/20
-
-          blur-3xl
-        "
-      />
-
       {/* Header */}
       <div
         className="
-          relative
-
-          flex
-          items-center
-          gap-3
-
+          flex items-center gap-4
           border-b
-          border-emerald-100
+          border-slate-700/60
+          px-6 py-5
 
-          px-5
-          py-4
+          dark:border-teal-400/10
         "
       >
+        {/* Support Emoji */}
         <div
           className="
-            flex
-            h-12
-            w-12
-            items-center
-            justify-center
-
+            flex h-16 w-16 shrink-0
+            items-center justify-center
             rounded-full
 
-            bg-white
+            bg-slate-800/80
+            text-4xl
 
-            shadow-sm
-
-            text-2xl
+            border
+            border-slate-700/70
           "
         >
           {emoji}
         </div>
 
-        <div className="flex-1">
-          <div className="font-semibold text-slate-800">
+        {/* Title */}
+        <div className="min-w-0">
+          <h3
+            className="
+              text-[18px]
+              font-semibold
+              tracking-tight
+              text-slate-100
+            "
+          >
             {title}
-          </div>
+          </h3>
 
           <div
             className="
-              mt-0.5
-
-              flex
-              items-center
-              gap-1
-
-              text-xs
-              text-emerald-700
+              mt-1.5
+              flex items-center gap-2
+              text-[14px]
+              font-medium
+              text-teal-300
             "
           >
-            <HeartHandshake size={13} />
-            Support Message
+            <HeartHandshake className="h-5 w-5" strokeWidth={2} />
+
+            <span>Support Message</span>
           </div>
         </div>
       </div>
 
-      {/* Reply Preview */}
-      {quoted && (
-        <div className="px-5 pt-5">
-          <QuotedBlock
-            sender={quoted.sender}
-            text={quoted.text}
-          />
-        </div>
-      )}
+      {/* Message Content */}
+      <div className="px-10 py-10">
+        {/* Quoted message */}
+        {quoted && (
+          <div
+            className="
+              mb-4
+              rounded-[28px]
+              border-l-[7px]
+              border-cyan-400
 
-      {/* Message */}
-      <div className="px-5 py-5">
-        <p
-          className="
-            whitespace-pre-wrap
-            break-words
+              bg-[#131D2C]
 
-            text-[16px]
-            leading-7
+              px-7 py-6
+            "
+          >
+            <div
+              className="
+                text-[16px]
+                font-semibold
+                text-cyan-400
+              "
+            >
+              {quoted.sender}
+            </div>
 
-            text-slate-700
-            dark:text-slate-200
-          "
-        >
-          {message}
-        </p>
-      </div>
+            <p
+              className="
+                mt-2
+                text-[16px]
+                leading-relaxed
+                text-slate-100
+                dark:text-slate-100
+              "
+            >
+              {quoted.text}
+            </p>
+          </div>
+        )}
 
-      {/* Footer */}
-      <div className="px-5 pb-4">
-        <BubbleFooter
-          timestamp={timestamp}
-          isMine={isMine}
-          status="sent"
-        />
+        {/* Support note */}
+        {message && (
+          <div
+            className="
+              rounded-[28px]
+              border
+              border-slate-700/50
+
+              bg-[#121C2B]
+
+              px-7 py-6
+            "
+          >
+            <p
+              className="
+              whitespace-pre-wrap
+              break-words
+              text-[16px]
+              leading-relaxed
+              text-slate-100
+              dark:text-slate-500
+
+              "
+            >
+              {message}
+            </p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <BubbleFooter timestamp={timestamp} isMine={isMine} />
       </div>
     </motion.div>
   );
