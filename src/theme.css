@@ -1,0 +1,86 @@
+/* ------------------------------------------------------
+   GLOBAL THEME COLORS (LIGHT MODE)
+------------------------------------------------------ */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 84% 5%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 84% 5%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 84% 5%;
+
+  --primary: 238 100% 62%;
+  --primary-light: 238 100% 70%;
+  --primary-dark: 238 100% 55%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 222 84% 5%;
+
+  --muted: 240 5% 96%;
+  --muted-foreground: 222 15% 40%;
+
+  --accent: 238 65% 80%;
+  --accent-foreground: 238 84% 22%;
+
+  --border: 220 12% 70%;
+  --input: 220 12% 90%;
+  --ring: 238 84% 62%;
+
+  --radius: 1rem;
+
+  --shadow-soft: 0 4px 16px rgba(0,0,0,0.05);
+  --shadow-elevated: 0 8px 24px rgba(0,0,0,0.08);
+  --shadow-floating: 0 12px 32px rgba(0,0,0,0.12);
+
+  --gradient-calm: linear-gradient(135deg, #a8c0ff, #3f2b96);
+  --gradient-ocean: linear-gradient(135deg, #6dd5fa, #2980b9);
+  --gradient-mint: linear-gradient(135deg, #d4fc79, #96e6a1);
+  --gradient-heading: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+/* ------------------------------------------------------
+   DARK MODE – TRUE DARK
+------------------------------------------------------ */
+
+.dark {
+  --background: 0 0% 6%;
+  --foreground: 0 0% 98%;
+
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 98%;
+
+  --popover: 0 0% 12%;
+  --popover-foreground: 0 0% 98%;
+
+  --primary: 238 100% 72%;
+  --primary-light: 238 100% 82%;
+  --primary-dark: 238 100% 65%;
+  --primary-foreground: 0 0% 10%;
+
+  --secondary: 0 0% 18%;
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 0 0% 18%;
+  --muted-foreground: 0 0% 75%;
+
+  --accent: 238 65% 60%;
+  --accent-foreground: 0 0% 98%;
+
+  --border: 0 0% 22%;
+  --input: 0 0% 18%;
+  --ring: 238 100% 75%;
+
+  --shadow-soft: 0 0 0 rgba(0,0,0,0);
+  --shadow-elevated: 0 6px 24px rgba(0,0,0,0.4);
+  --shadow-floating: 0 12px 36px rgba(0,0,0,0.55);
+}
+
+/* Remove glass everywhere */
+.glass {
+  background: var(--card) !important;
+  backdrop-filter: none !important;
+}
