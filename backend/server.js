@@ -19,7 +19,7 @@ const jwtSecret = process.env.JWT_SECRET || "development-secret-change-me";
 const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const allowedOrigins = allowedOrigin.split(",").map((origin) => origin.trim());
 const frontendOrigin = allowedOrigins[0];
-const pool = new Pool({ connectionString: process.env.DATABASE_URL || "postgresql://postgres.zaugdhjksxdmbkkzciyi:AshXAnonymous@77@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres", ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/saathi_wellness", ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false });
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: allowedOrigins, credentials: true } });
 
@@ -34,35 +34,63 @@ app.use(express.json({ limit: "256kb" }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, message: { error: "Too many authentication attempts" } });
 
-const allowedTables = new Set([
-  "profiles", "journals", "journal", "mood", "meditation", "goals", "settings",
-  "devices", "health_metrics", "notifications", "activity_history", "chat_messages",
-  "community_posts", "community_comments", "community_reactions", "mantra_sessions",
-]);
-const sharedTables = new Set(["chat_messages", "community_posts", "community_comments", "community_reactions"]);
+// ---------------------------------------------------------------
+// Resource config: maps the generic /api/data/:resource endpoints
+// directly onto the real tables defined in schema.sql. No more
+// stuffing everything into a JSONB catch-all — every resource here
+// is a real column-typed table, so CHECK constraints, energy_level
+// ranges, and FKs are actually enforced by Postgres.
+// ---------------------------------------------------------------
+const resourceConfig = {
+  journals: {
+    table: "journals",
+    columns: ["title", "content", "mood", "energy_level", "media_type", "media_url", "media_metadata"],
+    jsonColumns: ["media_metadata"],
+  },
+  moods: {
+    table: "moods",
+    columns: ["mood", "energy_level", "note"],
+  },
+  meditation_sessions: {
+    table: "meditation_sessions",
+    columns: ["duration", "completed", "energy_level"],
+  },
+  goals: {
+    table: "goals",
+    columns: ["category", "custom_title", "duration", "progress", "completed"],
+  },
+  music: {
+    table: "music",
+    columns: ["song_name", "artist", "album", "playlist_name", "category", "genre", "audio_url", "cover_url", "duration_seconds", "energy_level", "listened_till", "repetition", "is_favorite", "is_available", "last_listened_at"],
+  },
+  notifications: {
+    table: "notifications",
+    columns: ["notification_type", "title", "body", "read_at"],
+  },
+  activity_history: {
+    table: "activity_history",
+    columns: ["activity_type", "title", "subtitle", "energy_type", "energy_level", "process", "metadata"],
+    jsonColumns: ["metadata"],
+  },
+  // Written internally (Fitbit sync / score recompute) — exposed read-only here.
+  health_metrics: {
+    table: "health_metrics",
+    columns: ["metric_type", "value", "unit", "raw_data"],
+    jsonColumns: ["raw_data"],
+    readOnly: true,
+  },
+  wellness_scores: {
+    table: "wellness_scores",
+    columns: ["final_energy_level", "breakdown", "computed_at"],
+    jsonColumns: ["breakdown"],
+    readOnly: true,
+  },
+};
 
 async function initializeDatabase() {
+  // schema.sql is the single source of truth for every table —
+  // no second, conflicting CREATE TABLE block here.
   await pool.query(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS saathi_users (
-      id UUID PRIMARY KEY,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      full_name TEXT NOT NULL DEFAULT '',
-      email_confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS saathi_records (
-      id UUID PRIMARY KEY,
-      user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
-      table_name TEXT NOT NULL,
-      data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS saathi_records_user_table_idx ON saathi_records(user_id, table_name);
-    CREATE INDEX IF NOT EXISTS saathi_records_created_idx ON saathi_records(user_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS saathi_records_data_idx ON saathi_records USING GIN(data);
-  `);
 }
 
 function tokenFor(user) {
@@ -131,54 +159,84 @@ async function fitbitToken(token, userId) {
   await pool.query(`UPDATE wellness_devices SET access_token = $1, refresh_token = $2, token_expires_at = NOW() + ($3 || ' seconds')::interval WHERE user_id = $4 AND platform = 'fitbit'`, [refreshed.access_token, refreshed.refresh_token, String(refreshed.expires_in), userId]);
   return refreshed.access_token;
 }
-function safeTable(req, res) {
-  if (!allowedTables.has(req.params.table)) { res.status(404).json({ error: "Resource not found" }); return null; }
-  return req.params.table;
+
+// ---------------------------------------------------------------
+// Generic resource CRUD helpers (real tables, whitelisted columns)
+// ---------------------------------------------------------------
+function resourceOr404(req, res) {
+  const config = resourceConfig[req.params.resource];
+  if (!config) { res.status(404).json({ error: "Resource not found" }); return null; }
+  return config;
 }
-function recordValue(row) {
-  return { ...row.data, id: row.data.id || row.id, user_id: row.user_id, created_at: row.created_at };
+function serializeValue(config, column, value) {
+  if (config.jsonColumns?.includes(column)) return JSON.stringify(value ?? {});
+  return value;
 }
-function matchesFilter(record, key, value) {
-  if (key === "id") return record.id === value;
-  return String(record[key] ?? "") === String(value);
-}
-function matchesRange(record, key, operator, value) {
-  const actual = key === "created_at" ? new Date(record[key]).getTime() : Number(record[key]);
-  const expected = key === "created_at" ? new Date(value).getTime() : Number(value);
-  return operator === "gte" ? actual >= expected : actual <= expected;
-}
-async function getRecords(table, userId, query) {
-  const result = sharedTables.has(table)
-    ? await pool.query("SELECT id, user_id, data, created_at FROM saathi_records WHERE table_name = $1 ORDER BY created_at DESC", [table])
-    : await pool.query("SELECT id, user_id, data, created_at FROM saathi_records WHERE user_id = $1 AND table_name = $2 ORDER BY created_at DESC", [userId, table]);
-  let rows = result.rows.map(recordValue);
+async function listResource(config, userId, query) {
+  const conditions = ["user_id = $1"];
+  const values = [userId];
   for (const [key, value] of Object.entries(query)) {
-    if (["select", "order", "limit"].includes(key)) continue;
-    if (key.startsWith("gte_")) rows = rows.filter((row) => matchesRange(row, key.slice(4), "gte", value));
-    else if (key.startsWith("lte_")) rows = rows.filter((row) => matchesRange(row, key.slice(4), "lte", value));
-    else rows = rows.filter((row) => matchesFilter(row, key, value));
+    if (["order", "limit"].includes(key)) continue;
+    let column = key;
+    let operator = "=";
+    if (key.startsWith("gte_")) { column = key.slice(4); operator = ">="; }
+    else if (key.startsWith("lte_")) { column = key.slice(4); operator = "<="; }
+    if (column !== "id" && column !== "created_at" && !config.columns.includes(column)) continue;
+    values.push(value);
+    conditions.push(`${column} ${operator} $${values.length}`);
   }
+  let orderBy = "created_at DESC";
   if (query.order) {
     const [field, direction = "asc"] = String(query.order).split(":");
-    rows.sort((a, b) => String(a[field] ?? "").localeCompare(String(b[field] ?? "")) * (direction === "desc" ? -1 : 1));
+    if (field === "id" || field === "created_at" || config.columns.includes(field)) {
+      orderBy = `${field} ${direction === "desc" ? "DESC" : "ASC"}`;
+    }
   }
-  if (query.limit) rows = rows.slice(0, Number(query.limit));
-  return rows;
+  let limitClause = "";
+  if (query.limit) { values.push(Number(query.limit)); limitClause = `LIMIT $${values.length}`; }
+  const sql = `SELECT * FROM ${config.table} WHERE ${conditions.join(" AND ")} ORDER BY ${orderBy} ${limitClause}`;
+  const result = await pool.query(sql, values);
+  return result.rows;
 }
-async function recordId(table, userId, id) {
-  const result = sharedTables.has(table)
-    ? await pool.query("SELECT id FROM saathi_records WHERE table_name = $1 AND (id::text = $2 OR data->>'id' = $2) LIMIT 1", [table, id])
-    : await pool.query("SELECT id FROM saathi_records WHERE user_id = $1 AND table_name = $2 AND (id::text = $3 OR data->>'id' = $3) LIMIT 1", [userId, table, id]);
-  return result.rows[0]?.id;
+async function insertResource(config, userId, item) {
+  const columns = ["user_id"];
+  const placeholders = ["$1"];
+  const values = [userId];
+  for (const column of config.columns) {
+    if (item[column] === undefined) continue;
+    values.push(serializeValue(config, column, item[column]));
+    columns.push(column);
+    placeholders.push(`$${values.length}`);
+  }
+  const sql = `INSERT INTO ${config.table} (${columns.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`;
+  const result = await pool.query(sql, values);
+  return result.rows[0];
 }
-async function insertRecord(table, userId, item) {
-  const id = item.id || crypto.randomUUID();
-  const record = { ...item, id };
-  const result = await pool.query("INSERT INTO saathi_records (id, user_id, table_name, data) VALUES ($1, $2, $3, $4) RETURNING created_at", [crypto.randomUUID(), userId, table, JSON.stringify(record)]);
-  return { ...record, user_id: userId, created_at: result.rows[0].created_at };
+async function updateResource(config, userId, id, item) {
+  const assignments = [];
+  const values = [userId, id];
+  for (const column of config.columns) {
+    if (item[column] === undefined) continue;
+    values.push(serializeValue(config, column, item[column]));
+    assignments.push(`${column} = $${values.length}`);
+  }
+  if (!assignments.length) {
+    const existing = await pool.query(`SELECT * FROM ${config.table} WHERE user_id = $1 AND id = $2`, [userId, id]);
+    return existing.rows[0] || null;
+  }
+  if (config.columns.includes("updated_at") === false) {
+    // no-op; some tables (moods, notifications, ...) don't track updated_at
+  }
+  const sql = `UPDATE ${config.table} SET ${assignments.join(", ")} WHERE user_id = $1 AND id = $2 RETURNING *`;
+  const result = await pool.query(sql, values);
+  return result.rows[0] || null;
+}
+async function deleteResource(config, userId, id) {
+  if (id) return pool.query(`DELETE FROM ${config.table} WHERE user_id = $1 AND id = $2`, [userId, id]);
+  return pool.query(`DELETE FROM ${config.table} WHERE user_id = $1`, [userId]);
 }
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "saathi-postgresql" }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, service: "saathi-wellness-postgresql" }));
 
 app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
@@ -188,7 +246,9 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid email is required" });
     const user = { id: crypto.randomUUID(), email: normalizedEmail, passwordHash: await bcrypt.hash(password, 12), fullName: String(fullName).trim().slice(0, 120) };
     await pool.query("INSERT INTO saathi_users (id, email, password_hash, full_name) VALUES ($1, $2, $3, $4)", [user.id, user.email, user.passwordHash, user.fullName]);
-    await pool.query("INSERT INTO saathi_records (id, user_id, table_name, data) VALUES ($1, $2, 'profiles', $3)", [crypto.randomUUID(), user.id, JSON.stringify({ id: user.id, full_name: user.fullName, name: user.fullName })]);
+    // Real profiles row (was previously a fake JSONB blob) so the rest
+    // of the schema — community joins, onboarding flags, etc. — works.
+    await pool.query("INSERT INTO profiles (user_id, full_name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING", [user.id, user.fullName]);
     const payload = { id: user.id, email: user.email, full_name: user.fullName, email_confirmed_at: new Date().toISOString() };
     res.status(201).json({ user: userPayload(payload), session: { access_token: tokenFor(payload) } });
   } catch (error) { publicError(res, error); }
@@ -212,6 +272,89 @@ app.patch("/api/auth/password", authRequired, async (req, res) => {
   if (!req.body.password || req.body.password.length < 6) return res.status(400).json({ error: "Password must contain at least 6 characters" });
   await pool.query("UPDATE saathi_users SET password_hash = $1 WHERE id = $2", [await bcrypt.hash(req.body.password, 12), req.auth.sub]);
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------
+// Profile — its own endpoints because `profiles` is keyed by
+// user_id, not a generic `id`, so it doesn't fit the /api/data shape.
+// ---------------------------------------------------------------
+const profileColumns = ["full_name", "bio", "avatar_url", "timezone", "preferred_mood", "wellness_goal", "energy_level", "reminder_enabled", "reminder_time", "preferred_meditation_duration", "onboarding_completed"];
+app.get("/api/profile", authRequired, async (req, res) => {
+  const result = await pool.query("SELECT * FROM profiles WHERE user_id = $1", [req.auth.sub]);
+  res.json({ data: result.rows[0] || null });
+});
+app.patch("/api/profile", authRequired, async (req, res) => {
+  const assignments = ["updated_at = NOW()"];
+  const values = [req.auth.sub];
+  for (const column of profileColumns) {
+    if (req.body[column] === undefined) continue;
+    values.push(req.body[column]);
+    assignments.push(`${column} = $${values.length}`);
+  }
+  const result = await pool.query(`UPDATE profiles SET ${assignments.join(", ")} WHERE user_id = $1 RETURNING *`, values);
+  res.json({ data: result.rows[0] || null });
+});
+
+// ---------------------------------------------------------------
+// Wellness settings — composite (user_id, setting_key) primary key
+// ---------------------------------------------------------------
+app.get("/api/settings", authRequired, async (req, res) => {
+  const result = await pool.query("SELECT setting_key, value, updated_at FROM wellness_settings WHERE user_id = $1", [req.auth.sub]);
+  res.json({ data: result.rows });
+});
+app.put("/api/settings/:key", authRequired, async (req, res) => {
+  const result = await pool.query(
+    `INSERT INTO wellness_settings (user_id, setting_key, value, updated_at) VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, setting_key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+     RETURNING setting_key, value, updated_at`,
+    [req.auth.sub, req.params.key, JSON.stringify(req.body.value ?? {})]
+  );
+  res.json({ data: result.rows[0] });
+});
+
+// ---------------------------------------------------------------
+// Wellness score — computed from recent activity across every
+// energy-tracking table, then stored as its own row (schema.sql's
+// new `wellness_scores` table).
+// ---------------------------------------------------------------
+const energySourceTables = ["moods", "journals", "music", "meditation_sessions", "activity_history"];
+app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
+  try {
+    const breakdown = {};
+    for (const table of energySourceTables) {
+      const result = await pool.query(
+        `SELECT AVG(energy_level)::numeric(5,1) AS avg_energy FROM ${table} WHERE user_id = $1 AND energy_level IS NOT NULL AND created_at > NOW() - INTERVAL '7 days'`,
+        [req.auth.sub]
+      );
+      const value = result.rows[0]?.avg_energy;
+      if (value !== null) breakdown[table] = Number(value);
+    }
+    const sources = Object.values(breakdown);
+    const finalEnergyLevel = sources.length ? Math.round(sources.reduce((sum, value) => sum + value, 0) / sources.length) : 50;
+    const inserted = await pool.query(
+      "INSERT INTO wellness_scores (user_id, final_energy_level, breakdown) VALUES ($1, $2, $3) RETURNING *",
+      [req.auth.sub, finalEnergyLevel, JSON.stringify(breakdown)]
+    );
+    res.status(201).json({ data: inserted.rows[0] });
+  } catch (error) { publicError(res, error); }
+});
+app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
+  const result = await pool.query("SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1", [req.auth.sub]);
+  res.json({ data: result.rows[0] || null });
+});
+
+// ---------------------------------------------------------------
+// Music recommendations — pick tracks whose energy_level is closest
+// to the user's latest final_energy_level.
+// ---------------------------------------------------------------
+app.get("/api/music/recommendations", authRequired, async (req, res) => {
+  const latest = await pool.query("SELECT final_energy_level FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1", [req.auth.sub]);
+  const targetEnergy = latest.rows[0]?.final_energy_level ?? 50;
+  const result = await pool.query(
+    `SELECT * FROM music WHERE is_available = TRUE ORDER BY ABS(COALESCE(energy_level, $1) - $1) ASC, created_at DESC LIMIT 20`,
+    [targetEnergy]
+  );
+  res.json({ data: result.rows, targetEnergy });
 });
 
 const wellnessSystemPrompt = `You are Saathi, a warm mental-wellness companion. Be concise, empathetic, practical, and non-judgmental. You are not a doctor, therapist, or emergency service. Never diagnose, prescribe medication, or claim certainty. For signs of immediate danger, self-harm, or suicide, encourage the person to contact local emergency services or Tele-MANAS at 14416 and suggest reaching a trusted person now. Ask one gentle follow-up question when useful.`;
@@ -347,8 +490,32 @@ app.get("/api/integrations/fitbit/metrics", authRequired, async (req, res) => {
     ]);
     if (![activityResponse, heartResponse, sleepResponse].every((item) => item.ok)) throw new Error("Fitbit metrics request failed");
     const [activity, heart, sleep] = await Promise.all([activityResponse.json(), heartResponse.json(), sleepResponse.json()]);
-    const metrics = { steps: activity.summary?.steps, calories: activity.summary?.caloriesOut, distance: activity.summary?.distances?.find((item) => item.activity === "total")?.distance, exerciseMinutes: activity.summary?.fairlyActiveMinutes + activity.summary?.veryActiveMinutes, heartRate: heart["activities-heart"]?.[0]?.value?.restingHeartRate, sleepHours: sleep.summary?.totalMinutesAsleep ? sleep.summary.totalMinutesAsleep / 60 : undefined, timestamp: new Date().toISOString() };
-    await pool.query("INSERT INTO health_metrics (user_id, metric_type, value, unit, raw_data) VALUES ($1, 'fitbit_snapshot', $2, 'snapshot', $3)", [req.auth.sub, 0, JSON.stringify(metrics)]);
+    const metrics = {
+      steps: activity.summary?.steps,
+      calories: activity.summary?.caloriesOut,
+      distance: activity.summary?.distances?.find((item) => item.activity === "total")?.distance,
+      exerciseMinutes: (activity.summary?.fairlyActiveMinutes || 0) + (activity.summary?.veryActiveMinutes || 0),
+      heartRate: heart["activities-heart"]?.[0]?.value?.restingHeartRate,
+      sleepHours: sleep.summary?.totalMinutesAsleep ? sleep.summary.totalMinutesAsleep / 60 : undefined,
+      timestamp: new Date().toISOString(),
+    };
+    // Store each metric in its own typed row (metric_type/value/unit)
+    // instead of a single row with value hardcoded to 0 — this is
+    // what lets health_metrics actually be queried/aggregated later.
+    const metricEntries = [
+      { metric_type: "steps", value: metrics.steps ?? 0, unit: "count" },
+      { metric_type: "calories", value: metrics.calories ?? 0, unit: "kcal" },
+      { metric_type: "distance", value: metrics.distance ?? 0, unit: "km" },
+      { metric_type: "exercise_minutes", value: metrics.exerciseMinutes ?? 0, unit: "minutes" },
+      { metric_type: "resting_heart_rate", value: metrics.heartRate ?? 0, unit: "bpm" },
+      { metric_type: "sleep_hours", value: metrics.sleepHours ?? 0, unit: "hours" },
+    ];
+    for (const entry of metricEntries) {
+      await pool.query(
+        "INSERT INTO health_metrics (user_id, metric_type, value, unit, raw_data) VALUES ($1, $2, $3, $4, $5)",
+        [req.auth.sub, entry.metric_type, entry.value, entry.unit, JSON.stringify(metrics)]
+      );
+    }
     await pool.query("UPDATE wellness_devices SET last_sync_at = NOW() WHERE user_id = $1 AND platform = 'fitbit'", [req.auth.sub]);
     res.json({ data: metrics });
   } catch (error) { publicError(res, error); }
@@ -424,13 +591,14 @@ app.get("/api/community/rooms/:roomId/messages", authRequired, async (req, res) 
 app.post("/api/community/rooms/:roomId/messages", authRequired, async (req, res) => {
   const { content, messageType = "text", replyToId = null, support = null } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: "Message content is required" });
-  const result = await pool.query(`
-    INSERT INTO community_messages (room_id, sender_id, message_type, content, reply_to_id, support)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *
-  `, [req.params.roomId, req.auth.sub, messageType, content.trim(), replyToId, support]);
   const user = await pool.query("SELECT full_name FROM saathi_users WHERE id = $1", [req.auth.sub]);
-  const message = { ...result.rows[0], sender_name: user.rows[0]?.full_name || "Saathi member", reactions: [] };
+  const senderName = user.rows[0]?.full_name || "Saathi member";
+  const result = await pool.query(`
+    INSERT INTO community_messages (room_id, sender_id, sender_name, message_type, content, reply_to_id, support)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING *
+  `, [req.params.roomId, req.auth.sub, senderName, messageType, content.trim(), replyToId, support]);
+  const message = { ...result.rows[0], reactions: [] };
   io.to(req.params.roomId).emit("message:new", message);
   res.status(201).json({ data: message });
 });
@@ -444,11 +612,12 @@ app.post("/api/community/messages/:messageId/reactions", authRequired, async (re
     RETURNING message_id
   `, [req.params.messageId, req.auth.sub, emoji]);
   if (removed.rowCount === 0) {
+    const user = await pool.query("SELECT full_name FROM saathi_users WHERE id = $1", [req.auth.sub]);
     await pool.query(`
-      INSERT INTO community_message_reactions (message_id, user_id, emoji)
-      VALUES ($1, $2, $3)
+      INSERT INTO community_message_reactions (message_id, user_id, user_name, emoji)
+      VALUES ($1, $2, $3, $4)
       ON CONFLICT DO NOTHING
-    `, [req.params.messageId, req.auth.sub, emoji]);
+    `, [req.params.messageId, req.auth.sub, user.rows[0]?.full_name || "", emoji]);
   }
   res.json({ ok: true, active: removed.rowCount === 0 });
 });
@@ -471,7 +640,29 @@ app.post("/api/community/feed", authRequired, async (req, res) => {
     INSERT INTO community_posts (author_id, title, body, mood, post_type, visibility, stats)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
-  `, [req.auth.sub, title, body, mood, postType, visibility, stats]);
+  `, [req.auth.sub, title, body, mood, postType, visibility, JSON.stringify(stats)]);
+  res.status(201).json({ data: result.rows[0] });
+});
+
+app.get("/api/community/feed/:postId/comments", authRequired, async (req, res) => {
+  const result = await pool.query(`
+    SELECT c.*, u.full_name AS author_name
+    FROM community_comments c
+    JOIN saathi_users u ON u.id = c.author_id
+    WHERE c.post_id = $1
+    ORDER BY c.created_at ASC
+  `, [req.params.postId]);
+  res.json({ data: result.rows });
+});
+
+app.post("/api/community/feed/:postId/comments", authRequired, async (req, res) => {
+  const { body } = req.body;
+  if (!body?.trim()) return res.status(400).json({ error: "Comment body is required" });
+  const result = await pool.query(`
+    INSERT INTO community_comments (post_id, author_id, body)
+    VALUES ($1, $2, $3)
+    RETURNING *
+  `, [req.params.postId, req.auth.sub, body.trim()]);
   res.status(201).json({ data: result.rows[0] });
 });
 
@@ -523,55 +714,58 @@ app.post("/api/anonymous-posts/:postId/like", authRequired, async (req, res) => 
     WHERE post_id = $1 AND user_id = $2
     RETURNING post_id
   `, [req.params.postId, req.auth.sub]);
-  let liked = false;
   if (removed.rowCount === 0) {
     await pool.query(`
       INSERT INTO anonymous_post_likes (post_id, user_id)
       VALUES ($1, $2)
       ON CONFLICT DO NOTHING
     `, [req.params.postId, req.auth.sub]);
-    liked = true;
   }
-  const result = await pool.query("SELECT likes_count FROM anonymous_posts WHERE id = $1 AND moderation_status = 'approved'", [req.params.postId]);
-  if (!result.rows[0]) return res.status(404).json({ error: "Post not found" });
-  await pool.query(`UPDATE anonymous_posts SET likes_count = (SELECT COUNT(*) FROM anonymous_post_likes WHERE post_id = $1) WHERE id = $1`, [req.params.postId]);
-  const updated = await pool.query("SELECT likes_count FROM anonymous_posts WHERE id = $1", [req.params.postId]);
-  res.json({ liked, likesCount: Number(updated.rows[0].likes_count) });
+  const post = await pool.query("SELECT id FROM anonymous_posts WHERE id = $1 AND moderation_status = 'approved'", [req.params.postId]);
+  if (!post.rows[0]) return res.status(404).json({ error: "Post not found" });
+  const updated = await pool.query(`
+    UPDATE anonymous_posts SET likes_count = (SELECT COUNT(*) FROM anonymous_post_likes WHERE post_id = $1)
+    WHERE id = $1 RETURNING likes_count
+  `, [req.params.postId]);
+  res.json({ liked: removed.rowCount === 0, likesCount: Number(updated.rows[0].likes_count) });
 });
 
-app.get("/api/data/:table", authRequired, async (req, res) => {
-  try { const table = safeTable(req, res); if (!table) return; const data = await getRecords(table, req.auth.sub, req.query); res.json({ data, count: data.length }); } catch (error) { publicError(res, error); }
-});
-app.post("/api/data/:table", authRequired, async (req, res) => {
+// ---------------------------------------------------------------
+// Generic per-user data endpoints, now backed by real tables
+// ---------------------------------------------------------------
+app.get("/api/data/:resource", authRequired, async (req, res) => {
   try {
-    const table = safeTable(req, res); if (!table) return;
+    const config = resourceOr404(req, res); if (!config) return;
+    const data = await listResource(config, req.auth.sub, req.query);
+    res.json({ data, count: data.length });
+  } catch (error) { publicError(res, error); }
+});
+app.post("/api/data/:resource", authRequired, async (req, res) => {
+  try {
+    const config = resourceOr404(req, res); if (!config) return;
+    if (config.readOnly) return res.status(403).json({ error: "This resource is written internally and cannot be created directly" });
     const items = Array.isArray(req.body) ? req.body : [req.body];
     const data = [];
-    for (const item of items) {
-      data.push(await insertRecord(table, req.auth.sub, item));
-    }
+    for (const item of items) data.push(await insertResource(config, req.auth.sub, item));
     res.status(201).json({ data });
   } catch (error) { publicError(res, error); }
 });
-app.patch("/api/data/:table", authRequired, async (req, res) => {
+app.patch("/api/data/:resource", authRequired, async (req, res) => {
   try {
-    const table = safeTable(req, res); if (!table) return;
-    const id = req.query.id || req.query.key;
-    const current = id ? await getRecords(table, req.auth.sub, { id }) : await getRecords(table, req.auth.sub, req.query);
-    const currentRecord = current[0];
-    if (!currentRecord) return res.json({ data: [] });
-    const updated = { ...currentRecord, ...req.body, id: currentRecord.id };
-    const databaseId = await recordId(table, req.auth.sub, currentRecord.id);
-    await pool.query("UPDATE saathi_records SET data = $1 WHERE id = $2 AND user_id = $3", [JSON.stringify(updated), databaseId, req.auth.sub]);
+    const config = resourceOr404(req, res); if (!config) return;
+    if (config.readOnly) return res.status(403).json({ error: "This resource is written internally and cannot be updated directly" });
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "An id query parameter is required" });
+    const updated = await updateResource(config, req.auth.sub, id, req.body);
+    if (!updated) return res.status(404).json({ error: "Record not found" });
     res.json({ data: [updated] });
   } catch (error) { publicError(res, error); }
 });
-app.delete("/api/data/:table", authRequired, async (req, res) => {
+app.delete("/api/data/:resource", authRequired, async (req, res) => {
   try {
-    const table = safeTable(req, res); if (!table) return;
-    const id = req.query.id;
-    if (id) await pool.query("DELETE FROM saathi_records WHERE user_id = $1 AND table_name = $2 AND (id::text = $3 OR data->>'id' = $3)", [req.auth.sub, table, id]);
-    else await pool.query("DELETE FROM saathi_records WHERE user_id = $1 AND table_name = $2", [req.auth.sub, table]);
+    const config = resourceOr404(req, res); if (!config) return;
+    if (config.readOnly) return res.status(403).json({ error: "This resource is written internally and cannot be deleted directly" });
+    await deleteResource(config, req.auth.sub, req.query.id);
     res.json({ data: [] });
   } catch (error) { publicError(res, error); }
 });
@@ -624,14 +818,14 @@ io.on("connection", (socket) => {
         VALUES ($1, $2)
         ON CONFLICT DO NOTHING
       `, [message.roomId, userId]);
-      const result = await pool.query(`
-        INSERT INTO community_messages (id, room_id, sender_id, message_type, content, support)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *
-      `, [message.id || crypto.randomUUID(), message.roomId, userId, message.type || "text", message.content.trim(), message.support || null]);
       const user = await pool.query("SELECT full_name FROM saathi_users WHERE id = $1", [userId]);
-      const saved = { ...result.rows[0], sender_name: user.rows[0]?.full_name || message.senderName || "Saathi member", reactions: [] };
-      const outgoing = { ...saved, isMine: false };
+      const senderName = user.rows[0]?.full_name || message.senderName || "Saathi member";
+      const result = await pool.query(`
+        INSERT INTO community_messages (id, room_id, sender_id, sender_name, message_type, content, support)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `, [message.id || crypto.randomUUID(), message.roomId, userId, senderName, message.type || "text", message.content.trim(), message.support || null]);
+      const outgoing = { ...result.rows[0], reactions: [], isMine: false };
       io.to(message.roomId).emit("message:new", outgoing);
       callback?.({ ok: true, message: outgoing });
     } catch (error) { callback?.({ ok: false, error: error.message }); }
@@ -641,7 +835,8 @@ io.on("connection", (socket) => {
     await pool.query("DELETE FROM community_message_reactions WHERE message_id = $1 AND user_id = $2", [messageId, userId]);
     const selected = (reactions || []).find((reaction) => reaction.users?.includes("me"));
     if (selected) {
-      await pool.query("INSERT INTO community_message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", [messageId, userId, selected.emoji]);
+      const user = await pool.query("SELECT full_name FROM saathi_users WHERE id = $1", [userId]);
+      await pool.query("INSERT INTO community_message_reactions (message_id, user_id, user_name, emoji) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING", [messageId, userId, user.rows[0]?.full_name || "", selected.emoji]);
     }
     io.to(roomId).emit("message:reaction", { messageId, reactions });
   });
@@ -651,13 +846,4 @@ io.on("connection", (socket) => {
   });
 });
 
-initializeDatabase()
-  .then(() =>
-    httpServer.listen(port, "0.0.0.0", () =>
-      console.log(`Saathi PostgreSQL backend listening on port ${port}`)
-    )
-  )
-  .catch((error) => {
-    console.error("PostgreSQL connection failed:", error.message);
-    process.exit(1);
-  });
+initializeDatabase().then(() => httpServer.listen(port, () => console.log(`Saathi PostgreSQL backend listening on http://localhost:${port}`))).catch((error) => { console.error("PostgreSQL connection failed:", error.message); process.exit(1); });
