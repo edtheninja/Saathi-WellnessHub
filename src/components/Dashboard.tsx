@@ -1,5 +1,9 @@
 // src/components/Dashboard.tsx
+<<<<<<< HEAD
 import React, { useEffect, useState } from "react";
+=======
+import React, { useMemo, useEffect, useState } from "react";
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
@@ -190,6 +194,41 @@ export default function Dashboard(): JSX.Element {
     animate: { opacity: 1, y: 0 },
   };
 
+<<<<<<< HEAD
+=======
+  const [moodValue, setMoodValue] = useState(73);
+
+  const moodCheckpoints = [
+    { value: 0, emoji: "😞", label: "Very Low" },
+    { value: 11, emoji: "😔", label: "Low" },
+    { value: 22, emoji: "😟", label: "Worried" },
+    { value: 33, emoji: "😕", label: "Uneasy" },
+    { value: 44, emoji: "😐", label: "Slightly Low" },
+    { value: 55, emoji: "😌", label: "Neutral" },
+    { value: 66, emoji: "🙂", label: "Okay" },
+    { value: 77, emoji: "😊", label: "Good" },
+    { value: 88, emoji: "😄", label: "Very Good" },
+    { value: 100, emoji: "🤩", label: "Excellent" },
+  ];
+
+  const currentMood = useMemo(() => {
+    let closest = moodCheckpoints[0];
+
+    for (const checkpoint of moodCheckpoints) {
+      if (
+        Math.abs(checkpoint.value - moodValue) <
+        Math.abs(closest.value - moodValue)
+      ) {
+        closest = checkpoint;
+      }
+    }
+
+    return closest;
+  }, [moodValue]);
+
+  const [isDragging, setIsDragging] = useState(false);
+
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
   return (
     <div className="min-h-screen pb-24 bg-background text-foreground">
       {/* Mode selector */}
@@ -218,6 +257,7 @@ export default function Dashboard(): JSX.Element {
         </div>
       )}
 
+<<<<<<< HEAD
       <motion.section variants={cardAnim} initial="initial" animate="animate" transition={{ delay: 0.05 }}>
         <div className="glass rounded-3xl border border-white/8 shadow-elevated p-6">
           <h3 className="font-semibold text-lg text-foreground text-center mb-4">How are you feeling today?</h3>
@@ -265,6 +305,135 @@ export default function Dashboard(): JSX.Element {
           </motion.div>
         </div>
       </motion.section >
+=======
+      <motion.section
+        variants={cardAnim}
+        initial="initial"
+        animate="animate"
+        transition={{ delay: 0.05 }}
+      >
+        <div className="glass rounded-3xl border border-white/8 shadow-elevated p-6 md:p-8">
+          <h3 className="font-semibold text-lg md:text-xl text-foreground text-center">
+            How are you feeling today?
+          </h3>
+
+          <p className="text-sm text-muted-foreground text-center mt-2">
+            Slide to select your current mood
+          </p>
+
+          {/* Current mood */}
+          <div className="flex flex-col items-center mt-6">
+            <motion.div
+              key={currentMood.label}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex items-center gap-3"
+            >
+              <span className="text-4xl">
+                {currentMood.emoji}
+              </span>
+
+              <div>
+                <p className="font-semibold text-lg">
+                  {currentMood.label}
+                </p>
+
+                <p className="text-sm text-muted-foreground">
+                  Mood score: {moodValue}/100
+                </p>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Slider */}
+          <div className="relative mt-10 px-2">
+            {/* Gradient track */}
+            <div
+              className="absolute left-2 right-2 top-1/2 h-3 -translate-y-1/2 rounded-full"
+              style={{
+                background:
+                  "linear-gradient(to right, #ef6b73 0%, #f39b62 25%, #f5d76e 50%, #a8cf70 75%, #45b982 100%)",
+              }}
+            />
+
+            {/* Floating value bubble at thumb */}
+            <div
+              className="absolute top-1/2 flex flex-col items-center pointer-events-none transition-[left] duration-100 ease-out z-20"
+              style={{
+                left: `${moodValue}%`,
+                transform: "translate(-50%, 18px)",
+              }}
+            >
+              <div className="w-0 h-0 border-l-[7px] border-r-[7px] border-b-[8px] border-l-transparent border-r-transparent border-b-primary" />
+              <div className="mt-[-1px] rounded-full bg-primary text-primary-foreground text-sm font-bold px-3.5 py-1.5 shadow-md leading-none flex items-center gap-1.5">
+                <span
+                  className="text-base leading-none transition-transform duration-150 ease-out"
+                  style={{ transform: isDragging ? "scale(1.6)" : "scale(1)" }}
+                >
+                  {currentMood.emoji}
+                </span>
+                <span>{moodValue}</span>
+              </div>
+            </div>
+
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={moodValue}
+              onChange={(e) =>
+                setMoodValue(Number(e.target.value))
+              }
+              onMouseDown={() => setIsDragging(true)}
+              onMouseUp={() => setIsDragging(false)}
+              onTouchStart={() => setIsDragging(true)}
+              onTouchEnd={() => setIsDragging(false)}
+              onBlur={() => setIsDragging(false)}
+              className="relative z-10 w-full h-3 appearance-none bg-transparent cursor-pointer mood-slider"
+              aria-label="Current mood"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={moodValue}
+            />
+            {/* Checkpoints */}
+            <div className="absolute left-2 right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+              {moodCheckpoints.map((checkpoint) => (
+                <div
+                  key={checkpoint.value}
+                  className="absolute flex flex-col items-center"
+                  style={{
+                    left: `${checkpoint.value}%`,
+                    transform: "translateX(-50%)",
+                  }}
+                >
+                  <div className="h-5 w-0.5 bg-foreground/30 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Save / continue */}
+          <div className="flex justify-center mt-7">
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() =>
+                navigate("/mood", {
+                  state: {
+                    moodValue,
+                  },
+                })
+              }
+              className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm"
+            >
+              Continue with {moodValue}
+            </motion.button>
+          </div>
+        </div>
+      </motion.section>
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 
       <main className="mx-auto max-w-6xl px-6 mt-8 space-y-8 pb-32">
         {/* Feature grid */}

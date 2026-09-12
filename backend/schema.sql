@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 -- =========================================================
 -- Saathi Wellness App — Full Schema
 -- =========================================================
@@ -8,6 +9,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Users & Profiles
 -- ---------------------------------------------------------
 
+=======
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 CREATE TABLE IF NOT EXISTS saathi_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
@@ -20,9 +25,13 @@ CREATE TABLE IF NOT EXISTS saathi_users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+<<<<<<< HEAD
 CREATE UNIQUE INDEX IF NOT EXISTS saathi_users_oauth_identity_idx
   ON saathi_users(oauth_provider, oauth_subject)
   WHERE oauth_provider IS NOT NULL AND oauth_subject IS NOT NULL;
+=======
+CREATE UNIQUE INDEX IF NOT EXISTS saathi_users_oauth_identity_idx ON saathi_users(oauth_provider, oauth_subject) WHERE oauth_provider IS NOT NULL AND oauth_subject IS NOT NULL;
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 ALTER TABLE saathi_users ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
 ALTER TABLE saathi_users ADD COLUMN IF NOT EXISTS oauth_subject TEXT;
 
@@ -32,6 +41,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   bio TEXT NOT NULL DEFAULT '',
   avatar_url TEXT,
   timezone TEXT NOT NULL DEFAULT 'UTC',
+<<<<<<< HEAD
   community_room_id TEXT,
   community_joined_at TIMESTAMPTZ,
   preferred_mood TEXT,
@@ -52,6 +62,14 @@ CREATE TABLE IF NOT EXISTS community_rooms (
   id TEXT PRIMARY KEY,
   owner_id UUID REFERENCES saathi_users(id) ON DELETE SET NULL,
   owner_name TEXT NOT NULL DEFAULT '',
+=======
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS community_rooms (
+  id TEXT PRIMARY KEY,
+  owner_id UUID REFERENCES saathi_users(id) ON DELETE SET NULL,
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
   name TEXT NOT NULL,
   room_type TEXT NOT NULL CHECK (room_type IN ('discussion', 'circle', 'support', 'event', 'announcement')),
   topic TEXT NOT NULL DEFAULT '',
@@ -59,6 +77,7 @@ CREATE TABLE IF NOT EXISTS community_rooms (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE community_rooms ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES saathi_users(id) ON DELETE SET NULL;
+<<<<<<< HEAD
 ALTER TABLE community_rooms ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS community_room_id TEXT REFERENCES community_rooms(id) ON DELETE SET NULL;
@@ -70,6 +89,8 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN NOT NULL 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS reminder_time TIME;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_meditation_duration INTEGER CHECK (preferred_meditation_duration IS NULL OR preferred_meditation_duration > 0);
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 
 CREATE TABLE IF NOT EXISTS community_memberships (
   room_id TEXT NOT NULL REFERENCES community_rooms(id) ON DELETE CASCADE,
@@ -83,7 +104,10 @@ CREATE TABLE IF NOT EXISTS community_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id TEXT NOT NULL REFERENCES community_rooms(id) ON DELETE CASCADE,
   sender_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
+<<<<<<< HEAD
   sender_name TEXT NOT NULL DEFAULT '',
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
   message_type TEXT NOT NULL DEFAULT 'text',
   content TEXT NOT NULL,
   reply_to_id UUID REFERENCES community_messages(id) ON DELETE SET NULL,
@@ -92,18 +116,27 @@ CREATE TABLE IF NOT EXISTS community_messages (
   edited_at TIMESTAMPTZ,
   deleted_at TIMESTAMPTZ
 );
+<<<<<<< HEAD
 ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS sender_name TEXT NOT NULL DEFAULT '';
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 CREATE INDEX IF NOT EXISTS community_messages_room_idx ON community_messages(room_id, created_at);
 
 CREATE TABLE IF NOT EXISTS community_message_reactions (
   message_id UUID NOT NULL REFERENCES community_messages(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
+<<<<<<< HEAD
   user_name TEXT NOT NULL DEFAULT '',
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
   emoji TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (message_id, user_id, emoji)
 );
+<<<<<<< HEAD
 ALTER TABLE community_message_reactions ADD COLUMN IF NOT EXISTS user_name TEXT NOT NULL DEFAULT '';
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 
 CREATE TABLE IF NOT EXISTS community_posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -145,15 +178,22 @@ CREATE TABLE IF NOT EXISTS anonymous_post_likes (
   PRIMARY KEY (post_id, user_id)
 );
 
+<<<<<<< HEAD
 -- ---------------------------------------------------------
 -- Mood / Activity sources that feed the energy score
 -- ---------------------------------------------------------
 
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 CREATE TABLE IF NOT EXISTS moods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
   mood TEXT NOT NULL,
+<<<<<<< HEAD
   energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
+=======
+  energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 5),
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
   note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -162,6 +202,7 @@ CREATE INDEX IF NOT EXISTS moods_user_date_idx ON moods(user_id, created_at DESC
 CREATE TABLE IF NOT EXISTS journals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
+<<<<<<< HEAD
   title TEXT NOT NULL DEFAULT '',
   content TEXT NOT NULL,
   mood TEXT,
@@ -209,15 +250,28 @@ CREATE INDEX IF NOT EXISTS music_user_idx ON music(user_id, created_at DESC);
 -- FIXED: was missing a comma after created_at, which made this whole
 -- statement a syntax error (and could abort everything run after it
 -- in the same batch).
+=======
+  content TEXT NOT NULL,
+  mood TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 CREATE TABLE IF NOT EXISTS meditation_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
   duration INTEGER NOT NULL CHECK (duration > 0),
   completed BOOLEAN NOT NULL DEFAULT FALSE,
+<<<<<<< HEAD
   energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS meditation_sessions_user_idx ON meditation_sessions(user_id, created_at DESC);
+=======
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 
 CREATE TABLE IF NOT EXISTS goals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -231,10 +285,13 @@ CREATE TABLE IF NOT EXISTS goals (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+<<<<<<< HEAD
 -- ---------------------------------------------------------
 -- Settings / Devices / Health
 -- ---------------------------------------------------------
 
+=======
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 CREATE TABLE IF NOT EXISTS wellness_settings (
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
   setting_key TEXT NOT NULL,
@@ -286,6 +343,7 @@ CREATE TABLE IF NOT EXISTS activity_history (
   activity_type TEXT NOT NULL,
   title TEXT NOT NULL,
   subtitle TEXT,
+<<<<<<< HEAD
   energy_type TEXT,
   energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
   process TEXT,
@@ -315,6 +373,11 @@ CREATE INDEX IF NOT EXISTS wellness_scores_user_idx ON wellness_scores(user_id, 
 -- ---------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------
+=======
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
 
 INSERT INTO community_rooms (id, name, room_type, topic, description) VALUES
   ('daily', 'Daily Discussion', 'discussion', 'What made you smile today?', 'Share your day and encourage others.'),
@@ -323,4 +386,8 @@ INSERT INTO community_rooms (id, name, room_type, topic, description) VALUES
   ('anxiety', 'Anxiety Support', 'support', 'You are not alone.', 'A safe place to share and support one another.'),
   ('mindfulness', 'Mindfulness Circle', 'support', 'Living in the present.', 'Daily mindfulness discussions.'),
   ('grief', 'Grief & Loss', 'support', 'Healing together.', 'Support from people who understand.')
+<<<<<<< HEAD
 ON CONFLICT (id) DO NOTHING;
+=======
+ON CONFLICT (id) DO NOTHING;
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4

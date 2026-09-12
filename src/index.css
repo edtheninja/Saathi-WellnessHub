@@ -174,3 +174,99 @@ All colors MUST be HSL.
   animation: fadeUp 0.5s ease forwards;
 }
 
+<<<<<<< HEAD
+=======
+/* Mood slider — custom thumb, hides native browser styling */
+.mood-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 22px;
+}
+
+.mood-slider::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  background: transparent;
+}
+.mood-slider::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+.mood-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 3px solid hsl(var(--background));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.mood-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 3px solid hsl(var(--background));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.mood-slider:focus {
+  outline: none;
+}
+
+.mood-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.mood-slider::-webkit-slider-runnable-track {
+  height: 12px;
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.mood-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+
+  width: 64px;
+  height: 64px;
+
+  margin-top: -26px;
+
+  border-radius: 9999px;
+
+  background: transparent;
+  border: none;
+
+  cursor: grab;
+}
+
+.mood-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.mood-slider::-moz-range-track {
+  height: 12px;
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.mood-slider::-moz-range-thumb {
+  width: 64px;
+  height: 64px;
+
+  border-radius: 9999px;
+
+  background: transparent;
+  border: none;
+
+  cursor: grab;
+}
+>>>>>>> 893c62c9aa64bc8a6b882deeca130f0db3a0fdf4
