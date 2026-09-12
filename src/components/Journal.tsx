@@ -20,7 +20,40 @@ import {
   ArrowLeft,
   Trash2,
 } from "lucide-react";
-import { supabase } from "@/supabaseClient";
+
+// ------------------------------------------------------------
+// BACKEND CLIENT
+// Replaces the old Supabase client — talks to your Express API
+// (server.js) instead. Adjust API_BASE / the token storage key
+// below if your app already has its own auth helper.
+// ------------------------------------------------------------
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+function getAuthToken(): string | null {
+  return localStorage.getItem("saathi_token");
+}
+
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message = payload?.error || `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return payload;
+}
 
 type JournalEntry = {
   id: string;
@@ -28,6 +61,7 @@ type JournalEntry = {
   created_at: string;
   mood?: string;
   title?: string;
+  energy_level?: number;
 };
 
 type SelectedImage = {
@@ -51,6 +85,7 @@ const Journal = () => {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -61,28 +96,19 @@ const Journal = () => {
   const fetchJournals = async () => {
     setIsLoadingEntries(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    if (!getAuthToken()) {
       setIsLoadingEntries(false);
       return;
     }
 
-    const { data, error } = await supabase
-      .from("journals")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
+    try {
+      const { data } = await apiFetch("/api/data/journals?order=created_at:desc");
+      setEntries(data || []);
+    } catch (error) {
       console.error("Fetch journals error:", error);
+    } finally {
       setIsLoadingEntries(false);
-      return;
     }
-
-    setEntries(data || []);
-    setIsLoadingEntries(false);
   };
 
   useEffect(() => {
@@ -129,37 +155,40 @@ const Journal = () => {
   const handleSaveEntry = async () => {
     if (!currentEntry.trim()) return;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    if (!getAuthToken()) {
       alert("Session expired. Please login again.");
       return;
     }
 
-    const { error } = await supabase.from("journals").insert({
-      user_id: user.id,
-      content: currentEntry,
-    });
+    setIsSaving(true);
 
-    if (error) {
+    try {
+      // Images are intentionally NOT uploaded yet — media_url/media_type
+      // on the journals table are ready for this once you wire up storage.
+      await apiFetch("/api/data/journals", {
+        method: "POST",
+        body: JSON.stringify({
+          title: currentTitle.trim(),
+          content: currentEntry,
+        }),
+      });
+
+      selectedImages.forEach((image) => {
+        URL.revokeObjectURL(image.preview);
+      });
+
+      setSelectedImages([]);
+      setCurrentTitle("");
+      setCurrentEntry("");
+      setShowNewEntry(false);
+
+      await fetchJournals();
+    } catch (error) {
       console.error("Save journal error:", error);
       alert("Failed to save journal");
-      return;
+    } finally {
+      setIsSaving(false);
     }
-
-    // Images are intentionally NOT uploaded yet.
-    selectedImages.forEach((image) => {
-      URL.revokeObjectURL(image.preview);
-    });
-
-    setSelectedImages([]);
-    setCurrentTitle("");
-    setCurrentEntry("");
-    setShowNewEntry(false);
-
-    await fetchJournals();
   };
 
   // ------------------------------------------------------------
@@ -171,43 +200,24 @@ const Journal = () => {
 
     setIsDeleting(true);
 
-    const { data, error } = await supabase
-      .from("journals")
-      .delete()
-      .eq("id", selectedEntry.id)
-      .select();
+    try {
+      await apiFetch(`/api/data/journals?id=${encodeURIComponent(selectedEntry.id)}`, {
+        method: "DELETE",
+      });
 
-    if (error) {
+      // Remove it from the local UI
+      setEntries((prev) =>
+        prev.filter((entry) => entry.id !== selectedEntry.id)
+      );
+
+      setShowDeleteDialog(false);
+      setSelectedEntry(null);
+    } catch (error) {
       console.error("Delete journal error:", error);
-      alert(`Failed to delete journal: ${error.message}`);
+      alert(`Failed to delete journal: ${(error as Error).message}`);
+    } finally {
       setIsDeleting(false);
-      return;
     }
-
-    console.log("Deleted journal:", data);
-
-    // Make sure Supabase actually deleted something
-    if (!data || data.length === 0) {
-      console.error(
-        "Journal was not deleted. Check Supabase RLS policies."
-      );
-
-      alert(
-        "The journal could not be deleted. Please check the Supabase delete policy."
-      );
-
-      setIsDeleting(false);
-      return;
-    }
-
-    // Remove it from the local UI
-    setEntries((prev) =>
-      prev.filter((entry) => entry.id !== selectedEntry.id)
-    );
-
-    setShowDeleteDialog(false);
-    setSelectedEntry(null);
-    setIsDeleting(false);
   };
 
   // ------------------------------------------------------------
@@ -796,11 +806,11 @@ const Journal = () => {
                 <Button
                   type="button"
                   onClick={handleSaveEntry}
-                  disabled={!currentEntry.trim()}
+                  disabled={!currentEntry.trim() || isSaving}
                   className="rounded-xl"
                 >
                   <Save className="mr-2 h-4 w-4" />
-                  Save Entry
+                  {isSaving ? "Saving..." : "Save Entry"}
                 </Button>
 
               </div>

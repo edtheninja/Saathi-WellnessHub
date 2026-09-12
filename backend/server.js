@@ -19,7 +19,7 @@ const jwtSecret = process.env.JWT_SECRET || "development-secret-change-me";
 const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const allowedOrigins = allowedOrigin.split(",").map((origin) => origin.trim());
 const frontendOrigin = allowedOrigins[0];
-const pool = new Pool({ connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/saathi_wellness", ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL || "postgresql://postgres.zaugdhjksxdmbkkzciyi:AshXAnonymous@77@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres", ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false });
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: allowedOrigins, credentials: true } });
 
