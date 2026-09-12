@@ -153,7 +153,7 @@ const MoodTracker = () => {
         data,
         error,
       } = await supabase
-        .from("mood")
+        .from("moods")
         .select(
           "id, energy_level, mood, created_at"
         )
@@ -315,7 +315,7 @@ const MoodTracker = () => {
         data: existingMoods,
         error: findError,
       } = await supabase
-        .from("mood")
+        .from("moods")
         .select("id")
         .eq("user_id", user.id)
         .gte(
@@ -353,7 +353,7 @@ const MoodTracker = () => {
         const {
           error: updateError,
         } = await supabase
-          .from("mood")
+          .from("moods")
           .update({
             mood: currentMood.label,
             energy_level: energyLevel,
@@ -382,7 +382,7 @@ const MoodTracker = () => {
         const {
           error: insertError,
         } = await supabase
-          .from("mood")
+          .from("moods")
           .insert({
             user_id: user.id,
             mood: currentMood.label,
@@ -451,7 +451,7 @@ const MoodTracker = () => {
 
     const { data, error: fetchError } =
       await supabase
-        .from("mood")
+        .from("moods")
         .select("id")
         .eq("user_id", user.id)
         .gte(
@@ -474,7 +474,7 @@ const MoodTracker = () => {
     }
 
     const { error } = await supabase
-      .from("mood")
+      .from("moods")
       .update({ note })
       .eq("id", data.id);
 
