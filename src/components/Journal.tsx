@@ -31,7 +31,7 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 function getAuthToken(): string | null {
-  return localStorage.getItem("saathi_token");
+  return localStorage.getItem("saathi_access_token");
 }
 
 async function apiFetch(path: string, options: RequestInit = {}) {
