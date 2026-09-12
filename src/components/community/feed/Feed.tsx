@@ -72,7 +72,7 @@ function CommunityFeed() {
         throw new Error("Please login again.");
       }
 
-      const result = await apiFetch("/api/community/feed");
+      const result = await apiFetch("/community/feed");
 
       setPosts(result.data ?? []);
     } catch (error) {
@@ -114,7 +114,7 @@ function CommunityFeed() {
     try {
       setIsCreating(true);
 
-      await apiFetch("/api/community/feed", {
+      await apiFetch("/community/feed", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
