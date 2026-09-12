@@ -11,6 +11,9 @@ import { Server } from "socket.io";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import multer from "multer";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
 
 const { Pool } = pg;
 const app = express();
@@ -323,7 +326,7 @@ app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
     const breakdown = {};
     for (const table of energySourceTables) {
       const result = await pool.query(
-        `SELECT AVG(energy_level)::numeric(5,1) AS avg_energy FROM ${table} WHERE user_id = $1 AND energy_level IS NOT NULL AND created_at > NOW() - INTERVAL '7 days'`,
+        `SELECT AVG(energy_level)::numeric(100,1) AS avg_energy FROM ${table} WHERE user_id = $1 AND energy_level IS NOT NULL AND created_at > NOW() - INTERVAL '7 days'`,
         [req.auth.sub]
       );
       const value = result.rows[0]?.avg_energy;
@@ -845,5 +848,98 @@ io.on("connection", (socket) => {
     if (socket.data.roomId) broadcastPresence(socket.data.roomId);
   });
 });
+const uploadDir = path.resolve("uploads/journals");
+mkdirSync(uploadDir, { recursive: true });
 
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const name = `${crypto.randomUUID()}${ext}`;
+    cb(null, name);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    files: 10,
+    fileSize: 10 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed"));
+    }
+
+    cb(null, true);
+  },
+});
+app.post(
+  "/api/data/journals",
+  authRequired,
+  upload.array("images", 10),
+  async (req, res) => {
+    try {
+      const { title = "", content = "", mood, energy_level } = req.body;
+
+      if (!String(content).trim()) {
+        return res.status(400).json({
+          error: "Journal content is required",
+        });
+      }
+
+      const files = req.files || [];
+
+      const mediaMetadata = files.map((file) => ({
+        original_name: file.originalname,
+        filename: file.filename,
+        mimetype: file.mimetype,
+        size: file.size,
+      }));
+
+      const mediaUrls = files.map(
+        (file) => `/uploads/journals/${file.filename}`
+      );
+
+      const result = await pool.query(
+        `INSERT INTO journals
+          (
+            user_id,
+            title,
+            content,
+            mood,
+            energy_level,
+            media_type,
+            media_url,
+            media_metadata
+          )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          req.auth.sub,
+          String(title).trim(),
+          String(content),
+          mood || null,
+          energy_level ? Number(energy_level) : null,
+          files.length ? "image" : null,
+          mediaUrls.length ? mediaUrls : null,
+          JSON.stringify(mediaMetadata),
+        ]
+      );
+
+      res.status(201).json({
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error("Create journal error:", error);
+
+      res.status(400).json({
+        error: error?.message || "Failed to create journal",
+      });
+    }
+  }
+);
 initializeDatabase().then(() => httpServer.listen(port, () => console.log(`Saathi PostgreSQL backend listening on http://localhost:${port}`))).catch((error) => { console.error("PostgreSQL connection failed:", error.message); process.exit(1); });

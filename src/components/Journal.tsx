@@ -36,19 +36,28 @@ function getAuthToken(): string | null {
 
 async function apiFetch(path: string, options: RequestInit = {}) {
   const token = getAuthToken();
+
+  const headers = new Headers(options.headers);
+
+  if (!(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message = payload?.error || `Request failed (${response.status})`;
+    const message =
+      payload?.error || `Request failed (${response.status})`;
+
     throw new Error(message);
   }
 
@@ -151,46 +160,53 @@ const Journal = () => {
   // ------------------------------------------------------------
   // SAVE JOURNAL
   // ------------------------------------------------------------
+const handleSaveEntry = async () => {
+  if (!currentEntry.trim()) return;
 
-  const handleSaveEntry = async () => {
-    if (!currentEntry.trim()) return;
+  if (!getAuthToken()) {
+    alert("Session expired. Please login again.");
+    return;
+  }
 
-    if (!getAuthToken()) {
-      alert("Session expired. Please login again.");
-      return;
-    }
+  setIsSaving(true);
 
-    setIsSaving(true);
+  try {
+    const formData = new FormData();
 
-    try {
-      // Images are intentionally NOT uploaded yet — media_url/media_type
-      // on the journals table are ready for this once you wire up storage.
-      await apiFetch("/data/journals", {
-        method: "POST",
-        body: JSON.stringify({
-          title: currentTitle.trim(),
-          content: currentEntry,
-        }),
-      });
+    formData.append("title", currentTitle.trim());
+    formData.append("content", currentEntry);
 
-      selectedImages.forEach((image) => {
-        URL.revokeObjectURL(image.preview);
-      });
+    selectedImages.forEach((image) => {
+      formData.append("images", image.file);
+    });
 
-      setSelectedImages([]);
-      setCurrentTitle("");
-      setCurrentEntry("");
-      setShowNewEntry(false);
+    await apiFetch("/data/journals", {
+      method: "POST",
+      body: formData,
+    });
 
-      await fetchJournals();
-    } catch (error) {
-      console.error("Save journal error:", error);
-      alert("Failed to save journal");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+    selectedImages.forEach((image) => {
+      URL.revokeObjectURL(image.preview);
+    });
 
+    setSelectedImages([]);
+    setCurrentTitle("");
+    setCurrentEntry("");
+    setShowNewEntry(false);
+
+    await fetchJournals();
+  } catch (error) {
+    console.error("Save journal error:", error);
+
+    alert(
+      `Failed to save journal: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  } finally {
+    setIsSaving(false);
+  }
+};
   // ------------------------------------------------------------
   // DELETE JOURNAL
   // ------------------------------------------------------------
