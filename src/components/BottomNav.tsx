@@ -36,7 +36,7 @@ const BottomNav = () => {
     {
       icon: Newspaper,
       label: "Feed",
-      path: "/community",
+      path: "/feed",
     },
     {
       icon: MessageCircle,

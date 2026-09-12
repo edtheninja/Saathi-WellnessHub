@@ -34,6 +34,7 @@ import DeleteAccount from "./pages/settings/DeleteAccount";
 import AuthCallback from "./pages/AuthCallback";
 import WellnessHub from "./features/wellness/pages/WellnessHub";
 import ConnectDevicePage from "./features/wellness/pages/ConnectDevicePage";
+import AnonymousThoughts from "@/components/community/AnonymousThoughts";
 import Community from "@/pages/Community";
 import CommunityRoomPage from "@/pages/community/CommunityRoomPage";
 import CustomCommunityRoomPage from "@/pages/community/CustomCommunityRoomPage";
@@ -82,6 +83,7 @@ export default function App() {
                 {/* Main app */}
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/mood" element={<MoodTracker />} />
+                <Route path="/feed" element={<AnonymousThoughts />} />        
                 <Route path="/naam-jaap" element={<NaamJaapScreen />} />
                 <Route path="/journal" element={<Journal />} />
                 <Route path="/meditation" element={<MeditationScreen />} />
@@ -116,6 +118,7 @@ export default function App() {
                 <Route path="/settings/reminders" element={<ReminderSettings />} />
                 <Route path="/settings/privacy" element={<PrivacySettings />} />
                 <Route path="/settings/therapist" element={<TherapistAccess />} />
+                     
                 <Route path="/settings/about" element={<About />} />
                 <Route path="/settings/emergency" element={<Emergency />} />
                 <Route path="/settings/delete-account" element={<DeleteAccount />} />

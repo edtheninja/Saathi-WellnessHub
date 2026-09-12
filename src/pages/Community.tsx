@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import CommunityHero from "@/components/community/CommunityHero";
-import CommunitySection from "@/components/community/CommunitySection";
-import CommunityCard from "@/components/community/CommunityCard";
+// import CommunitySection from "@/components/community/CommunitySection";
+// import CommunityCard from "@/components/community/CommunityCard";
 import CommunityTabs, {
   type CommunityTab,
 } from "@/components/community/CommunityTabs";
@@ -15,14 +15,14 @@ import Discover from "@/components/community/Discover/Discover";
 import Events from "@/components/community/Events/Events";
 
 import DailyDiscussion from "@/components/community/DailyDiscussion";
-import MoodCircles from "@/components/community/MoodCircles";
+// import MoodCircles from "@/components/community/MoodCircles";
 import SupportGroups from "@/components/community/SupportGroups";
 
 import { communitySections } from "@/data/community";
 import { communityRoutes } from "@/components/community/utils/routes";
 import CreateCommunityDialog from "@/components/community/CreateCommunityDialog";
 import { getCommunities, type CreatedCommunity } from "@/lib/communityApi";
-import AnonymousThoughts from "@/components/community/AnonymousThoughts";
+// import AnonymousThoughts from "@/components/community/AnonymousThoughts";
 
 export default function Community() {
   const navigate = useNavigate();
@@ -120,12 +120,12 @@ export default function Community() {
       />
 
       {/* Mood Circles */}
-      <MoodCircles
+      {/* <MoodCircles
         moods={moods}
         onOpen={(id) =>
           navigate(communityRoutes.circle(id))
         }
-      />
+      /> */}
 
       {/* Support Groups */}
       <SupportGroups
@@ -135,7 +135,7 @@ export default function Community() {
         }
       />
 
-      <AnonymousThoughts />
+      {/* <AnonymousThoughts /> */}
 
     </main>
   );
