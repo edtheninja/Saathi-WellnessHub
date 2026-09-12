@@ -31,33 +31,24 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 function getAuthToken(): string | null {
-  return localStorage.getItem("saathi_access_token");
+  return localStorage.getItem("saathi_token");
 }
 
 async function apiFetch(path: string, options: RequestInit = {}) {
   const token = getAuthToken();
-
-  const headers = new Headers(options.headers);
-
-  if (!(options.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
   });
 
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message =
-      payload?.error || `Request failed (${response.status})`;
-
+    const message = payload?.error || `Request failed (${response.status})`;
     throw new Error(message);
   }
 
@@ -71,7 +62,28 @@ type JournalEntry = {
   mood?: string;
   title?: string;
   energy_level?: number;
+  media_url?: string | null;
+  media_type?: string | null;
+  media_metadata?: { urls?: string[] } | null;
 };
+
+// media_url / media_metadata.urls come back as paths like
+// "/uploads/journals/xyz.png" — relative to the BACKEND, not the
+// frontend's own origin, so they need API_BASE prepended before
+// they'll resolve to anything.
+function resolveMediaUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE}${path}`;
+}
+
+function getEntryImageUrls(entry: JournalEntry): string[] {
+  const urls = entry.media_metadata?.urls?.length
+    ? entry.media_metadata.urls
+    : entry.media_url
+    ? [entry.media_url]
+    : [];
+  return urls.map(resolveMediaUrl);
+}
 
 type SelectedImage = {
   id: string;
@@ -160,53 +172,46 @@ const Journal = () => {
   // ------------------------------------------------------------
   // SAVE JOURNAL
   // ------------------------------------------------------------
-const handleSaveEntry = async () => {
-  if (!currentEntry.trim()) return;
 
-  if (!getAuthToken()) {
-    alert("Session expired. Please login again.");
-    return;
-  }
+  const handleSaveEntry = async () => {
+    if (!currentEntry.trim()) return;
 
-  setIsSaving(true);
+    if (!getAuthToken()) {
+      alert("Session expired. Please login again.");
+      return;
+    }
 
-  try {
-    const formData = new FormData();
+    setIsSaving(true);
 
-    formData.append("title", currentTitle.trim());
-    formData.append("content", currentEntry);
+    try {
+      // Images are intentionally NOT uploaded yet — media_url/media_type
+      // on the journals table are ready for this once you wire up storage.
+      await apiFetch("/data/journals", {
+        method: "POST",
+        body: JSON.stringify({
+          title: currentTitle.trim(),
+          content: currentEntry,
+        }),
+      });
 
-    selectedImages.forEach((image) => {
-      formData.append("images", image.file);
-    });
+      selectedImages.forEach((image) => {
+        URL.revokeObjectURL(image.preview);
+      });
 
-    await apiFetch("/data/journals", {
-      method: "POST",
-      body: formData,
-    });
+      setSelectedImages([]);
+      setCurrentTitle("");
+      setCurrentEntry("");
+      setShowNewEntry(false);
 
-    selectedImages.forEach((image) => {
-      URL.revokeObjectURL(image.preview);
-    });
+      await fetchJournals();
+    } catch (error) {
+      console.error("Save journal error:", error);
+      alert("Failed to save journal");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-    setSelectedImages([]);
-    setCurrentTitle("");
-    setCurrentEntry("");
-    setShowNewEntry(false);
-
-    await fetchJournals();
-  } catch (error) {
-    console.error("Save journal error:", error);
-
-    alert(
-      `Failed to save journal: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
-    );
-  } finally {
-    setIsSaving(false);
-  }
-};
   // ------------------------------------------------------------
   // DELETE JOURNAL
   // ------------------------------------------------------------
@@ -364,19 +369,35 @@ const handleSaveEntry = async () => {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6 text-center">
+                {getEntryImageUrls(selectedEntry).length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {getEntryImageUrls(selectedEntry).map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="aspect-square overflow-hidden rounded-2xl border border-border/40 bg-muted"
+                      >
+                        <img
+                          src={url}
+                          alt="Journal memory"
+                          className="h-full w-full object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6 text-center">
 
-                  <ImagePlus className="mx-auto mb-3 h-7 w-7 text-muted-foreground" />
+                    <ImagePlus className="mx-auto mb-3 h-7 w-7 text-muted-foreground" />
 
-                  <p className="text-sm text-muted-foreground">
-                    Photos attached to this entry will appear here.
-                  </p>
+                    <p className="text-sm text-muted-foreground">
+                      No photos were attached to this entry.
+                    </p>
 
-                  <p className="mt-1 text-xs text-muted-foreground/70">
-                    Image storage will be connected later.
-                  </p>
-
-                </div>
+                  </div>
+                )}
 
               </div>
 
@@ -970,9 +991,17 @@ const handleSaveEntry = async () => {
 
                       </div>
 
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-lg">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-lg">
 
-                        {entry.mood || "😊"}
+                        {getEntryImageUrls(entry)[0] ? (
+                          <img
+                            src={getEntryImageUrls(entry)[0]}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          entry.mood || "😊"
+                        )}
 
                       </div>
 
