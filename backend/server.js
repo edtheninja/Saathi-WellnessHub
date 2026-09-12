@@ -394,52 +394,68 @@ const fallbackChatResponses = [
   "That sounds difficult. You do not have to solve everything at once. What part feels heaviest today?",
 ];
 
-app.post("/api/ai/chat", authOptional, async (req, res) => {
-  const incoming = Array.isArray(req.body.messages) ? req.body.messages : [];
-  const messages = incoming
-    .filter((message) => message && (message.role === "user" || message.role === "assistant") && typeof message.content === "string")
-    .slice(-12)
-    .map((message) => ({ role: message.role, content: message.content.slice(0, 2000) }));
-  if (!messages.length || messages[messages.length - 1].role !== "user") return res.status(400).json({ error: "A user message is required" });
+import { GoogleGenAI } from "@google/genai";
 
-  const provider = process.env.AI_PROVIDER || (process.env.GROQ_API_KEY ? "groq" : "gemini");
+const gemini = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+app.post("/api/ai/chat", authRequired, async (req, res) => {
   try {
-    if (provider === "groq" && process.env.GROQ_API_KEY) {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: process.env.GROQ_MODEL || "llama-3.1-8b-instant", temperature: 0.65, max_tokens: 350, messages: [{ role: "system", content: wellnessSystemPrompt }, ...messages] }),
+    const { messages = [] } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({
+        error: "Messages are required",
       });
-      if (!response.ok) throw new Error("Groq request failed");
-      const payload = await response.json();
-      return res.json({ provider: "groq", message: payload.choices?.[0]?.message?.content || fallbackChatResponses[0] });
     }
 
-    if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      const contents = messages.map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: message.content }] }));
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-2.0-flash"}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: wellnessSystemPrompt }] }, contents, generationConfig: { temperature: 0.65, maxOutputTokens: 350 } }),
-      });
-      if (!response.ok) throw new Error("Gemini request failed");
-      const payload = await response.json();
-      return res.json({ provider: "gemini", message: payload.candidates?.[0]?.content?.parts?.[0]?.text || fallbackChatResponses[0] });
-    }
+    const conversation = messages
+      .map((message) => {
+        const role =
+          message.role === "assistant"
+            ? "SAATHI"
+            : "User";
 
-    return res.json({ provider: "fallback", message: fallbackChatResponses[Math.floor(Math.random() * fallbackChatResponses.length)] });
+        return `${role}: ${String(message.content || "")}`;
+      })
+      .join("\n");
+
+    const response = await gemini.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: `
+You are SAATHI, a supportive AI wellness companion.
+
+Your role:
+- Listen empathetically.
+- Respond naturally and calmly.
+- Help users reflect on emotions.
+- Suggest practical wellness strategies.
+- Encourage professional support when appropriate.
+- Never claim to be a doctor or therapist.
+- Do not diagnose mental health conditions.
+- If the user expresses immediate self-harm or suicide risk,
+  encourage immediate human/emergency support.
+
+Conversation:
+
+${conversation}
+
+Respond as SAATHI.
+      `,
+    });
+
+    res.json({
+      message: response.text,
+    });
   } catch (error) {
-    console.error("AI chat provider error:", error.message);
-    return res.json({ provider: "fallback", message: fallbackChatResponses[0] });
+    console.error("Gemini API error:", error);
+
+    res.status(500).json({
+      error: "Unable to generate AI response",
+    });
   }
 });
-
-app.get("/api/auth/oauth/google/start", (_req, res) => {
-  if (!oauthConfigured("google")) return res.status(503).json({ error: "Google OAuth is not configured" });
-  const params = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: process.env.GOOGLE_REDIRECT_URI, response_type: "code", scope: "openid email profile", access_type: "offline", state: oauthState("google") });
-  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
-});
-
 app.get("/api/auth/oauth/google/callback", async (req, res) => {
   try {
     const state = jwt.verify(String(req.query.state || ""), jwtSecret);
@@ -920,67 +936,6 @@ io.on("connection", (socket) => {
     if (socket.data.roomId) broadcastPresence(socket.data.roomId);
   });
 });
-import { GoogleGenAI } from "@google/genai";
 
-const gemini = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
-
-app.post("/api/ai/chat", authRequired, async (req, res) => {
-  try {
-    const { messages = [] } = req.body;
-
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({
-        error: "Messages are required",
-      });
-    }
-
-    const conversation = messages
-      .map((message) => {
-        const role =
-          message.role === "assistant"
-            ? "SAATHI"
-            : "User";
-
-        return `${role}: ${String(message.content || "")}`;
-      })
-      .join("\n");
-
-    const response = await gemini.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: `
-You are SAATHI, a supportive AI wellness companion.
-
-Your role:
-- Listen empathetically.
-- Respond naturally and calmly.
-- Help users reflect on emotions.
-- Suggest practical wellness strategies.
-- Encourage professional support when appropriate.
-- Never claim to be a doctor or therapist.
-- Do not diagnose mental health conditions.
-- If the user expresses immediate self-harm or suicide risk,
-  encourage immediate human/emergency support.
-
-Conversation:
-
-${conversation}
-
-Respond as SAATHI.
-      `,
-    });
-
-    res.json({
-      message: response.text,
-    });
-  } catch (error) {
-    console.error("Gemini API error:", error);
-
-    res.status(500).json({
-      error: "Unable to generate AI response",
-    });
-  }
-});
 
 initializeDatabase().then(() => httpServer.listen(port, () => console.log(`Saathi PostgreSQL backend listening on http://localhost:${port}`))).catch((error) => { console.error("PostgreSQL connection failed:", error.message); process.exit(1); });
