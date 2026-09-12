@@ -36,7 +36,7 @@ app.use(cors({ origin: (origin, callback) => {
   if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
   return callback(new Error("Origin is not allowed"));
 }, credentials: true }));
-app.use(express.json({ limit: "256kb" }));
+app.use(express.json());
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, message: { error: "Too many authentication attempts" } });
 
