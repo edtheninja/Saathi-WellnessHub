@@ -165,7 +165,7 @@ const Journal = () => {
     try {
       // Images are intentionally NOT uploaded yet — media_url/media_type
       // on the journals table are ready for this once you wire up storage.
-      await apiFetch("/api/data/journals", {
+      await apiFetch("/data/journals", {
         method: "POST",
         body: JSON.stringify({
           title: currentTitle.trim(),
