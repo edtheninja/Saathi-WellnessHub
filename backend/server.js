@@ -920,5 +920,67 @@ io.on("connection", (socket) => {
     if (socket.data.roomId) broadcastPresence(socket.data.roomId);
   });
 });
+import { GoogleGenAI } from "@google/genai";
+
+const gemini = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+app.post("/api/ai/chat", authRequired, async (req, res) => {
+  try {
+    const { messages = [] } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({
+        error: "Messages are required",
+      });
+    }
+
+    const conversation = messages
+      .map((message) => {
+        const role =
+          message.role === "assistant"
+            ? "SAATHI"
+            : "User";
+
+        return `${role}: ${String(message.content || "")}`;
+      })
+      .join("\n");
+
+    const response = await gemini.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: `
+You are SAATHI, a supportive AI wellness companion.
+
+Your role:
+- Listen empathetically.
+- Respond naturally and calmly.
+- Help users reflect on emotions.
+- Suggest practical wellness strategies.
+- Encourage professional support when appropriate.
+- Never claim to be a doctor or therapist.
+- Do not diagnose mental health conditions.
+- If the user expresses immediate self-harm or suicide risk,
+  encourage immediate human/emergency support.
+
+Conversation:
+
+${conversation}
+
+Respond as SAATHI.
+      `,
+    });
+
+    res.json({
+      message: response.text,
+    });
+  } catch (error) {
+    console.error("Gemini API error:", error);
+
+    res.status(500).json({
+      error: "Unable to generate AI response",
+    });
+  }
+});
 
 initializeDatabase().then(() => httpServer.listen(port, () => console.log(`Saathi PostgreSQL backend listening on http://localhost:${port}`))).catch((error) => { console.error("PostgreSQL connection failed:", error.message); process.exit(1); });
