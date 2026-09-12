@@ -73,7 +73,7 @@ const MoodTracker = () => {
   const [moodValue, setMoodValue] = useState(
     typeof dashboardMood === "number"
       ? dashboardMood
-      : 73
+      : 50
   );
 
   const [isDragging, setIsDragging] = useState(false);

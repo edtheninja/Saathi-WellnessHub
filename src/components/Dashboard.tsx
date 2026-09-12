@@ -224,7 +224,7 @@ export default function Dashboard(): JSX.Element {
     },
   };
 
-  const [moodValue, setMoodValue] = useState(73);
+  const [moodValue, setMoodValue] = useState(50);
 
   const moodCheckpoints = [
     { value: 0, emoji: "😞", label: "Very Low" },
