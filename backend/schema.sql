@@ -287,7 +287,7 @@ CREATE TABLE IF NOT EXISTS activity_history (
   title TEXT NOT NULL,
   subtitle TEXT,
   energy_type TEXT,
-  energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
+  activity_energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
   process TEXT,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -305,7 +305,7 @@ CREATE INDEX IF NOT EXISTS activity_history_user_idx ON activity_history(user_id
 CREATE TABLE IF NOT EXISTS wellness_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
-  final_energy_level INTEGER NOT NULL CHECK (final_energy_level BETWEEN 1 AND 100),
+  energy_level INTEGER NOT NULL CHECK (final_energy_level BETWEEN 1 AND 100),
   breakdown JSONB NOT NULL DEFAULT '{}'::jsonb, -- e.g. {"journal":62,"music":70,"meditation":55,"mood":40,"goals":58}
   computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
