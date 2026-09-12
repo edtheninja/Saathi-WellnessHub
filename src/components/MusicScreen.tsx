@@ -68,7 +68,14 @@ function AlbumArtwork({ variant, small = false }: AlbumArtworkProps) {
 const playlists: Playlist[] = [
   {
     title: "-Sukoon🫀-Marham-e-Dil",
-    tracks: [
+   tracks: [
+  {
+    title: "Aao Milo Chalen",
+    duration: "4:32",
+    artist: "Shaan, Ustad Sultan Khan",
+    src: `${import.meta.env.BASE_URL}Music/AaoMiloChalen.mp3`,
+    available: true,
+  },
   {
     title: "Badtameez Dil",
     duration: "4:12",
@@ -105,10 +112,31 @@ const playlists: Playlist[] = [
     available: true,
   },
   {
+    title: "Iktara",
+    duration: "4:13",
+    artist: "Kavita Seth, Amitabh Bhattacharya",
+    src: `${import.meta.env.BASE_URL}Music/Iktara.mp3`,
+    available: true,
+  },
+  {
+    title: "Ilahi",
+    duration: "3:51",
+    artist: "Arijit Singh",
+    src: `${import.meta.env.BASE_URL}Music/Ilahi.mp3`,
+    available: true,
+  },
+  {
     title: "Jiyein Kyun",
     duration: "4:24",
     artist: "Papon",
     src: `${import.meta.env.BASE_URL}Music/JiyeinKyun.mp3`,
+    available: true,
+  },
+  {
+    title: "Kabira (Encore)",
+    duration: "4:30",
+    artist: "Arijit Singh, Harshdeep Kaur",
+    src: `${import.meta.env.BASE_URL}Music/KabiraEncore.mp3`,
     available: true,
   },
   {
@@ -119,6 +147,20 @@ const playlists: Playlist[] = [
     available: true,
   },
   {
+    title: "Kho Gaye Hum Kahan",
+    duration: "3:33",
+    artist: "Jasleen Royal, Prateek Kuhad",
+    src: `${import.meta.env.BASE_URL}Music/KhoGayeHumKahan.mp3`,
+    available: true,
+  },
+  {
+    title: "Love You Zindagi",
+    duration: "3:52",
+    artist: "Jasleen Royal, Amit Trivedi",
+    src: `${import.meta.env.BASE_URL}Music/LoveYouZindagi.mp3`,
+    available: true,
+  },
+  {
     title: "Patakha Guddi",
     duration: "4:45",
     artist: "Nooran Sisters",
@@ -126,10 +168,46 @@ const playlists: Playlist[] = [
     available: true,
   },
   {
+    title: "Phir Se Ud Chala",
+    duration: "4:28",
+    artist: "Mohit Chauhan",
+    src: `${import.meta.env.BASE_URL}Music/PhirSeUdChala.mp3`,
+    available: true,
+  },
+
+  {
+    title: "Shaam",
+    duration: "3:17",
+    artist: "Nikhil D'Souza, Amit Trivedi, Neuman Pinto",
+    src: `${import.meta.env.BASE_URL}Music/Shaam.mp3`,
+    available: true,
+  },
+  {
+    title: "Sooraj Ki Baahon Mein",
+    duration: "3:22",
+    artist: "Loy Mendonsa, Dominique Cerejo, Clinton Cerejo",
+    src: `${import.meta.env.BASE_URL}Music/SoorajKiBaahonMein.mp3`,
+    available: true,
+  },
+  {
     title: "Tere Binaa",
     duration: "5:09",
     artist: "A.R. Rahman",
     src: `${import.meta.env.BASE_URL}Music/Terebina.mp3`,
+    available: true,
+  },
+  {
+    title: "Tu Kisi Rail Si",
+    duration: "3:51",
+    artist: "Swanand Kirkire",
+    src: `${import.meta.env.BASE_URL}Music/TuKisiRailSi.mp3`,
+    available: true,
+  },
+  {
+    title: "Tum Se Hi",
+    duration: "5:21",
+    artist: " Mohit Chauhan",
+    src: `${import.meta.env.BASE_URL}Music/Tum Se Hi - Jab We Met (128 kbps).mp3`,
     available: true,
   },
   {
