@@ -367,19 +367,23 @@ const handleSaveEntry = async () => {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6 text-center">
+               {selectedEntry.media_url ? (
+  <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 p-3">
+    <img
+      src={selectedEntry.media_url}
+      alt="Journal memory"
+      className="mx-auto max-h-[500px] w-full rounded-xl object-contain"
+    />
+  </div>
+) : (
+  <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6 text-center">
+    <ImagePlus className="mx-auto mb-3 h-7 w-7 text-muted-foreground" />
 
-                  <ImagePlus className="mx-auto mb-3 h-7 w-7 text-muted-foreground" />
-
-                  <p className="text-sm text-muted-foreground">
-                    Photos attached to this entry will appear here.
-                  </p>
-
-                  <p className="mt-1 text-xs text-muted-foreground/70">
-                    Image storage will be connected later.
-                  </p>
-
-                </div>
+    <p className="text-sm text-muted-foreground">
+      No photos attached to this entry.
+    </p>
+  </div>
+)}
 
               </div>
 
