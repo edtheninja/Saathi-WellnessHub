@@ -63,7 +63,6 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 
   return payload;
 }
-
 type JournalEntry = {
   id: string;
   content: string;
@@ -71,6 +70,10 @@ type JournalEntry = {
   mood?: string;
   title?: string;
   energy_level?: number;
+
+  media_type?: "image" | "audio" | "video" | "file" | null;
+  media_url?: string | null;
+  media_metadata?: Record<string, unknown>;
 };
 
 type SelectedImage = {
