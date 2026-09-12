@@ -58,6 +58,14 @@ const tagOptions = [
   "Community",
 ];
 
+// The database's final CHECK (char_length(thought) BETWEEN 20 AND 1000)
+// constraint. The composer must never be able to produce a string
+// outside this range once mood/tag prefixes are added on top of the
+// user's raw text.
+const MAX_THOUGHT_LENGTH = 1000;
+const MIN_THOUGHT_LENGTH = 20;
+const COMPOSE_SEPARATOR = " • ";
+
 const demoPosts: AnonymousPost[] = [
   {
     id: "demo-anonymous-1",
@@ -79,8 +87,7 @@ const demoPosts: AnonymousPost[] = [
   },
   {
     id: "demo-anonymous-3",
-    thought:
-      "Small progress today. I chose peace over overthinking. That's a win! 🌼",
+    thought: "Small progress today. I chose peace over overthinking. That's a win! 🌼",
     photo_data: null,
     likes_count: 41,
     liked_by_me: false,
@@ -88,8 +95,7 @@ const demoPosts: AnonymousPost[] = [
   },
   {
     id: "demo-anonymous-4",
-    thought:
-      "Grateful for this community. Reading your stories gives me strength.",
+    thought: "Grateful for this community. Reading your stories gives me strength.",
     photo_data: null,
     likes_count: 56,
     liked_by_me: false,
@@ -131,39 +137,27 @@ function getTags(thought: string): string[] {
   const text = thought.toLowerCase();
   const tags: string[] = [];
 
-  if (
-    /grat(e|it)ful|thankful|grateful|appreciate|thank/.test(text)
-  ) {
+  if (/grat(e|it)ful|thankful|grateful|appreciate|thank/.test(text)) {
     tags.push("Gratitude");
   }
 
-  if (
-    /self|rest|break|sleep|walk|breathe|peace|calm|pause|care/.test(text)
-  ) {
+  if (/self|rest|break|sleep|walk|breathe|peace|calm|pause|care/.test(text)) {
     tags.push("SelfCare");
   }
 
-  if (
-    /anxiety|mental|stress|overthink|sad|emotion|healing/.test(text)
-  ) {
+  if (/anxiety|mental|stress|overthink|sad|emotion|healing/.test(text)) {
     tags.push("MentalHealth");
   }
 
-  if (
-    /progress|win|achieve|project|work|finished|success|goal/.test(text)
-  ) {
+  if (/progress|win|achieve|project|work|finished|success|goal/.test(text)) {
     tags.push("Progress");
   }
 
-  if (
-    /community|people|support|help|together|story|stories/.test(text)
-  ) {
+  if (/community|people|support|help|together|story|stories/.test(text)) {
     tags.push("Community");
   }
 
-  if (
-    /today|morning|evening|day|tea|work|walk/.test(text)
-  ) {
+  if (/today|morning|evening|day|tea|work|walk/.test(text)) {
     tags.push("DailyLife");
   }
 
@@ -223,11 +217,7 @@ function getDecorativeMessage(tags: string[], index: number) {
   return defaults[index % defaults.length];
 }
 
-function getFilteredPosts(
-  posts: VisualPost[],
-  filter: Filter,
-  myPostIds: Set<string>,
-) {
+function getFilteredPosts(posts: VisualPost[], filter: Filter, myPostIds: Set<string>) {
   if (filter === "All Posts") return posts;
   if (filter === "My Posts") {
     return posts.filter((post) => myPostIds.has(post.id));
@@ -258,6 +248,30 @@ function getFilteredPosts(
 
     return true;
   });
+}
+
+// ------------------------------------------------------------
+// Composition budget — this is where the overflow bug lived.
+// The textarea's effective max length is computed from whatever
+// mood/tag is currently selected, so the string actually sent to
+// the backend (mood prefix + tag prefix + raw thought) can never
+// exceed MAX_THOUGHT_LENGTH.
+// ------------------------------------------------------------
+
+function composePrefixParts(mood: string, tag: string): string[] {
+  return [mood ? `Mood: ${mood}` : "", tag ? `#${tag}` : ""].filter(Boolean);
+}
+
+function prefixOverhead(mood: string, tag: string): number {
+  const parts = composePrefixParts(mood, tag);
+  if (!parts.length) return 0;
+  // +COMPOSE_SEPARATOR.length for the separator that will join the
+  // prefix to the raw thought once it's non-empty.
+  return parts.join(COMPOSE_SEPARATOR).length + COMPOSE_SEPARATOR.length;
+}
+
+function maxRawThoughtLength(mood: string, tag: string): number {
+  return Math.max(MIN_THOUGHT_LENGTH, MAX_THOUGHT_LENGTH - prefixOverhead(mood, tag));
 }
 
 export default function AnonymousThoughts() {
@@ -315,12 +329,27 @@ export default function AnonymousThoughts() {
         return b.likes_count - a.likes_count;
       }
 
-      return (
-        new Date(b.created_at).getTime() -
-        new Date(a.created_at).getTime()
-      );
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [activeFilter, myPostIds, sortBy, visualPosts]);
+
+  // How many raw characters the textarea may hold given the current
+  // mood/tag selection. Recomputed whenever either changes.
+  const maxRawLength = useMemo(
+    () => maxRawThoughtLength(selectedMood, selectedTag),
+    [selectedMood, selectedTag],
+  );
+
+  // If a mood/tag is picked AFTER the thought is already near 1000
+  // characters, trim the raw text down to the new budget instead of
+  // letting the composed string silently exceed the limit at submit
+  // time. This only removes characters the user's own selection just
+  // made unreachable — never touches text that still fits.
+  useEffect(() => {
+    setThought((current) => (current.length > maxRawLength ? current.slice(0, maxRawLength) : current));
+  }, [maxRawLength]);
+
+  const remainingChars = maxRawLength - thought.length;
 
   const handlePhoto = (file: File | undefined) => {
     if (!file) return;
@@ -342,10 +371,24 @@ export default function AnonymousThoughts() {
   };
 
   const handlePost = async () => {
+    if (isPosting) return; // guard against duplicate submits
+
     const trimmedThought = thought.trim();
 
-    if (trimmedThought.length < 20) {
-      setError("Please share at least 20 characters.");
+    if (trimmedThought.length < MIN_THOUGHT_LENGTH) {
+      setError(`Please share at least ${MIN_THOUGHT_LENGTH} characters.`);
+      return;
+    }
+
+    const composedThought = [...composePrefixParts(selectedMood, selectedTag), trimmedThought]
+      .filter(Boolean)
+      .join(COMPOSE_SEPARATOR);
+
+    // Defensive safety net — the textarea budget above should make
+    // this unreachable, but never send something the database will
+    // reject outright.
+    if (composedThought.length > MAX_THOUGHT_LENGTH) {
+      setError("Your thought is too long once mood/tag are included. Please shorten it a little.");
       return;
     }
 
@@ -353,14 +396,6 @@ export default function AnonymousThoughts() {
     setError("");
 
     try {
-      const composedThought = [
-        selectedMood ? `Mood: ${selectedMood}` : "",
-        selectedTag ? `#${selectedTag}` : "",
-        trimmedThought,
-      ]
-        .filter(Boolean)
-        .join(" • ");
-
       const { data } = await createAnonymousPost({
         thought: composedThought,
         photoData,
@@ -381,11 +416,7 @@ export default function AnonymousThoughts() {
       setShowMoodPicker(false);
       setShowTagPicker(false);
     } catch (postError) {
-      setError(
-        postError instanceof Error
-          ? postError.message
-          : "Unable to publish thought",
-      );
+      setError(postError instanceof Error ? postError.message : "Unable to publish thought");
     } finally {
       setIsPosting(false);
     }
@@ -454,9 +485,9 @@ export default function AnonymousThoughts() {
               <div className="min-w-0 flex-1">
                 <Textarea
                   value={thought}
-                  onChange={(event) => setThought(event.target.value)}
+                  onChange={(event) => setThought(event.target.value.slice(0, maxRawLength))}
                   placeholder="Share what's on your mind..."
-                  maxLength={1000}
+                  maxLength={maxRawLength}
                   rows={1}
                   className="min-h-11 resize-none rounded-full border border-border/50 bg-background px-5 py-3 text-sm shadow-none focus-visible:ring-1"
                 />
@@ -466,7 +497,7 @@ export default function AnonymousThoughts() {
             <Button
               type="button"
               onClick={handlePost}
-              disabled={isPosting || thought.trim().length < 20}
+              disabled={isPosting || thought.trim().length < MIN_THOUGHT_LENGTH}
               className="h-11 shrink-0 rounded-full bg-gradient-to-r from-violet-500 to-purple-500 px-6 text-white shadow-sm hover:from-violet-600 hover:to-purple-600"
             >
               <Send className="mr-2 h-4 w-4" />
@@ -593,9 +624,14 @@ export default function AnonymousThoughts() {
             </div>
           )}
 
-          {error && (
-            <p className="px-2 pt-3 text-sm text-destructive">{error}</p>
+          {remainingChars <= 40 && (
+            <p className="px-2 pt-2 text-[11px] text-muted-foreground">
+              {remainingChars} character{remainingChars === 1 ? "" : "s"} left
+              {(selectedMood || selectedTag) && " (mood/tag use up some of the 1000-character limit)"}
+            </p>
           )}
+
+          {error && <p className="px-2 pt-3 text-sm text-destructive">{error}</p>}
         </div>
 
         {/* FILTER BAR */}
@@ -623,9 +659,7 @@ export default function AnonymousThoughts() {
             <div className="ml-auto flex items-center gap-1 rounded-full border border-border/60 bg-background px-3 py-2">
               <select
                 value={sortBy}
-                onChange={(event) =>
-                  setSortBy(event.target.value as "Latest" | "Popular")
-                }
+                onChange={(event) => setSortBy(event.target.value as "Latest" | "Popular")}
                 className="cursor-pointer appearance-none border-0 bg-transparent pr-5 text-[11px] font-medium outline-none"
               >
                 <option value="Latest">Latest</option>
@@ -645,9 +679,7 @@ export default function AnonymousThoughts() {
                 <Sparkles className="h-6 w-6" />
               </div>
 
-              <h3 className="mt-4 text-base font-semibold">
-                Nothing here yet
-              </h3>
+              <h3 className="mt-4 text-base font-semibold">Nothing here yet</h3>
 
               <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
                 Be the first person to share a thought in this space.
@@ -708,9 +740,7 @@ export default function AnonymousThoughts() {
                       </div>
 
                       <div>
-                        <div className="text-xs font-semibold text-foreground">
-                          Anonymous
-                        </div>
+                        <div className="text-xs font-semibold text-foreground">Anonymous</div>
                         <div className="mt-0.5 text-[10px] text-muted-foreground">
                           {relativeTime(post.created_at)}
                         </div>
@@ -727,9 +757,7 @@ export default function AnonymousThoughts() {
                   </div>
 
                   {/* TITLE */}
-                  <h3 className="mt-3 text-sm font-bold leading-5 text-foreground">
-                    {post.title}
-                  </h3>
+                  <h3 className="mt-3 text-sm font-bold leading-5 text-foreground">{post.title}</h3>
 
                   {/* BODY */}
                   <p className="mt-1.5 whitespace-pre-wrap text-xs leading-5 text-muted-foreground sm:text-sm sm:leading-6">
@@ -772,11 +800,7 @@ export default function AnonymousThoughts() {
                         }`}
                         aria-label="Like anonymous thought"
                       >
-                        <Heart
-                          className={`h-4 w-4 ${
-                            post.liked_by_me ? "fill-current" : ""
-                          }`}
-                        />
+                        <Heart className={`h-4 w-4 ${post.liked_by_me ? "fill-current" : ""}`} />
                         {post.likes_count}
                       </button>
 
@@ -827,8 +851,8 @@ export default function AnonymousThoughts() {
         <div className="flex flex-col items-center justify-center gap-2 py-5 text-center text-[11px] text-muted-foreground sm:flex-row">
           <ShieldCheck className="h-4 w-4 text-violet-500" />
           <span>
-            Your identity stays hidden. Anonymous posts are supportive spaces
-            with no public comments.
+            Your identity stays hidden. Anonymous posts are supportive spaces with no public
+            comments.
           </span>
         </div>
       </div>
