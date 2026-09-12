@@ -177,6 +177,7 @@ All colors MUST be HSL.
 
 /* Mood slider — custom thumb, hides native browser styling */
 .mood-slider {
+  height: 12px;
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
@@ -267,4 +268,43 @@ All colors MUST be HSL.
   border: none;
 
   cursor: grab;
+}
+/* Dashboard mood slider */
+.mood-slider {
+  height: 12px;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  touch-action: pan-y;
+}
+
+/* Chrome, Safari and Edge */
+.mood-slider::-webkit-slider-thumb {
+  width: 54px;
+  height: 54px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  cursor: grab;
+}
+
+/* Firefox */
+.mood-slider::-moz-range-thumb {
+  width: 54px;
+  height: 54px;
+  background: transparent;
+  border: none;
+  cursor: grab;
+}
+
+/* Track */
+.mood-slider::-webkit-slider-runnable-track {
+  height: 12px;
+  background: transparent;
+}
+
+.mood-slider::-moz-range-track {
+  height: 12px;
+  background: transparent;
 }
