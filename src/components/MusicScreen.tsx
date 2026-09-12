@@ -153,6 +153,13 @@ const playlists: Playlist[] = [
     src: `${import.meta.env.BASE_URL}Music/KhoGayeHumKahan.mp3`,
     available: true,
   },
+    {
+    title: "Safarnama",
+    duration: "4:12",
+    artist: "Lucky Ali",
+    src: `${import.meta.env.BASE_URL}Music/Safarnama.mp3`,
+    available: true,
+  },
   {
     title: "Love You Zindagi",
     duration: "3:52",
