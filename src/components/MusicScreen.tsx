@@ -67,7 +67,7 @@ function AlbumArtwork({ variant, small = false }: AlbumArtworkProps) {
  */
 const playlists: Playlist[] = [
   {
-    title: "-Sukoon🫀-Marham-e-Dil",
+    title: "ALL SONGS🎵",
    tracks: [
   {
     title: "Aao Milo Chalen",
