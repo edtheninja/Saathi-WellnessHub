@@ -625,6 +625,7 @@ export default function Dashboard(): JSX.Element {
 
             {/* Slider */}
             <div className="relative mt-10 px-2">
+              {/* Gradient track */}
               <div
                 className="absolute left-2 right-2 top-1/2 h-3 -translate-y-1/2 rounded-full shadow-inner"
                 style={{
@@ -633,43 +634,68 @@ export default function Dashboard(): JSX.Element {
                 }}
               />
 
-              {/* Slider value bubble */}
+              {/* Glass mood dragger */}
               <div
-                className="pointer-events-none absolute top-1/2 z-20 flex flex-col items-center transition-[left] duration-100 ease-out"
+                className="pointer-events-none absolute top-1/2 z-20 transition-[left] duration-75 ease-out"
                 style={{
                   left: `${moodValue}%`,
-                  transform: "translate(-50%, 18px)",
+                  transform: "translate(-50%, -50%)",
                 }}
               >
-                <div className="h-0 w-0 border-l-[7px] border-r-[7px] border-b-[8px] border-l-transparent border-r-transparent border-b-primary" />
+                <motion.div
+                  animate={{
+                    scale: isDragging ? 1.08 : 1,
+                  }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 300,
+                    damping: 18,
+                  }}
+                  className="relative"
+                >
+                  {/* Small glass circle */}
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full border-[4px] border-primary bg-background/90 shadow-[0_6px_18px_rgba(80,60,130,0.22)] backdrop-blur-xl sm:h-16 sm:w-16">
+                    <motion.span
+                      key={currentMood.emoji}
+                      initial={{ scale: 0.75, opacity: 0 }}
+                      animate={{
+                        scale: isDragging ? 1.12 : 1,
+                        opacity: 1,
+                      }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 15,
+                      }}
+                      className="text-3xl leading-none select-none sm:text-4xl"
+                    >
+                      {currentMood.emoji}
+                    </motion.span>
+                  </div>
 
-                <div className="mt-[-1px] flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-bold leading-none text-primary-foreground shadow-md">
-                  <span
-                    className="text-base leading-none transition-transform duration-150 ease-out"
-                    style={{
-                      transform: isDragging ? "scale(1.6)" : "scale(1)",
-                    }}
-                  >
-                    {currentMood.emoji}
-                  </span>
-
-                  <span>{moodValue}</span>
-                </div>
+                  {/* Score bubble */}
+                  <div className="absolute -top-11 left-1/2 -translate-x-1/2 rounded-xl bg-primary px-3 py-1 text-sm font-bold text-primary-foreground shadow-md">
+                    {moodValue}
+                  </div>
+                </motion.div>
               </div>
 
+              {/* Real draggable range input */}
               <input
                 type="range"
                 min="0"
                 max="100"
                 step="1"
                 value={moodValue}
-                onChange={(e) => setMoodValue(Number(e.target.value))}
+                onChange={(event) =>
+                  setMoodValue(Number(event.target.value))
+                }
                 onMouseDown={() => setIsDragging(true)}
                 onMouseUp={() => setIsDragging(false)}
                 onTouchStart={() => setIsDragging(true)}
                 onTouchEnd={() => setIsDragging(false)}
                 onBlur={() => setIsDragging(false)}
-                className="mood-slider relative z-10 h-3 w-full cursor-pointer appearance-none bg-transparent"
+                className="mood-slider relative z-30 h-3 w-full cursor-grab appearance-none bg-transparent"
                 aria-label="Current mood"
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -692,7 +718,6 @@ export default function Dashboard(): JSX.Element {
                 ))}
               </div>
             </div>
-
             {/* Continue */}
             <div className="mt-8 flex justify-center">
               <motion.button
@@ -752,15 +777,14 @@ export default function Dashboard(): JSX.Element {
                   {/* Decorative card leaf */}
                   <svg
                     viewBox="0 0 130 150"
-                    className={`pointer-events-none absolute -bottom-5 -right-4 h-36 w-32 opacity-30 transition-all duration-500 group-hover:translate-x-1 group-hover:-translate-y-1 ${
-                      f.doodle === "blue"
-                        ? "text-blue-400"
-                        : f.doodle === "green"
-                          ? "text-emerald-400"
-                          : f.doodle === "pink"
-                            ? "text-rose-400"
-                            : "text-purple-400"
-                    }`}
+                    className={`pointer-events-none absolute -bottom-5 -right-4 h-36 w-32 opacity-30 transition-all duration-500 group-hover:translate-x-1 group-hover:-translate-y-1 ${f.doodle === "blue"
+                      ? "text-blue-400"
+                      : f.doodle === "green"
+                        ? "text-emerald-400"
+                        : f.doodle === "pink"
+                          ? "text-rose-400"
+                          : "text-purple-400"
+                      }`}
                     aria-hidden="true"
                   >
                     <path
@@ -807,8 +831,8 @@ export default function Dashboard(): JSX.Element {
                       style={
                         custom
                           ? {
-                              backgroundColor: hslToCss(custom),
-                            }
+                            backgroundColor: hslToCss(custom),
+                          }
                           : undefined
                       }
                     >
