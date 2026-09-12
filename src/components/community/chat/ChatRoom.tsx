@@ -69,7 +69,7 @@ export default function ChatRoom({ room }: Props) {
         }
 
         const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/community/rooms/${room.id}/messages`,
+          `${import.meta.env.VITE_API_URL}/community/rooms/${room.id}/messages`,
           {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -235,7 +235,7 @@ const saveMessage = async (message: ChatMessage) => {
         }
 
         const response = await fetch(
-            `${import.meta.env.VITE_API_URL}/api/community/rooms/${room.id}/messages`,
+            `${import.meta.env.VITE_API_URL}/community/rooms/${room.id}/messages`,
             {
                 method: "POST",
 
