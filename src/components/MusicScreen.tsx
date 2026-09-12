@@ -1,872 +1,3038 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { ChangeEvent } from "react";
 import {
-  ChevronDown,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import {
   Heart,
   ListMusic,
   MoreHorizontal,
+  Music2,
   Pause,
   Play,
+  Repeat2,
+  Search,
+  Shuffle,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   Volume2,
-  ChevronRight,
-  Shuffle,
 } from "lucide-react";
 
+import musicLibrary from "virtual:music-library";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
+type MusicFile = {
+  name: string;
+  src?: string;
+};
+
 type Track = {
+  id: string;
   title: string;
-  duration: string;
   artist: string;
   src: string;
-  available?: boolean;
+  duration: number;
 };
 
-type Playlist = {
-  title: string;
-  tracks: Track[];
-  color: string;
-  artwork: "mint" | "ocean" | "purple";
-};
+/* =========================================================
+   HELPERS
+========================================================= */
 
-type AlbumArtworkProps = {
-  variant: Playlist["artwork"];
-  small?: boolean;
-};
-
-function AlbumArtwork({ variant, small = false }: AlbumArtworkProps) {
-  const variantClass = {
-    mint: "from-emerald-100 via-teal-200 to-slate-700",
-    ocean: "from-sky-100 via-blue-200 to-slate-700",
-    purple: "from-violet-100 via-purple-200 to-slate-700",
-  }[variant];
-
-  return (
-    <div
-      className={`relative shrink-0 overflow-hidden rounded-[1.25rem] bg-gradient-to-br ${variantClass} shadow-inner ${
-        small ? "h-14 w-14" : "aspect-square w-full"
-      }`}
-      aria-hidden="true"
-    >
-      <div className="absolute inset-0 bg-slate-950/20" />
-      <div className="absolute left-[18%] top-[20%] h-[62%] w-[62%] -rotate-[28deg] rounded-[55%_45%_58%_42%] border border-white/55 bg-white/25 shadow-lg backdrop-blur-[2px]" />
-      <div className="absolute left-[48%] top-[8%] h-[78%] w-px rotate-[28deg] bg-white/55" />
-      <div className="absolute left-[24%] top-[50%] h-px w-[58%] rotate-[28deg] bg-white/35" />
-      <div className="absolute inset-x-3 bottom-3 text-[8px] font-semibold uppercase tracking-[0.2em] text-white/80">
-        Saathi
-      </div>
-    </div>
-  );
+function createTrackId(filename: string) {
+  return filename
+    .toLowerCase()
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-/*
- * ORIGINAL MUSIC LIBRARY — kept intact.
- * Only the three files currently present in public/Music are playable.
- * The remaining tracks stay visible as placeholders until their audio
- * files are added.
- */
-const playlists: Playlist[] = [
-  {
-    title: "ALL SONGS🎵",
-   tracks: [
-  {
-    title: "Aao Milo Chalen",
-    duration: "4:32",
-    artist: "Shaan, Ustad Sultan Khan",
-    src: `${import.meta.env.BASE_URL}Music/AaoMiloChalen.mp3`,
-    available: true,
-  },
-  {
-    title: "Badtameez Dil",
-    duration: "4:12",
-    artist: "Benny Dayal, Shefali Alvares",
-    src: `${import.meta.env.BASE_URL}Music/BadtameezDil.mp3`,
-    available: true,
-  },
-  {
-    title: "Banjara",
-    duration: "5:36",
-    artist: "Mohammed Irfan",
-    src: `${import.meta.env.BASE_URL}Music/Banjara.mp3`,
-    available: true,
-  },
-  {
-    title: "Channa Mereya",
-    duration: "4:49",
-    artist: "Arijit Singh",
-    src: `${import.meta.env.BASE_URL}Music/ChannaMereya.mp3`,
-    available: true,
-  },
-  {
-    title: "Gallan Goodiyaan",
-    duration: "4:56",
-    artist: "Various Artists",
-    src: `${import.meta.env.BASE_URL}Music/GallanGoodiyaan.mp3`,
-    available: true,
-  },
-  {
-    title: "Humdard",
-    duration: "4:20",
-    artist: "Arijit Singh",
-    src: `${import.meta.env.BASE_URL}Music/Humdard.mp3`,
-    available: true,
-  },
-  {
-    title: "Iktara",
-    duration: "4:13",
-    artist: "Kavita Seth, Amitabh Bhattacharya",
-    src: `${import.meta.env.BASE_URL}Music/Iktara.mp3`,
-    available: true,
-  },
-  {
-    title: "Ilahi",
-    duration: "3:51",
-    artist: "Arijit Singh",
-    src: `${import.meta.env.BASE_URL}Music/Ilahi.mp3`,
-    available: true,
-  },
-  {
-    title: "Jiyein Kyun",
-    duration: "4:24",
-    artist: "Papon",
-    src: `${import.meta.env.BASE_URL}Music/JiyeinKyun.mp3`,
-    available: true,
-  },
-  {
-    title: "Kabira (Encore)",
-    duration: "4:30",
-    artist: "Arijit Singh, Harshdeep Kaur",
-    src: `${import.meta.env.BASE_URL}Music/KabiraEncore.mp3`,
-    available: true,
-  },
-  {
-    title: "Khaabon Ke Parinday",
-    duration: "4:11",
-    artist: "Mohit Chauhan, Alyssa Mendonsa",
-    src: `${import.meta.env.BASE_URL}Music/KhaabonKeParinday.mp3`,
-    available: true,
-  },
-  {
-    title: "Kho Gaye Hum Kahan",
-    duration: "3:33",
-    artist: "Jasleen Royal, Prateek Kuhad",
-    src: `${import.meta.env.BASE_URL}Music/KhoGayeHumKahan.mp3`,
-    available: true,
-  },
-    {
-    title: "Safarnama",
-    duration: "4:12",
-    artist: "Lucky Ali",
-    src: `${import.meta.env.BASE_URL}Music/Safarnama.mp3`,
-    available: true,
-  },
-  {
-    title: "Love You Zindagi",
-    duration: "3:52",
-    artist: "Jasleen Royal, Amit Trivedi",
-    src: `${import.meta.env.BASE_URL}Music/LoveYouZindagi.mp3`,
-    available: true,
-  },
-  {
-    title: "Patakha Guddi",
-    duration: "4:45",
-    artist: "Nooran Sisters",
-    src: `${import.meta.env.BASE_URL}Music/PatakhaGuddi.mp3`,
-    available: true,
-  },
-  {
-    title: "Phir Se Ud Chala",
-    duration: "4:28",
-    artist: "Mohit Chauhan",
-    src: `${import.meta.env.BASE_URL}Music/PhirSeUdChala.mp3`,
-    available: true,
-  },
+function getTitle(filename: string) {
+  return filename
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  {
-    title: "Shaam",
-    duration: "3:17",
-    artist: "Nikhil D'Souza, Amit Trivedi, Neuman Pinto",
-    src: `${import.meta.env.BASE_URL}Music/Shaam.mp3`,
-    available: true,
-  },
-  {
-    title: "Sooraj Ki Baahon Mein",
-    duration: "3:22",
-    artist: "Loy Mendonsa, Dominique Cerejo, Clinton Cerejo",
-    src: `${import.meta.env.BASE_URL}Music/SoorajKiBaahonMein.mp3`,
-    available: true,
-  },
-  {
-    title: "Tere Binaa",
-    duration: "5:09",
-    artist: "A.R. Rahman",
-    src: `${import.meta.env.BASE_URL}Music/Terebina.mp3`,
-    available: true,
-  },
-  {
-    title: "Tu Kisi Rail Si",
-    duration: "3:51",
-    artist: "Swanand Kirkire",
-    src: `${import.meta.env.BASE_URL}Music/TuKisiRailSi.mp3`,
-    available: true,
-  },
-  {
-    title: "Tum Se Hi",
-    duration: "5:21",
-    artist: " Mohit Chauhan",
-    src: `${import.meta.env.BASE_URL}Music/Tum Se Hi - Jab We Met (128 kbps).mp3`,
-    available: true,
-  },
-  {
-    title: "Tumhi Ho Bandhu",
-    duration: "4:43",
-    artist: "Neeraj Shridhar, Kavita Seth",
-    src: `${import.meta.env.BASE_URL}Music/TumhiHoBandhu.mp3`,
-    available: true,
-  },
-],
-    color: "bg-gradient-mint",
-    artwork: "mint",
-  },
-  {
-    title: "Meditation Music",
-    tracks: [
-      { title: "Tibetan Bowls", duration: "8:30", artist: "Zen Garden", src: "", available: false },
-      { title: "Crystal Singing", duration: "11:15", artist: "Healing Sounds", src: "", available: false },
-      { title: "Peaceful Piano", duration: "9:42", artist: "Calm Keys", src: "", available: false },
-    ],
-    color: "bg-gradient-ocean",
-    artwork: "ocean",
-  },
-  {
-    title: "Sleep Stories",
-    tracks: [
-      { title: "Moonlit Garden", duration: "22:30", artist: "Sleep Stories", src: "", available: false },
-      { title: "Forest Whispers", duration: "18:45", artist: "Bedtime Tales", src: "", available: false },
-      { title: "Ocean Journey", duration: "25:12", artist: "Dream Voyages", src: "", available: false },
-    ],
-    color: "bg-gradient-peaceful",
-    artwork: "purple",
-  },
-];
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "0:00";
+  }
 
-const MusicScreen = () => {
-  const [currentTrack, setCurrentTrack] = useState(0);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${minutes}:${remainingSeconds}`;
+}
+
+/* =========================================================
+   MUSIC SCREEN
+========================================================= */
+
+export default function MusicScreen() {
+  /* =======================================================
+     LIBRARY
+  ======================================================= */
+
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+
+  /* =======================================================
+     PLAYER
+  ======================================================= */
+
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [expandedPlaylist, setExpandedPlaylist] = useState<number | null>(null);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const currentTrackRef = useRef(0);
-  const startTrackRef = useRef<(index: number) => void>(() => {});
+  const [volume, setVolume] = useState(0.75);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isShuffled, setIsShuffled] = useState(false);
+  const [isRepeated, setIsRepeated] = useState(false);
 
-  const currentPlaylist = playlists[0];
-  const track = currentPlaylist.tracks[currentTrack];
+  /* =======================================================
+     SEARCH
+  ======================================================= */
+
+  const [search, setSearch] = useState("");
+
+  /* =======================================================
+     AUDIO
+  ======================================================= */
+
+  const audioRef =
+    useRef<HTMLAudioElement | null>(null);
+
+  /* =======================================================
+     WEB AUDIO API
+  ======================================================= */
+
+  const audioContextRef =
+    useRef<AudioContext | null>(null);
+
+  const analyserRef =
+    useRef<AnalyserNode | null>(null);
+
+  const sourceNodeRef =
+    useRef<MediaElementAudioSourceNode | null>(null);
+
+  const visualizerDataRef =
+    useRef<Uint8Array | null>(null);
+
+  const animationFrameRef =
+    useRef<number | null>(null);
+
+  const visualizerCanvasRef =
+    useRef<HTMLCanvasElement | null>(null);
+
+  /* =======================================================
+     THEME
+  ======================================================= */
+
+  const theme = useMemo(
+    () => ({
+      primary: "hsl(var(--primary))",
+      primaryForeground:
+        "hsl(var(--primary-foreground))",
+
+      background: "hsl(var(--background))",
+      foreground: "hsl(var(--foreground))",
+
+      card: "hsl(var(--card))",
+      cardForeground:
+        "hsl(var(--card-foreground))",
+
+      secondary: "hsl(var(--secondary))",
+      secondaryForeground:
+        "hsl(var(--secondary-foreground))",
+
+      accent: "hsl(var(--accent))",
+      accentForeground:
+        "hsl(var(--accent-foreground))",
+
+      muted: "hsl(var(--muted))",
+      mutedForeground:
+        "hsl(var(--muted-foreground))",
+
+      border: "hsl(var(--border))",
+    }),
+    []
+  );
+
+  /* =======================================================
+     LOAD REAL MUSIC DIRECTORY
+  ======================================================= */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMusic() {
+      setLibraryLoading(true);
+
+      const files =
+        (musicLibrary as MusicFile[]) ?? [];
+
+      /*
+       * Convert every real file returned by the Vite
+       * music-library plugin into a track.
+       */
+      const baseTracks: Track[] =
+        files.map((file) => {
+          const src =
+            file.src ??
+            `${import.meta.env.BASE_URL}Music/${encodeURIComponent(
+              file.name
+            )}`;
+
+          return {
+            id: createTrackId(file.name),
+            title: getTitle(file.name),
+            artist: "Local Music",
+            src,
+            duration: 0,
+          };
+        });
+
+      /*
+       * Read actual duration from every audio file.
+       */
+      const tracksWithMetadata =
+        await Promise.all(
+          baseTracks.map(
+            (track) =>
+              new Promise<Track>((resolve) => {
+                const tempAudio =
+                  document.createElement("audio");
+
+                tempAudio.preload = "metadata";
+                tempAudio.src = track.src;
+
+                const cleanup = () => {
+                  tempAudio.pause();
+                  tempAudio.removeAttribute("src");
+                  tempAudio.load();
+                };
+
+                tempAudio.addEventListener(
+                  "loadedmetadata",
+                  () => {
+                    const realDuration =
+                      Number.isFinite(
+                        tempAudio.duration
+                      )
+                        ? tempAudio.duration
+                        : 0;
+
+                    resolve({
+                      ...track,
+                      duration: realDuration,
+                    });
+
+                    cleanup();
+                  },
+                  { once: true }
+                );
+
+                tempAudio.addEventListener(
+                  "error",
+                  () => {
+                    resolve(track);
+                    cleanup();
+                  },
+                  { once: true }
+                );
+              })
+          )
+        );
+
+      if (!cancelled) {
+        setTracks(tracksWithMetadata);
+        setLibraryLoading(false);
+      }
+    }
+
+    loadMusic();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* =======================================================
+     CURRENT TRACK
+  ======================================================= */
+
+  const currentTrack =
+    tracks[currentTrackIndex] ?? null;
+
+  /* =======================================================
+     AUDIO ELEMENT
+  ======================================================= */
 
   const getAudio = useCallback(() => {
     if (!audioRef.current) {
-      audioRef.current = new Audio();
-      audioRef.current.preload = "metadata";
+      const audio = new Audio();
+
+      audio.preload = "metadata";
+      audio.volume = volume;
+
+      audioRef.current = audio;
     }
+
     return audioRef.current;
-  }, []);
+  }, [volume]);
 
-  const startTrack = useCallback(
-    (index: number) => {
-      const selected = currentPlaylist.tracks[index];
+  /* =======================================================
+     INITIALIZE ANALYSER
+  ======================================================= */
 
-      if (!selected?.available || !selected.src) return;
+  const initializeAnalyser = useCallback(
+    (audio: HTMLAudioElement) => {
+      if (
+        audioContextRef.current &&
+        analyserRef.current &&
+        sourceNodeRef.current
+      ) {
+        return audioContextRef.current;
+      }
 
-      const audio = getAudio();
+      const AudioContextClass =
+        window.AudioContext ??
+        (
+          window as typeof window & {
+            webkitAudioContext?: typeof AudioContext;
+          }
+        ).webkitAudioContext;
 
-      currentTrackRef.current = index;
-      setCurrentTrack(index);
-      setCurrentTime(0);
-      setDuration(0);
+      if (!AudioContextClass) {
+        return null;
+      }
 
-      audio.pause();
-      audio.src = selected.src;
-      audio.load();
+      try {
+        const audioContext =
+          new AudioContextClass();
 
-      const playPromise = audio.play();
+        const source =
+          audioContext.createMediaElementSource(
+            audio
+          );
 
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => setIsPlaying(true))
-          .catch((error: unknown) => {
-            // Ignore expected AbortErrors caused by a newer play/pause request.
-            if (error instanceof DOMException && error.name === "AbortError") return;
-            console.error("Unable to play audio:", error);
-            setIsPlaying(false);
-          });
+        const analyser =
+          audioContext.createAnalyser();
+
+        analyser.fftSize = 512;
+
+        analyser.minDecibels = -85;
+        analyser.maxDecibels = -8;
+
+        analyser.smoothingTimeConstant = 0.86;
+
+        source.connect(analyser);
+        analyser.connect(
+          audioContext.destination
+        );
+
+        audioContextRef.current =
+          audioContext;
+
+        sourceNodeRef.current =
+          source;
+
+        analyserRef.current =
+          analyser;
+
+        visualizerDataRef.current =
+          new Uint8Array(
+            analyser.frequencyBinCount
+          );
+
+        return audioContext;
+      } catch (error) {
+        console.warn(
+          "Could not initialize audio visualizer:",
+          error
+        );
+
+        return null;
       }
     },
-    [currentPlaylist.tracks, getAudio],
+    []
   );
 
-  startTrackRef.current = startTrack;
+  /* =======================================================
+     PLAY TRACK
+  ======================================================= */
 
-  const nextTrack = useCallback(() => {
-    const next = (currentTrackRef.current + 1) % currentPlaylist.tracks.length;
-    startTrackRef.current(next);
-  }, [currentPlaylist.tracks.length]);
+  const playTrack = useCallback(
+    async (index: number) => {
+      const selectedTrack =
+        tracks[index];
 
-  const prevTrack = () => {
-    const prev =
-      currentTrackRef.current === 0
-        ? currentPlaylist.tracks.length - 1
-        : currentTrackRef.current - 1;
-
-    startTrack(prev);
-  };
-
-  /*
-   * IMPORTANT:
-   * This effect intentionally does NOT depend on nextTrack.
-   * The old implementation recreated nextTrack whenever currentTrack changed,
-   * which caused this cleanup to run and call audio.pause() immediately after
-   * audio.play(), producing:
-   * "AbortError: The play() request was interrupted by a call to pause()."
-   */
-  useEffect(() => {
-    const audio = getAudio();
-
-    const updateTime = () => setCurrentTime(audio.currentTime);
-
-    const updateDuration = () => {
-      if (Number.isFinite(audio.duration)) {
-        setDuration(audio.duration);
+      if (!selectedTrack) {
+        return;
       }
+
+      const audio =
+        getAudio();
+
+      const audioContext =
+        initializeAnalyser(audio);
+
+      if (
+        audioContext &&
+        audioContext.state ===
+          "suspended"
+      ) {
+        await audioContext
+          .resume()
+          .catch(() => {});
+      }
+
+      audio.pause();
+
+      audio.src =
+        selectedTrack.src;
+
+      audio.currentTime = 0;
+
+      setCurrentTrackIndex(index);
+      setCurrentTime(0);
+      setDuration(selectedTrack.duration);
+      setIsFavorite(false);
+
+      audio.load();
+
+      try {
+        await audio.play();
+
+        setIsPlaying(true);
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        console.error(
+          "Unable to play audio:",
+          error
+        );
+
+        setIsPlaying(false);
+      }
+    },
+    [
+      tracks,
+      getAudio,
+      initializeAnalyser,
+    ]
+  );
+
+  /* =======================================================
+     AUDIO EVENTS
+  ======================================================= */
+
+  useEffect(() => {
+    const audio =
+      getAudio();
+
+    const handleTimeUpdate =
+      () => {
+        setCurrentTime(
+          audio.currentTime
+        );
+      };
+
+    const handleMetadata =
+      () => {
+        if (
+          Number.isFinite(
+            audio.duration
+          )
+        ) {
+          setDuration(
+            audio.duration
+          );
+        }
+      };
+
+    const handlePlay = () => {
+      setIsPlaying(true);
     };
 
-    const handleEnded = () => {
-      nextTrack();
+    const handlePause = () => {
+      setIsPlaying(false);
     };
 
-    audio.addEventListener("timeupdate", updateTime);
-    audio.addEventListener("loadedmetadata", updateDuration);
-    audio.addEventListener("ended", handleEnded);
+    const handleEnded =
+      async () => {
+        if (!tracks.length) {
+          return;
+        }
+
+        if (isRepeated) {
+          audio.currentTime = 0;
+
+          try {
+            await audio.play();
+            setIsPlaying(true);
+          } catch {
+            setIsPlaying(false);
+          }
+
+          return;
+        }
+
+        let nextIndex: number;
+
+        if (isShuffled) {
+          if (tracks.length === 1) {
+            nextIndex = 0;
+          } else {
+            do {
+              nextIndex =
+                Math.floor(
+                  Math.random() *
+                    tracks.length
+                );
+            } while (
+              nextIndex ===
+              currentTrackIndex
+            );
+          }
+        } else {
+          nextIndex =
+            (currentTrackIndex + 1) %
+            tracks.length;
+        }
+
+        await playTrack(nextIndex);
+      };
+
+    audio.addEventListener(
+      "timeupdate",
+      handleTimeUpdate
+    );
+
+    audio.addEventListener(
+      "loadedmetadata",
+      handleMetadata
+    );
+
+    audio.addEventListener(
+      "play",
+      handlePlay
+    );
+
+    audio.addEventListener(
+      "pause",
+      handlePause
+    );
+
+    audio.addEventListener(
+      "ended",
+      handleEnded
+    );
 
     return () => {
-      audio.removeEventListener("timeupdate", updateTime);
-      audio.removeEventListener("loadedmetadata", updateDuration);
-      audio.removeEventListener("ended", handleEnded);
-      audio.pause();
+      audio.removeEventListener(
+        "timeupdate",
+        handleTimeUpdate
+      );
+
+      audio.removeEventListener(
+        "loadedmetadata",
+        handleMetadata
+      );
+
+      audio.removeEventListener(
+        "play",
+        handlePlay
+      );
+
+      audio.removeEventListener(
+        "pause",
+        handlePause
+      );
+
+      audio.removeEventListener(
+        "ended",
+        handleEnded
+      );
     };
-  }, [getAudio, nextTrack]);
+  }, [
+    getAudio,
+    tracks,
+    currentTrackIndex,
+    isRepeated,
+    isShuffled,
+    playTrack,
+  ]);
 
-  const togglePlay = () => {
-    const audio = getAudio();
+  /* =======================================================
+     VOLUME
+  ======================================================= */
 
-    if (!track.available || !track.src) return;
-
-    if (audio.paused) {
-      const playPromise = audio.play();
-
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => setIsPlaying(true))
-          .catch((error: unknown) => {
-            if (error instanceof DOMException && error.name === "AbortError") return;
-            console.error("Unable to resume audio:", error);
-            setIsPlaying(false);
-          });
-      }
-    } else {
-      audio.pause();
-      setIsPlaying(false);
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume =
+        volume;
     }
-  };
+  }, [volume]);
 
-  const handleSeek = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = Number(event.target.value);
-    const audio = getAudio();
+  /* =======================================================
+     REAL-TIME CANVAS VISUALIZER
+  ======================================================= */
 
-    if (!Number.isFinite(value) || !track.available || duration <= 0) return;
+  useEffect(() => {
+    const canvas =
+      visualizerCanvasRef.current;
 
-    audio.currentTime = value;
+    const analyser =
+      analyserRef.current;
+
+    const data =
+      visualizerDataRef.current;
+
+    if (!canvas || !analyser || !data) {
+      return;
+    }
+
+    const context =
+      canvas.getContext("2d");
+
+    if (!context) {
+      return;
+    }
+
+    let width = 0;
+    let height = 0;
+
+    const resize = () => {
+      const rect =
+        canvas.getBoundingClientRect();
+
+      const pixelRatio =
+        Math.min(
+          window.devicePixelRatio || 1,
+          2
+        );
+
+      width = rect.width;
+      height = rect.height;
+
+      canvas.width =
+        Math.max(
+          1,
+          Math.floor(
+            width * pixelRatio
+          )
+        );
+
+      canvas.height =
+        Math.max(
+          1,
+          Math.floor(
+            height * pixelRatio
+          )
+        );
+
+      context.setTransform(
+        pixelRatio,
+        0,
+        0,
+        pixelRatio,
+        0,
+        0
+      );
+    };
+
+    const getThemeColor = (
+      variable: string,
+      fallback: string
+    ) => {
+      const value =
+        getComputedStyle(
+          document.documentElement
+        )
+          .getPropertyValue(variable)
+          .trim();
+
+      return value
+        ? `hsl(${value})`
+        : fallback;
+    };
+
+    const withAlpha = (
+      color: string,
+      alpha: number
+    ) => {
+      return color
+        .replace(
+          "hsl(",
+          "hsla("
+        )
+        .replace(
+          ")",
+          `, ${alpha})`
+        );
+    };
+
+    const draw = () => {
+      if (!width || !height) {
+        resize();
+      }
+
+      analyser.getByteFrequencyData(
+        data
+      );
+
+      const primary =
+        getThemeColor(
+          "--primary",
+          "hsl(257 90% 60%)"
+        );
+
+      const accent =
+        getThemeColor(
+          "--accent",
+          "hsl(340 70% 60%)"
+        );
+
+      const foreground =
+        getThemeColor(
+          "--foreground",
+          "hsl(180 40% 15%)"
+        );
+
+      context.clearRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+      const centerX =
+        width / 2;
+
+      const centerY =
+        height / 2;
+
+      const baseRadius =
+        Math.min(
+          width,
+          height
+        ) * 0.255;
+
+      const maxBarLength =
+        Math.min(
+          width,
+          height
+        ) * 0.22;
+
+      const bars = 96;
+
+      /* -----------------------------------------------------
+         Average energy
+      ----------------------------------------------------- */
+
+      let total = 0;
+
+      for (
+        let i = 0;
+        i < data.length;
+        i++
+      ) {
+        total += data[i];
+      }
+
+      const average =
+        total /
+        (data.length * 255);
+
+      /* -----------------------------------------------------
+         Background glow
+      ----------------------------------------------------- */
+
+      const glow =
+        context.createRadialGradient(
+          centerX,
+          centerY,
+          0,
+          centerX,
+          centerY,
+          Math.min(width, height) * 0.48
+        );
+
+      glow.addColorStop(
+        0,
+        withAlpha(
+          primary,
+          0.16 +
+            average * 0.18
+        )
+      );
+
+      glow.addColorStop(
+        0.5,
+        withAlpha(
+          accent,
+          0.06 +
+            average * 0.08
+        )
+      );
+
+      glow.addColorStop(
+        1,
+        "transparent"
+      );
+
+      context.fillStyle = glow;
+
+      context.fillRect(
+        0,
+        0,
+        width,
+        height
+      );
+
+      /* -----------------------------------------------------
+         Subtle circular rings
+      ----------------------------------------------------- */
+
+      context.save();
+
+      for (
+        let ring = 0;
+        ring < 4;
+        ring++
+      ) {
+        const radius =
+          baseRadius +
+          ring *
+            Math.min(
+              width,
+              height
+            ) *
+            0.085;
+
+        context.beginPath();
+
+        context.arc(
+          centerX,
+          centerY,
+          radius,
+          0,
+          Math.PI * 2
+        );
+
+        context.strokeStyle =
+          withAlpha(
+            primary,
+            0.07 -
+              ring * 0.012
+          );
+
+        context.lineWidth =
+          1;
+
+        context.stroke();
+      }
+
+      /* -----------------------------------------------------
+         Real spectrum bars
+      ----------------------------------------------------- */
+
+      for (
+        let i = 0;
+        i < bars;
+        i++
+      ) {
+        const dataIndex =
+          Math.floor(
+            Math.pow(
+              i / bars,
+              1.45
+            ) *
+              data.length *
+              0.78
+          );
+
+        const raw =
+          (data[dataIndex] ?? 0) /
+          255;
+
+        const smoothed =
+          Math.pow(
+            Math.max(
+              raw,
+              0
+            ),
+            0.72
+          );
+
+        const idleAmount =
+          isPlaying
+            ? smoothed
+            : 0.025;
+
+        const angle =
+          (i / bars) *
+            Math.PI *
+            2 -
+          Math.PI / 2;
+
+        /*
+         * Slightly different radius for every
+         * third bar prevents the ring from looking
+         * mechanically uniform.
+         */
+        const innerRadius =
+          baseRadius +
+          (i % 3) * 2;
+
+        const barLength =
+          5 +
+          idleAmount *
+            maxBarLength;
+
+        const outerRadius =
+          innerRadius +
+          barLength;
+
+        const x1 =
+          centerX +
+          Math.cos(angle) *
+            innerRadius;
+
+        const y1 =
+          centerY +
+          Math.sin(angle) *
+            innerRadius;
+
+        const x2 =
+          centerX +
+          Math.cos(angle) *
+            outerRadius;
+
+        const y2 =
+          centerY +
+          Math.sin(angle) *
+            outerRadius;
+
+        const barGradient =
+          context.createLinearGradient(
+            x1,
+            y1,
+            x2,
+            y2
+          );
+
+        barGradient.addColorStop(
+          0,
+          primary
+        );
+
+        barGradient.addColorStop(
+          1,
+          accent
+        );
+
+        context.beginPath();
+
+        context.moveTo(
+          x1,
+          y1
+        );
+
+        context.lineTo(
+          x2,
+          y2
+        );
+
+        context.strokeStyle =
+          barGradient;
+
+        context.globalAlpha =
+          0.55 +
+          idleAmount * 0.5;
+
+        context.lineWidth =
+          i % 4 === 0
+            ? 2.5
+            : 1.8;
+
+        context.lineCap =
+          "round";
+
+        context.stroke();
+
+        /* Bright tip */
+
+        if (
+          idleAmount >
+          0.15
+        ) {
+          context.beginPath();
+
+          context.arc(
+            x2,
+            y2,
+            1.1 +
+              idleAmount * 1.5,
+            0,
+            Math.PI * 2
+          );
+
+          context.fillStyle =
+            i % 5 === 0
+              ? accent
+              : primary;
+
+          context.globalAlpha =
+            0.65 +
+            idleAmount *
+              0.35;
+
+          context.fill();
+        }
+      }
+
+      /* -----------------------------------------------------
+         Rotating particles
+      ----------------------------------------------------- */
+
+      const now =
+        performance.now();
+
+      for (
+        let i = 0;
+        i < 28;
+        i++
+      ) {
+        const angle =
+          (i / 28) *
+            Math.PI *
+            2 +
+          now / 10000;
+
+        const frequency =
+          data[
+            (i * 7) %
+              data.length
+          ] / 255;
+
+        const radius =
+          baseRadius *
+          (1.65 +
+            (i % 4) *
+              0.055);
+
+        const x =
+          centerX +
+          Math.cos(angle) *
+            radius;
+
+        const y =
+          centerY +
+          Math.sin(angle) *
+            radius;
+
+        context.beginPath();
+
+        context.arc(
+          x,
+          y,
+          0.8 +
+            frequency * 2.1,
+          0,
+          Math.PI * 2
+        );
+
+        context.fillStyle =
+          i % 2 === 0
+            ? primary
+            : accent;
+
+        context.globalAlpha =
+          0.18 +
+          frequency * 0.55;
+
+        context.fill();
+      }
+
+      /* -----------------------------------------------------
+         Center glow
+      ----------------------------------------------------- */
+
+      const centerGlow =
+        context.createRadialGradient(
+          centerX,
+          centerY,
+          4,
+          centerX,
+          centerY,
+          baseRadius * 1.8
+        );
+
+      centerGlow.addColorStop(
+        0,
+        withAlpha(
+          primary,
+          0.22 +
+            average * 0.28
+        )
+      );
+
+      centerGlow.addColorStop(
+        0.55,
+        withAlpha(
+          accent,
+          0.08 +
+            average * 0.15
+        )
+      );
+
+      centerGlow.addColorStop(
+        1,
+        "transparent"
+      );
+
+      context.fillStyle =
+        centerGlow;
+
+      context.beginPath();
+
+      context.arc(
+        centerX,
+        centerY,
+        baseRadius * 1.8,
+        0,
+        Math.PI * 2
+      );
+
+      context.fill();
+
+      /* -----------------------------------------------------
+         Center waveform
+      ----------------------------------------------------- */
+
+      context.beginPath();
+
+      const waveformPoints = 110;
+
+      for (
+        let i = 0;
+        i < waveformPoints;
+        i++
+      ) {
+        const dataIndex =
+          Math.floor(
+            (i /
+              waveformPoints) *
+              data.length *
+              0.65
+          );
+
+        const value =
+          data[dataIndex] / 255;
+
+        const x =
+          centerX -
+          baseRadius * 0.72 +
+          (i /
+            (waveformPoints - 1)) *
+            baseRadius *
+            1.44;
+
+        const y =
+          centerY +
+          (value - 0.5) *
+            baseRadius *
+            0.34;
+
+        if (i === 0) {
+          context.moveTo(
+            x,
+            y
+          );
+        } else {
+          context.lineTo(
+            x,
+            y
+          );
+        }
+      }
+
+      context.strokeStyle =
+        withAlpha(
+          foreground,
+          isPlaying
+            ? 0.24
+            : 0.12
+        );
+
+      context.lineWidth = 1.2;
+
+      context.globalAlpha =
+        0.8;
+
+      context.stroke();
+
+      context.restore();
+
+      animationFrameRef.current =
+        requestAnimationFrame(draw);
+    };
+
+    resize();
+
+    animationFrameRef.current =
+      requestAnimationFrame(draw);
+
+    const resizeObserver =
+      new ResizeObserver(
+        resize
+      );
+
+    resizeObserver.observe(
+      canvas
+    );
+
+    return () => {
+      resizeObserver.disconnect();
+
+      if (
+        animationFrameRef.current !==
+        null
+      ) {
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+
+        animationFrameRef.current =
+          null;
+      }
+    };
+  }, [isPlaying]);
+
+  /* =======================================================
+     PLAY / PAUSE
+  ======================================================= */
+
+  const togglePlay =
+    async () => {
+      if (!currentTrack) {
+        return;
+      }
+
+      const audio =
+        getAudio();
+
+      const audioContext =
+        initializeAnalyser(audio);
+
+      if (
+        audioContext &&
+        audioContext.state ===
+          "suspended"
+      ) {
+        await audioContext
+          .resume()
+          .catch(() => {});
+      }
+
+      /*
+       * First play after page load.
+       */
+      if (!audio.src) {
+        audio.src =
+          currentTrack.src;
+
+        audio.load();
+      }
+
+      if (audio.paused) {
+        try {
+          await audio.play();
+          setIsPlaying(true);
+        } catch (error) {
+          if (
+            error instanceof
+              DOMException &&
+            error.name ===
+              "AbortError"
+          ) {
+            return;
+          }
+
+          console.error(
+            "Unable to play:",
+            error
+          );
+        }
+      } else {
+        audio.pause();
+        setIsPlaying(false);
+      }
+    };
+
+  /* =======================================================
+     NEXT
+  ======================================================= */
+
+  const nextTrack =
+    async () => {
+      if (!tracks.length) {
+        return;
+      }
+
+      let nextIndex: number;
+
+      if (isShuffled) {
+        if (tracks.length === 1) {
+          nextIndex = 0;
+        } else {
+          do {
+            nextIndex =
+              Math.floor(
+                Math.random() *
+                  tracks.length
+              );
+          } while (
+            nextIndex ===
+            currentTrackIndex
+          );
+        }
+      } else {
+        nextIndex =
+          (currentTrackIndex + 1) %
+          tracks.length;
+      }
+
+      await playTrack(
+        nextIndex
+      );
+    };
+
+  /* =======================================================
+     PREVIOUS
+  ======================================================= */
+
+  const previousTrack =
+    async () => {
+      if (!tracks.length) {
+        return;
+      }
+
+      /*
+       * Pressing previous after 3 seconds
+       * restarts the current song.
+       */
+      if (currentTime > 3) {
+        const audio =
+          getAudio();
+
+        audio.currentTime =
+          0;
+
+        setCurrentTime(0);
+
+        return;
+      }
+
+      const previousIndex =
+        currentTrackIndex === 0
+          ? tracks.length - 1
+          : currentTrackIndex - 1;
+
+      await playTrack(
+        previousIndex
+      );
+    };
+
+  /* =======================================================
+     SEEK
+  ======================================================= */
+
+  const handleSeek = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const value =
+      Number(
+        event.target.value
+      );
+
+    if (
+      !Number.isFinite(value) ||
+      !currentTrack ||
+      duration <= 0
+    ) {
+      return;
+    }
+
+    const audio =
+      getAudio();
+
+    audio.currentTime =
+      value;
+
     setCurrentTime(value);
   };
 
-  const format = (seconds: number) => {
-    if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  /* =======================================================
+     FILTERED SONGS
+  ======================================================= */
 
-    const minutes = Math.floor(seconds / 60);
-    const remaining = Math.floor(seconds % 60)
-      .toString()
-      .padStart(2, "0");
+  const filteredTracks =
+    useMemo(() => {
+      const query =
+        search
+          .trim()
+          .toLowerCase();
 
-    return `${minutes}:${remaining}`;
-  };
+      if (!query) {
+        return tracks;
+      }
+
+      return tracks.filter(
+        (item) =>
+          item.title
+            .toLowerCase()
+            .includes(query) ||
+          item.artist
+            .toLowerCase()
+            .includes(query)
+      );
+    }, [tracks, search]);
+
+  /* =======================================================
+     RECOMMENDATIONS
+  ======================================================= */
+
+  const recommendations =
+    useMemo(() => {
+      return tracks
+        .filter(
+          (_, index) =>
+            index !==
+            currentTrackIndex
+        )
+        .slice(0, 6);
+    }, [
+      tracks,
+      currentTrackIndex,
+    ]);
+
+  /* =======================================================
+     PROGRESS
+  ======================================================= */
 
   const progress =
-    duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
+    duration > 0
+      ? Math.min(
+          100,
+          (currentTime /
+            duration) *
+            100
+        )
+      : 0;
+
+  /* =======================================================
+     CLEANUP
+  ======================================================= */
 
   useEffect(() => {
-    if (isPlaying) setExpandedPlaylist(0);
-    else setExpandedPlaylist(null);
-  }, [isPlaying]);
+    return () => {
+      if (
+        animationFrameRef.current !==
+        null
+      ) {
+        cancelAnimationFrame(
+          animationFrameRef.current
+        );
+      }
 
-  const waveform = [
-    8, 13, 7, 18, 10, 24, 14, 31, 12, 22, 16, 36, 18, 27, 11, 20,
-    9, 28, 15, 34, 12, 24, 8, 19, 14, 30, 10, 22, 7, 17, 11, 26,
-    9, 20, 13, 29, 8, 16, 12, 23, 10, 18, 7, 15, 11, 21, 8, 14,
-  ];
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute(
+          "src"
+        );
+        audioRef.current.load();
+      }
+
+      sourceNodeRef.current?.disconnect();
+      analyserRef.current?.disconnect();
+
+      if (
+        audioContextRef.current &&
+        audioContextRef.current.state !==
+          "closed"
+      ) {
+        void audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
-    <main className="min-h-screen bg-background px-4 py-5 pb-32 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6 flex items-center justify-between gap-4 px-1">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              aria-label="Music menu"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    <main
+      className="
+        min-h-screen
+        bg-background
+        px-4
+        py-5
+        pb-32
+        text-foreground
+        transition-colors
+        duration-500
+        sm:px-6
+        lg:px-8
+      "
+    >
+      <div
+        className="
+          mx-auto
+          max-w-7xl
+        "
+      >
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
+        <header
+          className="
+            mb-6
+            flex
+            items-center
+            justify-between
+            gap-4
+          "
+        >
+          <div
+            className="
+              flex
+              min-w-0
+              items-center
+              gap-3
+            "
+          >
+            <div
+              className="
+                flex
+                h-10
+                w-10
+                shrink-0
+                items-center
+                justify-center
+                rounded-2xl
+              "
+              style={{
+                backgroundColor:
+                  `color-mix(
+                    in srgb,
+                    ${theme.primary} 10%,
+                    transparent
+                  )`,
+                color:
+                  theme.primary,
+              }}
             >
-              <ChevronDown className="h-4 w-4" />
-            </button>
+              <Music2 className="h-5 w-5" />
+            </div>
 
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <p
+                className="
+                  text-[10px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.2em]
+                  text-muted-foreground
+                "
+              >
                 Saathi Music
               </p>
-              <h1 className="truncate text-lg font-semibold tracking-tight">
+
+              <h1
+                className="
+                  truncate
+                  text-lg
+                  font-semibold
+                  tracking-tight
+                "
+              >
                 Your quiet space
               </h1>
             </div>
           </div>
 
+          <div
+            className="
+              hidden
+              items-center
+              gap-2
+              sm:flex
+            "
+          >
+            <div
+              className="
+                flex
+                w-[270px]
+                items-center
+                gap-2
+                rounded-full
+                border
+                border-border/60
+                bg-card/80
+                px-4
+                py-2.5
+              "
+            >
+              <Search
+                className="
+                  h-4
+                  w-4
+                  shrink-0
+                  text-muted-foreground
+                "
+              />
+
+              <input
+                type="text"
+                value={search}
+                onChange={(event) =>
+                  setSearch(
+                    event.target.value
+                  )
+                }
+                placeholder="Search songs..."
+                className="
+                  min-w-0
+                  flex-1
+                  bg-transparent
+                  text-xs
+                  outline-none
+                  placeholder:text-muted-foreground
+                "
+              />
+            </div>
+
+            <button
+              type="button"
+              aria-label="Filters"
+              className="
+                flex
+                h-10
+                w-10
+                items-center
+                justify-center
+                rounded-full
+                border
+                border-border/60
+                bg-card
+                text-muted-foreground
+                transition
+                hover:bg-muted
+                hover:text-foreground
+              "
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
+          </div>
+
           <button
             type="button"
-            aria-label="Open music queue"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Music library"
+            className="
+              flex
+              h-10
+              w-10
+              shrink-0
+              items-center
+              justify-center
+              rounded-full
+              border
+              border-border/60
+              bg-card
+              text-muted-foreground
+              transition
+              hover:bg-muted
+              hover:text-foreground
+            "
           >
             <ListMusic className="h-4 w-4" />
           </button>
         </header>
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-          <section className="rounded-[2rem] border border-border/60 bg-card p-5 shadow-sm sm:p-7">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Now Playing
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {currentPlaylist.title}
-                </p>
-              </div>
+        {/* =================================================
+            MOBILE SEARCH
+        ================================================= */}
 
-              <button
-                type="button"
-                aria-label={`Favourite ${track.title}`}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        <div
+          className="
+            mb-5
+            flex
+            items-center
+            gap-2
+            rounded-xl
+            border
+            border-border/60
+            bg-card
+            px-3
+            py-2.5
+            sm:hidden
+          "
+        >
+          <Search
+            className="
+              h-4
+              w-4
+              text-muted-foreground
+            "
+          />
+
+          <input
+            type="text"
+            value={search}
+            onChange={(event) =>
+              setSearch(
+                event.target.value
+              )
+            }
+            placeholder="Search songs..."
+            className="
+              min-w-0
+              flex-1
+              bg-transparent
+              text-xs
+              outline-none
+            "
+          />
+        </div>
+
+        {/* =================================================
+            MAIN
+        ================================================= */}
+
+        <section
+          className="
+            grid
+            gap-5
+            lg:grid-cols-[minmax(0,1fr)_minmax(430px,1fr)]
+          "
+        >
+          {/* =================================================
+              NOW PLAYING
+          ================================================= */}
+
+          <section
+            className="
+              relative
+              overflow-hidden
+              rounded-[2rem]
+              border
+              border-border/60
+              bg-card
+              p-5
+              shadow-sm
+              sm:p-7
+            "
+          >
+            <div
+              className="
+                pointer-events-none
+                absolute
+                inset-0
+                opacity-80
+              "
+              style={{
+                background: `
+                  radial-gradient(
+                    circle at 15% 15%,
+                    color-mix(
+                      in srgb,
+                      ${theme.primary} 14%,
+                      transparent
+                    ),
+                    transparent 38%
+                  ),
+                  radial-gradient(
+                    circle at 85% 85%,
+                    color-mix(
+                      in srgb,
+                      ${theme.accent} 10%,
+                      transparent
+                    ),
+                    transparent 35%
+                  )
+                `,
+              }}
+            />
+
+            <div className="relative z-10">
+              {/* Top */}
+
+              <div
+                className="
+                  mb-5
+                  flex
+                  items-center
+                  justify-between
+                "
               >
-                <Heart className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mx-auto w-full max-w-[440px]">
-              <AlbumArtwork variant={currentPlaylist.artwork} />
-            </div>
-
-            <div className="mt-6 text-center">
-              <div className="flex items-center justify-center gap-2">
-                <h2 className="truncate text-2xl font-semibold tracking-tight sm:text-[2rem]">
-                  {track.title}
-                </h2>
-                <button
-                  type="button"
-                  aria-label="More track options"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-              </div>
-
-              <p className="mt-1 text-sm text-muted-foreground">{track.artist}</p>
-
-              <div className="mt-2 flex items-center justify-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
-                <span>Album</span>
-                <span aria-hidden="true">•</span>
-                <span className="max-w-[220px] truncate normal-case tracking-normal">
-                  {currentPlaylist.title}
-                </span>
-              </div>
-
-              {!track.available && (
-                <p className="mt-2 text-[10px] font-medium text-muted-foreground">
-                  Audio coming soon
-                </p>
-              )}
-            </div>
-
-            <div className="mt-7">
-              <div className="flex h-10 items-center gap-[3px] overflow-hidden px-1">
-                {waveform.map((height, index) => {
-                  const played = index / waveform.length <= progress / 100;
-
-                  return (
+                <div>
+                  <p
+                    className="
+                      flex
+                      items-center
+                      gap-2
+                      text-[10px]
+                      font-semibold
+                      uppercase
+                      tracking-[0.18em]
+                      text-muted-foreground
+                    "
+                  >
                     <span
-                      key={`${height}-${index}`}
-                      className={`w-[3px] shrink-0 rounded-full transition-colors duration-200 ${
-                        played ? "bg-foreground" : "bg-muted-foreground/25"
-                      }`}
+                      className="
+                        h-1.5
+                        w-1.5
+                        rounded-full
+                      "
                       style={{
-                        height: `${Math.max(
-                          height * (isPlaying ? 1 : 0.85),
-                          5,
-                        )}px`,
+                        backgroundColor:
+                          theme.primary,
                       }}
                     />
-                  );
-                })}
-              </div>
 
-              <input
-                type="range"
-                min="0"
-                max={duration || 0}
-                step="0.1"
-                value={Math.min(currentTime, duration || 0)}
-                onChange={handleSeek}
-                disabled={!track.available || duration <= 0}
-                aria-label="Seek through current track"
-                className="mt-1 h-1 w-full cursor-pointer appearance-none rounded-full bg-muted accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              />
+                    Now Playing
+                  </p>
 
-              <div className="mt-2 flex justify-between text-[10px] font-medium text-muted-foreground">
-                <span>{format(currentTime)}</span>
-                <span>{format(duration)}</span>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-center gap-5">
-              <button
-                type="button"
-                onClick={prevTrack}
-                aria-label="Previous track"
-                disabled={!track.available}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <SkipBack className="h-4 w-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={togglePlay}
-                disabled={!track.available}
-                aria-label={isPlaying ? "Pause track" : "Play track"}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-foreground text-background shadow-md transition-transform hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isPlaying ? (
-                  <Pause className="h-6 w-6" />
-                ) : (
-                  <Play className="ml-0.5 h-6 w-6" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={nextTrack}
-                aria-label="Next track"
-                disabled={!track.available}
-                className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <SkipForward className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mx-auto mt-5 flex max-w-xs items-center gap-3">
-              <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="h-1 flex-1 rounded-full bg-muted">
-                <div className="h-full w-[70%] rounded-full bg-foreground/60" />
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[2rem] border border-border/60 bg-card p-5 shadow-sm sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="w-20 shrink-0 sm:w-24">
-                <AlbumArtwork variant={currentPlaylist.artwork} />
-              </div>
-
-              <div className="min-w-0 flex-1 pt-1">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Album · {currentPlaylist.tracks.length} songs
-                </p>
-                <h2 className="mt-1 truncate text-xl font-semibold tracking-tight">
-                  {currentPlaylist.title}
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Saathi Collection
-                </p>
-              </div>
-
-              <button
-                type="button"
-                aria-label="Playlist options"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={() => startTrack(currentTrack)}
-                disabled={!track.available}
-                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-foreground px-4 text-xs font-semibold text-background transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Play className="h-3.5 w-3.5 fill-current" />
-                Play
-              </button>
-
-              <button
-                type="button"
-                onClick={() => startTrack(0)}
-                disabled={!currentPlaylist.tracks.some((item) => item.available)}
-                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-muted px-4 text-xs font-semibold text-foreground transition-colors hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Shuffle className="h-3.5 w-3.5" />
-                Shuffle
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-1">
-              {currentPlaylist.tracks.map((item, index) => {
-                const isCurrent = index === currentTrack;
-
-                return (
-                  <div
-                    key={index}
-                    className={`group flex items-center gap-3 rounded-2xl px-2 py-3 transition-colors ${
-                      isCurrent ? "bg-muted/70" : "hover:bg-muted/50"
-                    }`}
+                  <p
+                    className="
+                      mt-1
+                      text-xs
+                      text-muted-foreground
+                    "
                   >
-                    <span className="w-6 shrink-0 text-center text-[10px] font-semibold text-muted-foreground">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!item.available) return;
-                        if (isCurrent && isPlaying) togglePlay();
-                        else startTrack(index);
-                      }}
-                      disabled={!item.available}
-                      aria-label={
-                        isCurrent && isPlaying
-                          ? `Pause ${item.title}`
-                          : `Play ${item.title}`
-                      }
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                        isCurrent
-                          ? "bg-foreground text-background"
-                          : "bg-muted text-muted-foreground group-hover:text-foreground"
-                      }`}
-                    >
-                      {isCurrent && isPlaying ? (
-                        <Pause className="h-3.5 w-3.5" />
-                      ) : (
-                        <Play className="ml-0.5 h-3.5 w-3.5" />
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => item.available && startTrack(index)}
-                      disabled={!item.available}
-                      className="min-w-0 flex-1 text-left disabled:cursor-default"
-                    >
-                      <p
-                        className={`truncate text-sm font-semibold ${
-                          isCurrent ? "text-foreground" : "text-foreground/90"
+                    {libraryLoading
+                      ? "Loading your music..."
+                      : `${tracks.length} local song${
+                          tracks.length ===
+                          1
+                            ? ""
+                            : "s"
                         }`}
-                      >
-                        {item.title}
-                      </p>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {item.artist}
-                        {!item.available ? " · Coming soon" : ""}
-                      </p>
-                    </button>
+                  </p>
+                </div>
 
-                    <button
-                      type="button"
-                      aria-label={`Favourite ${item.title}`}
-                      className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-hover:flex sm:flex"
-                    >
-                      <Heart className="h-3.5 w-3.5" />
-                    </button>
-
-                    <span className="w-10 shrink-0 text-right text-[10px] font-medium text-muted-foreground">
-                      {item.duration}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </section>
-
-        <section className="mt-6">
-          <div className="mb-4 px-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Playlists
-            </p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight">
-              Choose your atmosphere
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Playlists stay compact until you open one.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            {playlists.map((playlist, playlistIndex) => {
-              const isExpanded = expandedPlaylist === playlistIndex;
-              const isActive = playlistIndex === 0;
-
-              return (
-                <article
-                  key={playlistIndex}
-                  className={`overflow-hidden rounded-[1.5rem] border bg-card shadow-sm transition-all duration-300 ${
-                    isExpanded
-                      ? "border-border/70 shadow-md"
-                      : "border-border/50"
-                  }`}
-                >
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    aria-label={
+                      isFavorite
+                        ? "Remove favourite"
+                        : "Add favourite"
+                    }
                     onClick={() =>
-                      setExpandedPlaylist((current) =>
-                        current === playlistIndex ? null : playlistIndex,
+                      setIsFavorite(
+                        (value) =>
+                          !value
                       )
                     }
-                    className="group flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-muted/40"
-                    aria-expanded={isExpanded}
+                    className="
+                      flex
+                      h-9
+                      w-9
+                      items-center
+                      justify-center
+                      rounded-full
+                      text-muted-foreground
+                      transition
+                      hover:bg-muted
+                    "
                   >
-                    <AlbumArtwork variant={playlist.artwork} small />
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">
-                        {playlist.title}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {playlist.tracks.length} tracks
-                        {isActive && isPlaying ? " · Playing now" : ""}
-                      </p>
-                    </div>
-
-                    <ChevronRight
-                      className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-300 ${
-                        isExpanded ? "rotate-90" : ""
-                      }`}
+                    <Heart
+                      className="h-4 w-4"
+                      fill={
+                        isFavorite
+                          ? "currentColor"
+                          : "none"
+                      }
+                      style={{
+                        color:
+                          isFavorite
+                            ? theme.primary
+                            : undefined,
+                      }}
                     />
                   </button>
 
-                  <div
-                    className={`grid transition-[grid-template-rows,opacity] duration-300 ${
-                      isExpanded
-                        ? "grid-rows-[1fr] opacity-100"
-                        : "grid-rows-[0fr] opacity-0"
-                    }`}
+                  <button
+                    type="button"
+                    aria-label="More options"
+                    className="
+                      flex
+                      h-9
+                      w-9
+                      items-center
+                      justify-center
+                      rounded-full
+                      text-muted-foreground
+                      transition
+                      hover:bg-muted
+                    "
                   >
-                    <div className="min-h-0 overflow-hidden">
-                      <div className="border-t border-border/40 px-3 pb-3 pt-2">
-                        <div className="mb-2 flex items-center justify-between px-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                            Tracks
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* =================================================
+                  REAL AUDIO VISUALIZER
+              ================================================= */}
+
+              <div
+                className="
+                  relative
+                  mx-auto
+                  aspect-square
+                  w-full
+                  max-w-[400px]
+                  overflow-hidden
+                  rounded-[2rem]
+                  border
+                  border-border/50
+                "
+                style={{
+                  background: `
+                    radial-gradient(
+                      circle at 50% 50%,
+                      color-mix(
+                        in srgb,
+                        ${theme.primary} 13%,
+                        ${theme.background}
+                      ) 0%,
+                      color-mix(
+                        in srgb,
+                        ${theme.accent} 5%,
+                        ${theme.background}
+                      ) 48%,
+                      ${theme.background} 100%
+                    )
+                  `,
+                  boxShadow:
+                    `inset 0 0 80px color-mix(
+                      in srgb,
+                      ${theme.primary} 5%,
+                      transparent
+                    )`,
+                }}
+              >
+                <canvas
+                  ref={
+                    visualizerCanvasRef
+                  }
+                  className="
+                    absolute
+                    inset-0
+                    h-full
+                    w-full
+                  "
+                  aria-label="Live audio visualizer"
+                  role="img"
+                />
+
+                {/* Center */}
+
+                <div
+                  className="
+                    pointer-events-none
+                    absolute
+                    left-1/2
+                    top-1/2
+                    z-10
+                    flex
+                    h-24
+                    w-24
+                    -translate-x-1/2
+                    -translate-y-1/2
+                    items-center
+                    justify-center
+                    rounded-full
+                    border
+                    backdrop-blur-xl
+                  "
+                  style={{
+                    borderColor:
+                      `color-mix(
+                        in srgb,
+                        ${theme.primary} 35%,
+                        transparent
+                      )`,
+                    background:
+                      `radial-gradient(
+                        circle at 35% 30%,
+                        color-mix(
+                          in srgb,
+                          ${theme.primary} 20%,
+                          transparent
+                        ),
+                        color-mix(
+                          in srgb,
+                          ${theme.background} 84%,
+                          transparent
+                        )
+                      )`,
+                    boxShadow:
+                      `0 0 40px color-mix(
+                        in srgb,
+                        ${theme.primary} ${
+                          isPlaying ? 28 : 10
+                        }%,
+                        transparent
+                      )`,
+                  }}
+                >
+                  <div
+                    className="
+                      flex
+                      h-14
+                      w-14
+                      items-center
+                      justify-center
+                      rounded-full
+                    "
+                    style={{
+                      background:
+                        `linear-gradient(
+                          135deg,
+                          ${theme.primary},
+                          ${theme.accent}
+                        )`,
+                      color:
+                        theme.primaryForeground,
+                    }}
+                  >
+                    <Music2 className="h-6 w-6" />
+                  </div>
+                </div>
+
+                {/* Status */}
+
+                <div
+                  className="
+                    absolute
+                    bottom-4
+                    left-4
+                    flex
+                    items-center
+                    gap-2
+                    rounded-full
+                    border
+                    bg-background/40
+                    px-3
+                    py-1.5
+                    text-[9px]
+                    font-semibold
+                    uppercase
+                    tracking-[0.18em]
+                    backdrop-blur-md
+                  "
+                  style={{
+                    borderColor:
+                      `color-mix(
+                        in srgb,
+                        ${theme.primary} 20%,
+                        transparent
+                      )`,
+                    color:
+                      theme.foreground,
+                  }}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{
+                      backgroundColor:
+                        theme.primary,
+                      boxShadow:
+                        isPlaying
+                          ? `0 0 10px ${theme.primary}`
+                          : "none",
+                    }}
+                  />
+
+                  {isPlaying
+                    ? "Listening"
+                    : "Ready"}
+                </div>
+
+                <div
+                  className="
+                    absolute
+                    bottom-4
+                    right-4
+                    text-[8px]
+                    font-semibold
+                    uppercase
+                    tracking-[0.2em]
+                    text-muted-foreground
+                  "
+                >
+                  Saathi Music
+                </div>
+              </div>
+
+              {/* =================================================
+                  TRACK INFO
+              ================================================= */}
+
+              <div className="mt-6 text-center">
+                <div
+                  className="
+                    flex
+                    items-center
+                    justify-center
+                    gap-2
+                  "
+                >
+                  <h2
+                    className="
+                      max-w-[80%]
+                      truncate
+                      text-2xl
+                      font-semibold
+                      tracking-tight
+                      sm:text-[2rem]
+                    "
+                  >
+                    {currentTrack?.title ??
+                      "No songs found"}
+                  </h2>
+
+                  <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                </div>
+
+                <p
+                  className="
+                    mt-1
+                    text-sm
+                    text-muted-foreground
+                  "
+                >
+                  {currentTrack?.artist ??
+                    "Add audio files to public/Music"}
+                </p>
+              </div>
+
+              {/* =================================================
+                  PROGRESS
+              ================================================= */}
+
+              <div className="mt-7">
+                <div
+                  className="
+                    relative
+                    flex
+                    h-9
+                    items-end
+                    gap-[3px]
+                    overflow-hidden
+                  "
+                >
+                  {Array.from({
+                    length: 56,
+                  }).map(
+                    (_, index) => {
+                      const seed =
+                        Math.abs(
+                          Math.sin(
+                            index *
+                              1.91
+                          )
+                        );
+
+                      const height =
+                        6 +
+                        seed * 14;
+
+                      const played =
+                        index / 56 <=
+                        progress / 100;
+
+                      return (
+                        <span
+                          key={index}
+                          className="
+                            flex-1
+                            rounded-full
+                            transition-all
+                            duration-300
+                          "
+                          style={{
+                            height:
+                              `${height}px`,
+                            backgroundColor:
+                              played
+                                ? theme.primary
+                                : `color-mix(
+                                    in srgb,
+                                    ${theme.mutedForeground} 18%,
+                                    transparent
+                                  )`,
+                          }}
+                        />
+                      );
+                    }
+                  )}
+                </div>
+
+                <input
+                  type="range"
+                  min="0"
+                  max={duration || 0}
+                  step="0.1"
+                  value={Math.min(
+                    currentTime,
+                    duration || 0
+                  )}
+                  onChange={
+                    handleSeek
+                  }
+                  disabled={
+                    !currentTrack ||
+                    duration <= 0
+                  }
+                  className="
+                    mt-2
+                    h-1
+                    w-full
+                    cursor-pointer
+                    appearance-none
+                    rounded-full
+                    bg-muted
+                    accent-[hsl(var(--primary))]
+                  "
+                  aria-label="Seek through song"
+                />
+
+                <div
+                  className="
+                    mt-2
+                    flex
+                    justify-between
+                    text-[10px]
+                    font-medium
+                    text-muted-foreground
+                  "
+                >
+                  <span>
+                    {formatTime(
+                      currentTime
+                    )}
+                  </span>
+
+                  <span>
+                    {formatTime(
+                      duration
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* =================================================
+                  CONTROLS
+              ================================================= */}
+
+              <div
+                className="
+                  mt-5
+                  flex
+                  items-center
+                  justify-center
+                  gap-4
+                "
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setIsShuffled(
+                      (value) =>
+                        !value
+                    )
+                  }
+                  aria-label="Shuffle"
+                  className="
+                    flex
+                    h-9
+                    w-9
+                    items-center
+                    justify-center
+                    rounded-full
+                    transition
+                    hover:bg-muted
+                  "
+                  style={{
+                    color:
+                      isShuffled
+                        ? theme.primary
+                        : theme.mutedForeground,
+                  }}
+                >
+                  <Shuffle className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    previousTrack
+                  }
+                  disabled={
+                    !currentTrack
+                  }
+                  aria-label="Previous song"
+                  className="
+                    flex
+                    h-10
+                    w-10
+                    items-center
+                    justify-center
+                    rounded-full
+                    text-muted-foreground
+                    transition
+                    hover:bg-muted
+                    disabled:opacity-40
+                  "
+                >
+                  <SkipBack className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    togglePlay
+                  }
+                  disabled={
+                    !currentTrack
+                  }
+                  aria-label={
+                    isPlaying
+                      ? "Pause"
+                      : "Play"
+                  }
+                  className="
+                    flex
+                    h-16
+                    w-16
+                    items-center
+                    justify-center
+                    rounded-full
+                    shadow-lg
+                    transition
+                    hover:scale-[1.04]
+                    disabled:opacity-40
+                  "
+                  style={{
+                    background:
+                      `linear-gradient(
+                        135deg,
+                        ${theme.primary},
+                        ${theme.accent}
+                      )`,
+                    color:
+                      theme.primaryForeground,
+                    boxShadow:
+                      `0 0 35px color-mix(
+                        in srgb,
+                        ${theme.primary} 30%,
+                        transparent
+                      )`,
+                  }}
+                >
+                  {isPlaying ? (
+                    <Pause
+                      className="h-6 w-6"
+                      fill="currentColor"
+                    />
+                  ) : (
+                    <Play
+                      className="ml-0.5 h-6 w-6"
+                      fill="currentColor"
+                    />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    nextTrack
+                  }
+                  disabled={
+                    !currentTrack
+                  }
+                  aria-label="Next song"
+                  className="
+                    flex
+                    h-10
+                    w-10
+                    items-center
+                    justify-center
+                    rounded-full
+                    text-muted-foreground
+                    transition
+                    hover:bg-muted
+                    disabled:opacity-40
+                  "
+                >
+                  <SkipForward className="h-4 w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setIsRepeated(
+                      (value) =>
+                        !value
+                    )
+                  }
+                  aria-label="Repeat"
+                  className="
+                    flex
+                    h-9
+                    w-9
+                    items-center
+                    justify-center
+                    rounded-full
+                    transition
+                    hover:bg-muted
+                  "
+                  style={{
+                    color:
+                      isRepeated
+                        ? theme.primary
+                        : theme.mutedForeground,
+                  }}
+                >
+                  <Repeat2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* =================================================
+                  VOLUME
+              ================================================= */}
+
+              <div
+                className="
+                  mx-auto
+                  mt-5
+                  flex
+                  max-w-xs
+                  items-center
+                  gap-3
+                "
+              >
+                <Volume2
+                  className="
+                    h-4
+                    w-4
+                    shrink-0
+                    text-muted-foreground
+                  "
+                />
+
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(event) =>
+                    setVolume(
+                      Number(
+                        event.target.value
+                      )
+                    )
+                  }
+                  className="
+                    h-1
+                    w-full
+                    cursor-pointer
+                    appearance-none
+                    rounded-full
+                    bg-muted
+                    accent-[hsl(var(--primary))]
+                  "
+                  aria-label="Volume"
+                />
+
+                <span
+                  className="
+                    w-8
+                    text-right
+                    text-[10px]
+                    font-medium
+                    text-muted-foreground
+                  "
+                >
+                  {Math.round(
+                    volume * 100
+                  )}
+                  %
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* =================================================
+              ALL SONGS
+          ================================================= */}
+
+          <section
+            className="
+              rounded-[2rem]
+              border
+              border-border/60
+              bg-card
+              p-5
+              shadow-sm
+              sm:p-6
+            "
+          >
+            <div
+              className="
+                flex
+                items-start
+                justify-between
+                gap-4
+              "
+            >
+              <div>
+                <p
+                  className="
+                    text-[10px]
+                    font-semibold
+                    uppercase
+                    tracking-[0.2em]
+                    text-muted-foreground
+                  "
+                >
+                  Music Library
+                </p>
+
+                <h2
+                  className="
+                    mt-1
+                    text-3xl
+                    font-semibold
+                    tracking-tight
+                  "
+                >
+                  All Songs
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-xs
+                    text-muted-foreground
+                  "
+                >
+                  {libraryLoading
+                    ? "Reading public/Music..."
+                    : `${tracks.length} real file${
+                        tracks.length === 1
+                          ? ""
+                          : "s"
+                      } found`}
+                </p>
+              </div>
+
+              <Music2
+                className="h-5 w-5 shrink-0"
+                style={{
+                  color:
+                    theme.primary,
+                }}
+              />
+            </div>
+
+            <div
+              className="
+                mt-5
+                max-h-[650px]
+                overflow-y-auto
+                pr-1
+              "
+            >
+              {libraryLoading ? (
+                <div
+                  className="
+                    flex
+                    min-h-[300px]
+                    flex-col
+                    items-center
+                    justify-center
+                    text-center
+                  "
+                >
+                  <div
+                    className="
+                      h-9
+                      w-9
+                      animate-spin
+                      rounded-full
+                      border-2
+                      border-muted
+                      border-t-primary
+                    "
+                  />
+
+                  <p
+                    className="
+                      mt-4
+                      text-sm
+                      font-medium
+                    "
+                  >
+                    Loading real songs...
+                  </p>
+                </div>
+              ) : filteredTracks.length === 0 ? (
+                <div
+                  className="
+                    flex
+                    min-h-[300px]
+                    flex-col
+                    items-center
+                    justify-center
+                    px-5
+                    text-center
+                  "
+                >
+                  <Music2
+                    className="
+                      h-9
+                      w-9
+                      text-muted-foreground/50
+                    "
+                  />
+
+                  <p
+                    className="
+                      mt-4
+                      text-sm
+                      font-medium
+                    "
+                  >
+                    No songs found
+                  </p>
+
+                  <p
+                    className="
+                      mt-1
+                      max-w-xs
+                      text-xs
+                      text-muted-foreground
+                    "
+                  >
+                    Put .mp3, .wav, .ogg,
+                    .m4a or .webm files
+                    inside public/Music.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredTracks.map(
+                    (item, index) => {
+                      const actualIndex =
+                        tracks.findIndex(
+                          (trackItem) =>
+                            trackItem.id ===
+                            item.id
+                        );
+
+                      const isCurrent =
+                        actualIndex ===
+                        currentTrackIndex;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="
+                            grid
+                            grid-cols-[28px_minmax(0,1fr)_auto]
+                            items-center
+                            gap-3
+                            rounded-2xl
+                            px-2
+                            py-3
+                            transition
+                            sm:grid-cols-[32px_minmax(0,1.4fr)_minmax(100px,0.8fr)_72px_34px]
+                          "
+                          style={{
+                            backgroundColor:
+                              isCurrent
+                                ? `color-mix(
+                                    in srgb,
+                                    ${theme.primary} 9%,
+                                    transparent
+                                  )`
+                                : "transparent",
+                            boxShadow:
+                              isCurrent
+                                ? `inset 3px 0 0 ${theme.primary}`
+                                : "none",
+                          }}
+                        >
+                          <span
+                            className="
+                              text-center
+                              text-[10px]
+                              font-semibold
+                              text-muted-foreground
+                            "
+                          >
+                            {String(
+                              index + 1
+                            ).padStart(
+                              2,
+                              "0"
+                            )}
                           </span>
 
                           <button
                             type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (playlistIndex === 0) {
-                                startTrack(currentTrack);
-                              }
-                            }}
-                            disabled={
-                              playlistIndex !== 0 ||
-                              !playlist.tracks.some((item) => item.available)
+                            onClick={() =>
+                              playTrack(
+                                actualIndex
+                              )
                             }
-                            className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                            className="
+                              flex
+                              min-w-0
+                              items-center
+                              gap-3
+                              text-left
+                            "
                           >
-                            <Shuffle className="h-3 w-3" />
-                            Play
+                            <span
+                              className="
+                                flex
+                                h-9
+                                w-9
+                                shrink-0
+                                items-center
+                                justify-center
+                                rounded-full
+                              "
+                              style={{
+                                backgroundColor:
+                                  isCurrent
+                                    ? theme.primary
+                                    : theme.muted,
+                                color:
+                                  isCurrent
+                                    ? theme.primaryForeground
+                                    : theme.mutedForeground,
+                              }}
+                            >
+                              {isCurrent &&
+                              isPlaying ? (
+                                <Pause className="h-3.5 w-3.5" />
+                              ) : (
+                                <Play
+                                  className="
+                                    ml-0.5
+                                    h-3.5
+                                    w-3.5
+                                  "
+                                />
+                              )}
+                            </span>
+
+                            <span className="min-w-0">
+                              <span
+                                className="
+                                  block
+                                  truncate
+                                  text-xs
+                                  font-semibold
+                                "
+                              >
+                                {item.title}
+                              </span>
+
+                              <span
+                                className="
+                                  mt-0.5
+                                  block
+                                  truncate
+                                  text-[10px]
+                                  text-muted-foreground
+                                  sm:hidden
+                                "
+                              >
+                                {item.artist}
+                              </span>
+                            </span>
+                          </button>
+
+                          <span
+                            className="
+                              hidden
+                              truncate
+                              text-[11px]
+                              text-muted-foreground
+                              sm:block
+                            "
+                          >
+                            {item.artist}
+                          </span>
+
+                          <span
+                            className="
+                              text-right
+                              text-[10px]
+                              font-medium
+                              text-muted-foreground
+                            "
+                          >
+                            {formatTime(
+                              item.duration
+                            )}
+                          </span>
+
+                          <button
+                            type="button"
+                            aria-label={`Favourite ${item.title}`}
+                            className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-full
+                              text-muted-foreground
+                              transition
+                              hover:bg-muted
+                            "
+                          >
+                            <Heart className="h-3.5 w-3.5" />
                           </button>
                         </div>
-
-                        <div className="space-y-1">
-                          {playlist.tracks.map((item, index) => {
-                            const isCurrent =
-                              playlistIndex === 0 && index === currentTrack;
-
-                            return (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => {
-                                  if (playlistIndex === 0 && item.available) {
-                                    startTrack(index);
-                                  }
-                                }}
-                                disabled={
-                                  playlistIndex !== 0 || !item.available
-                                }
-                                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
-                                  isCurrent
-                                    ? "bg-muted/80"
-                                    : "hover:bg-muted/50"
-                                } ${
-                                  playlistIndex !== 0 || !item.available
-                                    ? "cursor-default opacity-60"
-                                    : ""
-                                }`}
-                              >
-                                <span className="w-5 shrink-0 text-center text-[10px] font-semibold text-muted-foreground">
-                                  {String(index + 1).padStart(2, "0")}
-                                </span>
-
-                                <div className="min-w-0 flex-1">
-                                  <p
-                                    className={`truncate text-xs font-semibold ${
-                                      isCurrent
-                                        ? "text-foreground"
-                                        : "text-foreground/90"
-                                    }`}
-                                  >
-                                    {item.title}
-                                  </p>
-                                  <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                                    {item.artist}
-                                    {!item.available ? " · Coming soon" : ""}
-                                  </p>
-                                </div>
-
-                                <span className="shrink-0 text-[10px] text-muted-foreground">
-                                  {item.duration}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
         </section>
+
+        {/* =================================================
+            RECOMMENDED
+        ================================================= */}
+
+        {!libraryLoading &&
+          recommendations.length > 0 && (
+            <section className="mt-7">
+              <div className="mb-4">
+                <p
+                  className="
+                    text-[10px]
+                    font-semibold
+                    uppercase
+                    tracking-[0.18em]
+                    text-muted-foreground
+                  "
+                >
+                  Personalized
+                </p>
+
+                <h2
+                  className="
+                    mt-1
+                    text-xl
+                    font-semibold
+                    tracking-tight
+                  "
+                >
+                  Recommended for you
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-xs
+                    text-muted-foreground
+                  "
+                >
+                  More sounds from your local music
+                  library.
+                </p>
+              </div>
+
+              <div
+                className="
+                  grid
+                  gap-3
+                  sm:grid-cols-2
+                  lg:grid-cols-3
+                "
+              >
+                {recommendations.map(
+                  (item, index) => {
+                    const actualIndex =
+                      tracks.findIndex(
+                        (value) =>
+                          value.id ===
+                          item.id
+                      );
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          playTrack(
+                            actualIndex
+                          )
+                        }
+                        className="
+                          group
+                          flex
+                          items-center
+                          gap-4
+                          rounded-2xl
+                          border
+                          border-border/60
+                          bg-card
+                          p-4
+                          text-left
+                          transition
+                          hover:-translate-y-0.5
+                          hover:shadow-md
+                        "
+                      >
+                        <span
+                          className="
+                            flex
+                            h-12
+                            w-12
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-xl
+                          "
+                          style={{
+                            background:
+                              index % 3 ===
+                              0
+                                ? `linear-gradient(
+                                    135deg,
+                                    ${theme.primary},
+                                    ${theme.secondary}
+                                  )`
+                                : index % 3 ===
+                                  1
+                                ? `linear-gradient(
+                                    135deg,
+                                    ${theme.accent},
+                                    ${theme.primary}
+                                  )`
+                                : `linear-gradient(
+                                    135deg,
+                                    ${theme.secondary},
+                                    ${theme.accent}
+                                  )`,
+                            color:
+                              theme.primaryForeground,
+                          }}
+                        >
+                          <Music2 className="h-5 w-5" />
+                        </span>
+
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className="
+                              block
+                              truncate
+                              text-sm
+                              font-semibold
+                            "
+                          >
+                            {item.title}
+                          </span>
+
+                          <span
+                            className="
+                              mt-0.5
+                              block
+                              truncate
+                              text-xs
+                              text-muted-foreground
+                            "
+                          >
+                            {item.artist}
+                          </span>
+                        </span>
+
+                        <span
+                          className="
+                            flex
+                            h-8
+                            w-8
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            opacity-0
+                            transition
+                            group-hover:opacity-100
+                          "
+                          style={{
+                            backgroundColor:
+                              `color-mix(
+                                in srgb,
+                                ${theme.primary} 10%,
+                                transparent
+                              )`,
+                            color:
+                              theme.primary,
+                          }}
+                        >
+                          <Play
+                            className="
+                              ml-0.5
+                              h-3.5
+                              w-3.5
+                            "
+                            fill="currentColor"
+                          />
+                        </span>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+            </section>
+          )}
       </div>
     </main>
   );
-};
-
-export default MusicScreen;
+}
