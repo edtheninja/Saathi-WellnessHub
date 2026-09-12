@@ -5,15 +5,14 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
 import pg from "pg";
 import { Server } from "socket.io";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import multer from "multer";
-import path from "node:path";
-import { mkdirSync } from "node:fs";
 
 const { Pool } = pg;
 const app = express();
@@ -22,7 +21,11 @@ const jwtSecret = process.env.JWT_SECRET || "development-secret-change-me";
 const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const allowedOrigins = allowedOrigin.split(",").map((origin) => origin.trim());
 const frontendOrigin = allowedOrigins[0];
-const pool = new Pool({ connectionString: process.env.DATABASE_URL || "postgresql://postgres.zaugdhjksxdmbkkzciyi:AshXAnonymous@77@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres", ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false });
+
+// IMPORTANT: no real credentials in the fallback. Set DATABASE_URL in
+// your .env (and rotate the Supabase password that was previously
+// hardcoded here — it should be treated as leaked).
+const pool = new Pool({ connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/saathi_wellness", ssl: process.env.PGSSLMODE === "require" ? { rejectUnauthorized: false } : false });
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: allowedOrigins, credentials: true } });
 
@@ -36,6 +39,36 @@ app.use(cors({ origin: (origin, callback) => {
 app.use(express.json({ limit: "256kb" }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, message: { error: "Too many authentication attempts" } });
+
+// ---------------------------------------------------------------
+// Journal image uploads (local disk storage). Only ONE `upload`
+// instance now — there were previously two conflicting `const upload`
+// declarations (memory storage + disk storage), which is a syntax
+// error that stopped the server from starting at all.
+// ---------------------------------------------------------------
+const uploadDir = path.resolve("uploads/journals");
+mkdirSync(uploadDir, { recursive: true });
+
+const journalImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => cb(null, `${crypto.randomUUID()}${path.extname(file.originalname)}`),
+});
+const upload = multer({
+  storage: journalImageStorage,
+  limits: { files: 10, fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) return cb(new Error("Only image files are allowed"));
+    cb(null, true);
+  },
+});
+
+// Serve uploaded images. Cross-Origin-Resource-Policy is relaxed only
+// for this path so your frontend (a different origin) can actually
+// load them in <img> tags — helmet's default would otherwise block it.
+app.use("/uploads", (req, res, next) => {
+  res.set("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+}, express.static(path.resolve("uploads")));
 
 // ---------------------------------------------------------------
 // Resource config: maps the generic /api/data/:resource endpoints
@@ -227,9 +260,6 @@ async function updateResource(config, userId, id, item) {
     const existing = await pool.query(`SELECT * FROM ${config.table} WHERE user_id = $1 AND id = $2`, [userId, id]);
     return existing.rows[0] || null;
   }
-  if (config.columns.includes("updated_at") === false) {
-    // no-op; some tables (moods, notifications, ...) don't track updated_at
-  }
   const sql = `UPDATE ${config.table} SET ${assignments.join(", ")} WHERE user_id = $1 AND id = $2 RETURNING *`;
   const result = await pool.query(sql, values);
   return result.rows[0] || null;
@@ -249,8 +279,6 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid email is required" });
     const user = { id: crypto.randomUUID(), email: normalizedEmail, passwordHash: await bcrypt.hash(password, 12), fullName: String(fullName).trim().slice(0, 120) };
     await pool.query("INSERT INTO saathi_users (id, email, password_hash, full_name) VALUES ($1, $2, $3, $4)", [user.id, user.email, user.passwordHash, user.fullName]);
-    // Real profiles row (was previously a fake JSONB blob) so the rest
-    // of the schema — community joins, onboarding flags, etc. — works.
     await pool.query("INSERT INTO profiles (user_id, full_name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING", [user.id, user.fullName]);
     const payload = { id: user.id, email: user.email, full_name: user.fullName, email_confirmed_at: new Date().toISOString() };
     res.status(201).json({ user: userPayload(payload), session: { access_token: tokenFor(payload) } });
@@ -317,8 +345,7 @@ app.put("/api/settings/:key", authRequired, async (req, res) => {
 
 // ---------------------------------------------------------------
 // Wellness score — computed from recent activity across every
-// energy-tracking table, then stored as its own row (schema.sql's
-// new `wellness_scores` table).
+// energy-tracking table, then stored in the `wellness_scores` table.
 // ---------------------------------------------------------------
 const energySourceTables = ["moods", "journals", "music", "meditation_sessions", "activity_history"];
 app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
@@ -326,7 +353,7 @@ app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
     const breakdown = {};
     for (const table of energySourceTables) {
       const result = await pool.query(
-        `SELECT AVG(energy_level)::numeric(100,1) AS avg_energy FROM ${table} WHERE user_id = $1 AND energy_level IS NOT NULL AND created_at > NOW() - INTERVAL '7 days'`,
+        `SELECT AVG(energy_level)::numeric(5,1) AS avg_energy FROM ${table} WHERE user_id = $1 AND energy_level IS NOT NULL AND created_at > NOW() - INTERVAL '7 days'`,
         [req.auth.sub]
       );
       const value = result.rows[0]?.avg_energy;
@@ -502,9 +529,6 @@ app.get("/api/integrations/fitbit/metrics", authRequired, async (req, res) => {
       sleepHours: sleep.summary?.totalMinutesAsleep ? sleep.summary.totalMinutesAsleep / 60 : undefined,
       timestamp: new Date().toISOString(),
     };
-    // Store each metric in its own typed row (metric_type/value/unit)
-    // instead of a single row with value hardcoded to 0 — this is
-    // what lets health_metrics actually be queried/aggregated later.
     const metricEntries = [
       { metric_type: "steps", value: metrics.steps ?? 0, unit: "count" },
       { metric_type: "calories", value: metrics.calories ?? 0, unit: "kcal" },
@@ -734,7 +758,55 @@ app.post("/api/anonymous-posts/:postId/like", authRequired, async (req, res) => 
 });
 
 // ---------------------------------------------------------------
-// Generic per-user data endpoints, now backed by real tables
+// Journal creation WITH image uploads. This must be registered
+// BEFORE the generic `/api/data/:resource` POST route below —
+// Express matches routes in registration order, so if the generic
+// `:resource` route came first it would swallow every POST to
+// /api/data/journals and this handler would never run.
+// ---------------------------------------------------------------
+app.post("/api/data/journals", authRequired, upload.array("images", 10), async (req, res) => {
+  try {
+    const { title = "", content = "", mood, energy_level } = req.body;
+    if (!String(content).trim()) return res.status(400).json({ error: "Journal content is required" });
+
+    const files = req.files || [];
+    const mediaUrls = files.map((file) => `/uploads/journals/${file.filename}`);
+    const mediaMetadata = {
+      urls: mediaUrls,
+      files: files.map((file) => ({ original_name: file.originalname, filename: file.filename, mimetype: file.mimetype, size: file.size })),
+    };
+
+    // media_url is a single TEXT column in schema.sql (not an array),
+    // so we store the first image there and the full list in
+    // media_metadata (JSONB) — this was previously passing a JS array
+    // straight into a TEXT column, which Postgres would reject.
+    const result = await pool.query(
+      `INSERT INTO journals (user_id, title, content, mood, energy_level, media_type, media_url, media_metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        req.auth.sub,
+        String(title).trim(),
+        String(content),
+        mood || null,
+        energy_level ? Number(energy_level) : null,
+        files.length ? "image" : null,
+        mediaUrls[0] || null,
+        JSON.stringify(mediaMetadata),
+      ]
+    );
+
+    res.status(201).json({ data: result.rows[0] });
+  } catch (error) {
+    console.error("Create journal error:", error);
+    res.status(400).json({ error: error?.message || "Failed to create journal" });
+  }
+});
+
+// ---------------------------------------------------------------
+// Generic per-user data endpoints, now backed by real tables.
+// (journals' POST is handled above; GET/PATCH/DELETE for journals
+// still fall through to these generic handlers, which is fine.)
 // ---------------------------------------------------------------
 app.get("/api/data/:resource", authRequired, async (req, res) => {
   try {
@@ -848,98 +920,5 @@ io.on("connection", (socket) => {
     if (socket.data.roomId) broadcastPresence(socket.data.roomId);
   });
 });
-const uploadDir = path.resolve("uploads/journals");
-mkdirSync(uploadDir, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
-  },
-
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = `${crypto.randomUUID()}${ext}`;
-    cb(null, name);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: {
-    files: 10,
-    fileSize: 10 * 1024 * 1024,
-  },
-  fileFilter: (_req, file, cb) => {
-    if (!file.mimetype.startsWith("image/")) {
-      return cb(new Error("Only image files are allowed"));
-    }
-
-    cb(null, true);
-  },
-});
-app.post(
-  "/api/data/journals",
-  authRequired,
-  upload.array("images", 10),
-  async (req, res) => {
-    try {
-      const { title = "", content = "", mood, energy_level } = req.body;
-
-      if (!String(content).trim()) {
-        return res.status(400).json({
-          error: "Journal content is required",
-        });
-      }
-
-      const files = req.files || [];
-
-      const mediaMetadata = files.map((file) => ({
-        original_name: file.originalname,
-        filename: file.filename,
-        mimetype: file.mimetype,
-        size: file.size,
-      }));
-
-      const mediaUrls = files.map(
-        (file) => `/uploads/journals/${file.filename}`
-      );
-
-      const result = await pool.query(
-        `INSERT INTO journals
-          (
-            user_id,
-            title,
-            content,
-            mood,
-            energy_level,
-            media_type,
-            media_url,
-            media_metadata
-          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING *`,
-        [
-          req.auth.sub,
-          String(title).trim(),
-          String(content),
-          mood || null,
-          energy_level ? Number(energy_level) : null,
-          files.length ? "image" : null,
-          mediaUrls.length ? mediaUrls : null,
-          JSON.stringify(mediaMetadata),
-        ]
-      );
-
-      res.status(201).json({
-        data: result.rows[0],
-      });
-    } catch (error) {
-      console.error("Create journal error:", error);
-
-      res.status(400).json({
-        error: error?.message || "Failed to create journal",
-      });
-    }
-  }
-);
 initializeDatabase().then(() => httpServer.listen(port, () => console.log(`Saathi PostgreSQL backend listening on http://localhost:${port}`))).catch((error) => { console.error("PostgreSQL connection failed:", error.message); process.exit(1); });
