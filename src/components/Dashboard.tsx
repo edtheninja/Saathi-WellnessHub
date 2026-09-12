@@ -1,3 +1,4 @@
+// src/components/Dashboard.tsx
 import React, { useMemo, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -13,9 +14,12 @@ import {
   PenTool,
   Music,
   MessageCircle,
-  Calendar,
   User,
   Target,
+  Heart,
+  Sparkles,
+  Leaf,
+  Sun,
 } from "lucide-react";
 import Tile from "./Tile/Tile";
 import ModeSelectorV2 from "@/components/ModeSelectorV2";
@@ -58,8 +62,6 @@ const emojiItem = {
 export default function Dashboard(): JSX.Element {
   const navigate = useNavigate();
   const { getTileColor } = useTheme();
-
-  /* ---------------- FIXED: hooks declared ONCE & inside component ---------------- */
 
   const [openShare, setOpenShare] = useState(false);
 
@@ -106,7 +108,6 @@ export default function Dashboard(): JSX.Element {
     try {
       const parsed = JSON.parse(storedUser);
 
-      // Priority: name → full_name → email
       const name =
         parsed?.user?.user_metadata?.name ||
         parsed?.user?.user_metadata?.full_name ||
@@ -126,6 +127,8 @@ export default function Dashboard(): JSX.Element {
       icon: Brain,
       route: "/meditation",
       gradient: "from-blue-400 to-blue-600",
+      accent: "bg-blue-100 text-blue-600",
+      doodle: "blue",
     },
     {
       id: "Mindful Chanting",
@@ -134,6 +137,8 @@ export default function Dashboard(): JSX.Element {
       icon: Wind,
       route: "/naam-jaap",
       gradient: "from-teal-400 to-emerald-500",
+      accent: "bg-emerald-100 text-emerald-600",
+      doodle: "green",
     },
     {
       id: "journal",
@@ -142,6 +147,8 @@ export default function Dashboard(): JSX.Element {
       icon: PenTool,
       route: "/journal",
       gradient: "from-purple-400 to-fuchsia-500",
+      accent: "bg-purple-100 text-purple-600",
+      doodle: "purple",
     },
     {
       id: "wellness",
@@ -150,6 +157,8 @@ export default function Dashboard(): JSX.Element {
       icon: HeartPulse,
       route: "/wellness",
       gradient: "from-emerald-500 to-teal-500",
+      accent: "bg-emerald-100 text-emerald-600",
+      doodle: "green",
     },
     {
       id: "music",
@@ -158,6 +167,8 @@ export default function Dashboard(): JSX.Element {
       icon: Music,
       route: "/music",
       gradient: "from-pink-400 to-rose-500",
+      accent: "bg-pink-100 text-pink-600",
+      doodle: "pink",
     },
     {
       id: "goal",
@@ -166,6 +177,8 @@ export default function Dashboard(): JSX.Element {
       icon: Target,
       route: "/set-goal",
       gradient: "from-purple-400 to-purple-600",
+      accent: "bg-violet-100 text-violet-600",
+      doodle: "purple",
     },
   ] as const;
 
@@ -185,17 +198,30 @@ export default function Dashboard(): JSX.Element {
   ];
 
   const tileVariants = {
-    hidden: { opacity: 0, y: 10 },
+    hidden: {
+      opacity: 0,
+      y: 18,
+    },
     show: (i: number) => ({
       opacity: 1,
       y: 0,
-      transition: { delay: i * 0.06 },
+      transition: {
+        delay: i * 0.06,
+        duration: 0.45,
+        ease: "easeOut" as const,
+      },
     }),
   };
 
   const cardAnim = {
-    initial: { opacity: 0, y: 10 },
-    animate: { opacity: 1, y: 0 },
+    initial: {
+      opacity: 0,
+      y: 10,
+    },
+    animate: {
+      opacity: 1,
+      y: 0,
+    },
   };
 
   const [moodValue, setMoodValue] = useState(73);
@@ -231,27 +257,26 @@ export default function Dashboard(): JSX.Element {
   const [isDragging, setIsDragging] = useState(false);
 
   return (
-    <div className="relative min-h-screen overflow-hidden pb-24 bg-background text-foreground">
-      {/* Decorative wellness doodles */}
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground pb-28">
+      {/* Background decoration */}
       <div
         className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
         aria-hidden="true"
       >
-        {/* Soft pastel background washes */}
-        <div className="absolute -left-40 top-16 h-96 w-96 rounded-full bg-violet-300/10 blur-3xl" />
-        <div className="absolute -right-40 top-[30%] h-[30rem] w-[30rem] rounded-full bg-pink-300/10 blur-3xl" />
-        <div className="absolute left-[28%] bottom-0 h-96 w-96 rounded-full bg-sky-300/10 blur-3xl" />
+        <div className="absolute -left-40 top-20 h-[420px] w-[420px] rounded-full bg-violet-300/10 blur-3xl" />
+        <div className="absolute -right-40 top-[35%] h-[460px] w-[460px] rounded-full bg-pink-300/10 blur-3xl" />
+        <div className="absolute left-[25%] bottom-0 h-[360px] w-[360px] rounded-full bg-blue-300/10 blur-3xl" />
 
-        {/* Top-left fine botanical line art */}
+        {/* Top-left fine leaf doodle */}
         <motion.svg
-          viewBox="0 0 240 300"
-          className="absolute -left-10 top-8 h-64 w-52 text-violet-400/35 sm:left-0 sm:h-72 sm:w-60"
-          initial={{ opacity: 0, x: -12 }}
+          viewBox="0 0 220 260"
+          className="absolute -left-10 top-8 h-56 w-48 text-violet-400/30 sm:left-0 sm:h-64 sm:w-56"
+          initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 1.1, ease: "easeOut" }}
+          transition={{ duration: 1 }}
         >
           <path
-            d="M22 300 C34 224 72 151 151 77"
+            d="M28 258 C48 190 92 126 164 74"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
@@ -259,7 +284,7 @@ export default function Dashboard(): JSX.Element {
           />
 
           <path
-            d="M58 211 C23 201 8 171 19 137 C52 146 70 175 58 211Z"
+            d="M59 188 C28 174 15 145 25 116 C57 126 73 153 59 188Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
@@ -267,7 +292,7 @@ export default function Dashboard(): JSX.Element {
           />
 
           <path
-            d="M91 157 C75 119 91 82 125 67 C143 103 128 140 91 157Z"
+            d="M91 143 C77 110 91 76 122 61 C139 94 127 126 91 143Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
@@ -275,7 +300,7 @@ export default function Dashboard(): JSX.Element {
           />
 
           <path
-            d="M126 116 C145 79 180 65 211 82 C195 116 160 133 126 116Z"
+            d="M126 104 C147 73 180 65 204 83 C187 113 158 123 126 104Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
@@ -283,126 +308,114 @@ export default function Dashboard(): JSX.Element {
           />
 
           <path
-            d="M39 255 C73 244 104 258 119 290"
+            d="M40 223 C73 216 102 232 111 259"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-
-          <circle cx="165" cy="37" r="4" fill="currentColor" />
-
-          <path
-            d="M184 30 Q201 12 218 30 Q201 48 184 30Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-        </motion.svg>
-
-        {/* Top-center lotus flower */}
-        <motion.svg
-          viewBox="0 0 300 190"
-          className="absolute left-1/2 top-0 h-36 w-56 -translate-x-1/2 text-fuchsia-400/20 sm:h-44 sm:w-72"
-          initial={{ opacity: 0, y: -10, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 1.2, delay: 0.1 }}
-        >
-          <path
-            d="M150 154 C105 139 81 103 91 55 C124 67 146 99 150 154Z"
-            fill="currentColor"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-
-          <path
-            d="M150 154 C195 139 219 103 209 55 C176 67 154 99 150 154Z"
-            fill="currentColor"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-
-          <path
-            d="M150 154 C111 111 119 55 150 18 C181 55 189 111 150 154Z"
-            fill="currentColor"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-
-          <path
-            d="M150 154 C73 151 40 122 31 91 C80 88 125 111 150 154Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-
-          <path
-            d="M150 154 C227 151 260 122 269 91 C220 88 175 111 150 154Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-
-          <path
-            d="M80 166 Q150 180 220 166"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-
-          <path
-            d="M52 174 Q150 194 248 174"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
+            strokeWidth="2.5"
             strokeLinecap="round"
           />
         </motion.svg>
 
-        {/* Top-right handwritten-style wellness note */}
+        {/* Top-center lotus */}
         <motion.svg
-          viewBox="0 0 250 230"
-          className="absolute -right-5 top-0 h-48 w-52 text-violet-400/45 sm:right-2 sm:h-56 sm:w-60"
-          initial={{ opacity: 0, y: -10 }}
+          viewBox="0 0 260 180"
+          className="absolute left-1/2 top-4 h-32 w-44 -translate-x-1/2 text-fuchsia-400/25 sm:h-40 sm:w-56"
+          initial={{ opacity: 0, y: -15 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1.1, delay: 0.1 }}
+        >
+          <path
+            d="M130 150 C91 132 75 102 83 70 C111 78 130 111 130 150Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          />
+
+          <path
+            d="M130 150 C169 132 185 102 177 70 C149 78 130 111 130 150Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          />
+
+          <path
+            d="M130 150 C102 119 101 72 130 30 C159 72 158 119 130 150Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          />
+
+          <path
+            d="M130 150 C74 147 43 119 40 87 C81 85 113 110 130 150Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          />
+
+          <path
+            d="M130 150 C186 147 217 119 220 87 C179 85 147 110 130 150Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          />
+
+          <path
+            d="M68 156 Q130 174 192 156"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </motion.svg>
+
+        {/* Top-right handwritten-style wellness decoration */}
+        <motion.svg
+          viewBox="0 0 220 210"
+          className="absolute -right-5 top-3 h-48 w-48 text-purple-400/35 sm:right-4 sm:h-56 sm:w-56"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 1.1, delay: 0.2 }}
         >
-          <text
-            x="35"
-            y="58"
-            fill="currentColor"
-            fontSize="25"
-            fontFamily="cursive"
-            fontStyle="italic"
-          >
-            Your
-          </text>
-
-          <text
-            x="48"
-            y="91"
-            fill="currentColor"
-            fontSize="25"
-            fontFamily="cursive"
-            fontStyle="italic"
-          >
-            Wellness
-          </text>
-
-          <text
-            x="38"
-            y="124"
-            fill="currentColor"
-            fontSize="25"
-            fontFamily="cursive"
-            fontStyle="italic"
-          >
-            Matters
-          </text>
+          <path
+            d="M32 45 C56 25 74 27 94 43"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
 
           <path
-            d="M128 153 C118 139 94 145 99 162 C104 177 128 188 128 188 C128 188 152 177 157 162 C162 145 138 139 128 153Z"
+            d="M42 66 C63 49 84 51 101 67"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M48 89 C71 74 88 76 106 89"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M126 38 C145 25 164 29 177 44 C163 59 144 61 126 38Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+
+          <path
+            d="M145 86 C156 69 174 70 186 83 C176 98 159 101 145 86Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+
+          <path
+            d="M118 130 C109 111 83 116 83 135 C83 151 102 160 118 173 C134 160 153 151 153 135 C153 116 127 111 118 130Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
@@ -410,16 +423,16 @@ export default function Dashboard(): JSX.Element {
           />
         </motion.svg>
 
-        {/* Right-side mint botanical branch */}
+        {/* Right-side leafy branch */}
         <motion.svg
-          viewBox="0 0 230 390"
-          className="absolute -right-14 top-[36%] h-80 w-52 text-emerald-400/25 sm:right-0 sm:h-[26rem] sm:w-60"
-          initial={{ opacity: 0, x: 18 }}
+          viewBox="0 0 220 360"
+          className="absolute -right-12 top-[43%] h-80 w-52 text-emerald-400/25 sm:right-0 sm:h-96 sm:w-60"
+          initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 1.3, delay: 0.25 }}
+          transition={{ duration: 1.2, delay: 0.25 }}
         >
           <path
-            d="M181 390 C160 293 126 211 67 137"
+            d="M178 355 C154 270 124 204 65 140"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
@@ -427,239 +440,65 @@ export default function Dashboard(): JSX.Element {
           />
 
           <path
-            d="M145 279 C181 268 202 239 193 207 C161 213 140 242 145 279Z"
+            d="M142 263 C175 251 193 225 186 196 C157 202 137 231 142 263Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
-            strokeLinejoin="round"
           />
 
           <path
-            d="M119 223 C83 218 58 192 60 158 C94 164 121 189 119 223Z"
+            d="M116 211 C83 207 59 183 62 151 C94 157 119 179 116 211Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
-            strokeLinejoin="round"
           />
 
           <path
-            d="M91 182 C121 150 121 114 98 88 C71 115 70 151 91 182Z"
+            d="M89 177 C117 147 117 113 96 91 C72 115 69 147 89 177Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
-            strokeLinejoin="round"
           />
 
           <path
-            d="M65 151 C36 139 22 112 30 84 C57 94 73 121 65 151Z"
+            d="M62 144 C34 134 20 111 28 87 C53 94 69 117 62 144Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
-            strokeLinejoin="round"
           />
-
-          <circle cx="45" cy="48" r="4" fill="currentColor" />
-          <circle cx="83" cy="27" r="3" fill="currentColor" />
         </motion.svg>
 
-        {/* Bottom-left lotus, waves and leaves */}
+        {/* Bottom-left lotus */}
         <motion.svg
-          viewBox="0 0 420 240"
-          className="absolute -bottom-8 -left-12 h-48 w-[22rem] text-sky-400/25 sm:left-0 sm:h-56 sm:w-[26rem]"
-          initial={{ opacity: 0, y: 18 }}
+          viewBox="0 0 280 190"
+          className="absolute -bottom-8 -left-8 h-44 w-64 text-blue-400/25 sm:left-4 sm:h-52 sm:w-80"
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, delay: 0.3 }}
         >
           <path
-            d="M104 206 C94 162 101 117 133 82 C164 117 171 162 160 206Z"
-            fill="currentColor"
-            opacity="0.35"
-          />
-
-          <path
-            d="M104 206 C67 181 49 148 60 119 C92 130 111 165 104 206Z"
-            fill="currentColor"
-            opacity="0.25"
-          />
-
-          <path
-            d="M160 206 C197 181 215 148 204 119 C172 130 153 165 160 206Z"
-            fill="currentColor"
-            opacity="0.25"
-          />
-
-          <path
-            d="M42 222 Q112 242 182 222"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-
-          <path
-            d="M-8 184 C55 145 111 145 174 184 S300 223 363 184 S420 145 448 164"
+            d="M140 145 C109 120 102 82 140 36 C178 82 171 120 140 145Z"
             fill="none"
             stroke="currentColor"
             strokeWidth="2.5"
-            strokeLinecap="round"
           />
 
           <path
-            d="M-12 211 C51 172 107 172 170 211 S296 250 359 211 S416 172 444 191"
+            d="M140 145 C91 142 56 113 53 79 C93 80 123 103 140 145Z"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
+            strokeWidth="2.5"
           />
 
           <path
-            d="M268 60 Q286 42 304 60 Q286 78 268 60Z"
+            d="M140 145 C189 142 224 113 227 79 C187 80 157 103 140 145Z"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
           />
 
           <path
-            d="M328 38 L333 51 L346 56 L333 61 L328 74 L323 61 L310 56 L323 51Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-        </motion.svg>
-
-        {/* Small floating heart and sparkle */}
-        <motion.svg
-          viewBox="0 0 180 180"
-          className="absolute bottom-24 right-[7%] h-20 w-20 text-pink-400/35 sm:h-24 sm:w-24"
-          initial={{ opacity: 0, scale: 0.7 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.45 }}
-        >
-          <path
-            d="M90 135 C77 120 43 99 43 72 C43 47 75 42 90 66 C105 42 137 47 137 72 C137 99 103 120 90 135Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinejoin="round"
-          />
-
-          <path
-            d="M20 35 L24 46 L35 50 L24 54 L20 65 L16 54 L5 50 L16 46Z"
-            fill="currentColor"
-            opacity="0.7"
-          />
-
-          <circle cx="145" cy="25" r="4" fill="currentColor" />
-        </motion.svg>
-
-        {/* Mid-left leaf sprig, near the feature grid */}
-        <motion.svg
-          viewBox="0 0 160 220"
-          className="absolute left-2 top-[48%] h-40 w-28 text-blue-400/25 sm:left-4 sm:h-48 sm:w-32"
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 1, delay: 0.35 }}
-        >
-          <path
-            d="M20 210 C28 160 46 118 88 78"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-          />
-
-          <path
-            d="M46 168 C22 160 12 138 20 114 C43 121 55 143 46 168Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinejoin="round"
-          />
-
-          <path
-            d="M68 128 C56 100 68 74 92 63 C104 90 92 116 68 128Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinejoin="round"
-          />
-
-          <circle cx="94" cy="52" r="3" fill="currentColor" />
-        </motion.svg>
-
-        {/* Mid-right flower sprig, near the feature grid */}
-        <motion.svg
-          viewBox="0 0 170 190"
-          className="absolute -right-4 top-[52%] h-36 w-28 text-purple-400/25 sm:right-0 sm:h-44 sm:w-32"
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 1, delay: 0.4 }}
-        >
-          <path
-            d="M150 180 C136 132 112 95 68 60"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-          />
-
-          <path
-            d="M108 140 C132 132 146 110 140 86 C112 92 96 116 108 140Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinejoin="round"
-          />
-
-          <path
-            d="M78 96 C90 68 78 42 54 31 C42 58 54 84 78 96Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinejoin="round"
-          />
-
-          <path
-            d="M40 26 Q56 10 72 26 Q56 42 40 26Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-        </motion.svg>
-
-        {/* Handwritten note near the community section */}
-        <motion.svg
-          viewBox="0 0 220 140"
-          className="absolute left-[6%] top-[74%] h-28 w-40 text-violet-400/40 sm:h-32 sm:w-44"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.45 }}
-        >
-          <text
-            x="18"
-            y="45"
-            fill="currentColor"
-            fontSize="24"
-            fontFamily="cursive"
-            fontStyle="italic"
-          >
-            You are
-          </text>
-
-          <text
-            x="10"
-            y="78"
-            fill="currentColor"
-            fontSize="24"
-            fontFamily="cursive"
-            fontStyle="italic"
-          >
-            not alone
-          </text>
-
-          <path
-            d="M20 95 Q70 108 120 95"
+            d="M40 154 Q140 180 240 154"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -667,56 +506,24 @@ export default function Dashboard(): JSX.Element {
           />
 
           <path
-            d="M120 92 C112 82 96 86 99 98 C102 109 120 117 120 117 C120 117 138 109 141 98 C144 86 128 82 120 92Z"
+            d="M24 166 Q140 194 256 166"
             fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-        </motion.svg>
-
-        {/* Small lotus above the footer nav */}
-        <motion.svg
-          viewBox="0 0 200 130"
-          className="absolute right-[10%] bottom-2 h-24 w-36 text-fuchsia-400/20 sm:h-28 sm:w-40"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.5 }}
-        >
-          <path
-            d="M100 106 C70 96 54 71 61 38 C84 46 99 68 100 106Z"
-            fill="currentColor"
             stroke="currentColor"
             strokeWidth="1.5"
-          />
-
-          <path
-            d="M100 106 C130 96 146 71 139 38 C116 46 101 68 100 106Z"
-            fill="currentColor"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-
-          <path
-            d="M100 106 C74 76 79 38 100 13 C121 38 126 76 100 106Z"
-            fill="currentColor"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-
-          <path
-            d="M55 114 Q100 124 145 114"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
             strokeLinecap="round"
           />
         </motion.svg>
+
+        {/* Small floating hearts */}
+        <Heart className="absolute left-[17%] top-[27%] h-7 w-7 rotate-[-18deg] text-pink-300/30" />
+        <Heart className="absolute right-[18%] top-[63%] h-8 w-8 rotate-[16deg] text-purple-300/30" />
+        <Sparkles className="absolute left-[46%] top-[36%] h-5 w-5 text-violet-300/30" />
+        <Sparkles className="absolute right-[32%] bottom-[20%] h-6 w-6 text-pink-300/30" />
       </div>
 
       {/* Mode selector */}
       {showModePopup && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm">
           <div className="w-full max-w-xl">
             <ModeSelectorV2 />
           </div>
@@ -728,156 +535,191 @@ export default function Dashboard(): JSX.Element {
         className="relative z-10"
         initial={{ y: -18, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.55 }}
       >
-        <div className="mx-auto max-w-6xl px-6 py-8 rounded-b-3xl bg-card border">
-          <h1 className="text-4xl font-extrabold text-center">
-            {getGreeting()}, {getUserName()} 🌤️
-          </h1>
+        <div className="mx-auto max-w-7xl px-6 pb-5 pt-8 sm:px-8">
+          <div className="relative overflow-hidden rounded-b-[42px] border border-white/60 bg-card/75 px-5 py-7 shadow-[0_18px_55px_rgba(116,91,180,0.08)] backdrop-blur-xl sm:px-10 sm:py-9">
+            <div className="absolute inset-0 bg-gradient-to-r from-violet-100/30 via-transparent to-pink-100/30" />
+
+            <div className="relative flex flex-col items-center justify-center text-center">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-300 to-purple-500 text-2xl shadow-lg shadow-purple-200/50">
+                  🪷
+                </div>
+
+                <h1 className="text-3xl font-extrabold tracking-tight text-primary sm:text-4xl">
+                  {getGreeting()}, {getUserName()}
+                </h1>
+
+                <span className="text-3xl">🌤️</span>
+              </div>
+
+              <p className="text-sm font-medium text-muted-foreground sm:text-base">
+                Small steps towards a healthier, happier you
+                <span className="ml-2 text-pink-400">♡</span>
+              </p>
+            </div>
+          </div>
         </div>
       </motion.header>
 
+      {/* Demo mode notice */}
       {isDemoMode() && (
-        <div className="relative z-10 mx-auto mt-4 max-w-6xl px-6">
-          <div className="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
+        <div className="relative z-10 mx-auto mt-1 max-w-7xl px-6 sm:px-8">
+          <div className="rounded-2xl border border-primary/15 bg-primary/10 px-4 py-3 text-sm text-primary shadow-sm">
             Demo Mode is active. Wellness data is seeded for presentation.
           </div>
         </div>
       )}
 
+      {/* Mood section */}
       <motion.section
-        className="relative z-10"
+        className="relative z-10 mx-auto mt-1 max-w-7xl px-6 sm:px-8"
         variants={cardAnim}
         initial="initial"
         animate="animate"
-        transition={{ delay: 0.05 }}
+        transition={{ delay: 0.05, duration: 0.5 }}
       >
-        <div className="glass rounded-3xl border border-white/8 shadow-elevated p-6 md:p-8">
-          <h3 className="font-semibold text-lg md:text-xl text-foreground text-center">
-            How are you feeling today?
-          </h3>
-
-          <p className="text-sm text-muted-foreground text-center mt-2">
-            Slide to select your current mood
-          </p>
-
-          {/* Current mood */}
-          <div className="flex flex-col items-center mt-6">
-            <motion.div
-              key={currentMood.label}
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="flex items-center gap-3"
-            >
-              <span className="text-4xl">{currentMood.emoji}</span>
-
-              <div>
-                <p className="font-semibold text-lg">
-                  {currentMood.label}
-                </p>
-
-                <p className="text-sm text-muted-foreground">
-                  Mood score: {moodValue}/100
-                </p>
-              </div>
-            </motion.div>
+        <div className="relative overflow-hidden rounded-[30px] border border-white/70 bg-gradient-to-br from-violet-100/60 via-card/80 to-purple-100/50 p-6 shadow-[0_16px_45px_rgba(126,96,190,0.08)] backdrop-blur-xl md:p-8">
+          {/* Mood decoration */}
+          <div className="pointer-events-none absolute -left-8 bottom-[-45px] text-[150px] opacity-20">
+            🪷
           </div>
 
-          {/* Slider */}
-          <div className="relative mt-10 px-2">
-            {/* Gradient track */}
-            <div
-              className="absolute left-2 right-2 top-1/2 h-3 -translate-y-1/2 rounded-full"
-              style={{
-                background:
-                  "linear-gradient(to right, #ef6b73 0%, #f39b62 25%, #f5d76e 50%, #a8cf70 75%, #45b982 100%)",
-              }}
-            />
+          <Sparkles className="pointer-events-none absolute left-[16%] top-7 h-5 w-5 text-white/90" />
+          <Sparkles className="pointer-events-none absolute left-[21%] top-16 h-4 w-4 text-violet-300/70" />
+          <Sparkles className="pointer-events-none absolute right-[24%] top-12 h-4 w-4 text-white/80" />
 
-            {/* Floating value bubble at thumb */}
-            <div
-              className="absolute top-1/2 flex flex-col items-center pointer-events-none transition-[left] duration-100 ease-out z-20"
-              style={{
-                left: `${moodValue}%`,
-                transform: "translate(-50%, 18px)",
-              }}
-            >
-              <div className="w-0 h-0 border-l-[7px] border-r-[7px] border-b-[8px] border-l-transparent border-r-transparent border-b-primary" />
+          <div className="relative">
+            <h3 className="text-center text-lg font-bold text-primary md:text-xl">
+              How are you feeling today?
+            </h3>
 
-              <div className="mt-[-1px] rounded-full bg-primary text-primary-foreground text-sm font-bold px-3.5 py-1.5 shadow-md leading-none flex items-center gap-1.5">
-                <span
-                  className="text-base leading-none transition-transform duration-150 ease-out"
-                  style={{
-                    transform: isDragging ? "scale(1.6)" : "scale(1)",
-                  }}
-                >
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              Slide to select your current mood
+            </p>
+
+            {/* Current mood */}
+            <div className="mt-5 flex flex-col items-center">
+              <motion.div
+                key={currentMood.label}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center gap-3"
+              >
+                <span className="text-4xl drop-shadow-sm">
                   {currentMood.emoji}
                 </span>
 
-                <span>{moodValue}</span>
+                <div>
+                  <p className="text-lg font-bold text-primary">
+                    {currentMood.label}
+                  </p>
+
+                  <p className="text-sm text-muted-foreground">
+                    Mood score: {moodValue}/100
+                  </p>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Slider */}
+            <div className="relative mt-10 px-2">
+              <div
+                className="absolute left-2 right-2 top-1/2 h-3 -translate-y-1/2 rounded-full shadow-inner"
+                style={{
+                  background:
+                    "linear-gradient(to right, #ef7890 0%, #f3a16f 25%, #f6d875 50%, #abd27d 75%, #55c4b1 100%)",
+                }}
+              />
+
+              {/* Slider value bubble */}
+              <div
+                className="pointer-events-none absolute top-1/2 z-20 flex flex-col items-center transition-[left] duration-100 ease-out"
+                style={{
+                  left: `${moodValue}%`,
+                  transform: "translate(-50%, 18px)",
+                }}
+              >
+                <div className="h-0 w-0 border-l-[7px] border-r-[7px] border-b-[8px] border-l-transparent border-r-transparent border-b-primary" />
+
+                <div className="mt-[-1px] flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-sm font-bold leading-none text-primary-foreground shadow-md">
+                  <span
+                    className="text-base leading-none transition-transform duration-150 ease-out"
+                    style={{
+                      transform: isDragging ? "scale(1.6)" : "scale(1)",
+                    }}
+                  >
+                    {currentMood.emoji}
+                  </span>
+
+                  <span>{moodValue}</span>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={moodValue}
+                onChange={(e) => setMoodValue(Number(e.target.value))}
+                onMouseDown={() => setIsDragging(true)}
+                onMouseUp={() => setIsDragging(false)}
+                onTouchStart={() => setIsDragging(true)}
+                onTouchEnd={() => setIsDragging(false)}
+                onBlur={() => setIsDragging(false)}
+                className="mood-slider relative z-10 h-3 w-full cursor-pointer appearance-none bg-transparent"
+                aria-label="Current mood"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={moodValue}
+              />
+
+              {/* Checkpoints */}
+              <div className="pointer-events-none absolute left-2 right-2 top-1/2 -translate-y-1/2">
+                {moodCheckpoints.map((checkpoint) => (
+                  <div
+                    key={checkpoint.value}
+                    className="absolute flex flex-col items-center"
+                    style={{
+                      left: `${checkpoint.value}%`,
+                      transform: "translateX(-50%)",
+                    }}
+                  >
+                    <div className="h-5 w-0.5 rounded-full bg-primary/20" />
+                  </div>
+                ))}
               </div>
             </div>
 
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={moodValue}
-              onChange={(e) => setMoodValue(Number(e.target.value))}
-              onMouseDown={() => setIsDragging(true)}
-              onMouseUp={() => setIsDragging(false)}
-              onTouchStart={() => setIsDragging(true)}
-              onTouchEnd={() => setIsDragging(false)}
-              onBlur={() => setIsDragging(false)}
-              className="relative z-10 w-full h-3 appearance-none bg-transparent cursor-pointer mood-slider"
-              aria-label="Current mood"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={moodValue}
-            />
-
-            {/* Checkpoints */}
-            <div className="absolute left-2 right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-              {moodCheckpoints.map((checkpoint) => (
-                <div
-                  key={checkpoint.value}
-                  className="absolute flex flex-col items-center"
-                  style={{
-                    left: `${checkpoint.value}%`,
-                    transform: "translateX(-50%)",
-                  }}
-                >
-                  <div className="h-5 w-0.5 bg-foreground/30 rounded-full" />
-                </div>
-              ))}
+            {/* Continue */}
+            <div className="mt-8 flex justify-center">
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() =>
+                  navigate("/mood", {
+                    state: {
+                      moodValue,
+                    },
+                  })
+                }
+                className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-shadow hover:shadow-lg"
+              >
+                Continue with {moodValue}
+              </motion.button>
             </div>
-          </div>
-
-          {/* Save / continue */}
-          <div className="flex justify-center mt-7">
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() =>
-                navigate("/mood", {
-                  state: {
-                    moodValue,
-                  },
-                })
-              }
-              className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm"
-            >
-              Continue with {moodValue}
-            </motion.button>
           </div>
         </div>
       </motion.section>
 
-      <main className="relative z-10 mx-auto max-w-6xl px-6 mt-8 space-y-8 pb-32">
+      {/* Main dashboard content */}
+      <main className="relative z-10 mx-auto mt-8 max-w-7xl space-y-8 px-6 pb-32 sm:px-8">
         {/* Feature grid */}
         <section>
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {features.map((f, i) => {
               const Icon = f.icon;
               const custom = getTileColor(f.id);
@@ -890,162 +732,108 @@ export default function Dashboard(): JSX.Element {
                   initial="hidden"
                   animate="show"
                   variants={tileVariants}
-                  className="
-                    group
-                    relative
-                    overflow-hidden
-                    rounded-[34px]
-                    border
-                    border-white/10
-                    bg-card/90
-                    backdrop-blur-xl
-                    p-8
-                    min-h-[300px]
-                    flex
-                    flex-col
-                    transition-all
-                    duration-500
-                    ease-out
-                    hover:-translate-y-3
-                    hover:scale-[1.02]
-                    hover:border-white/20
-                    shadow-[0_10px_35px_rgba(0,0,0,0.08)]
-                    hover:shadow-[0_25px_60px_rgba(0,0,0,0.16)]
-                  "
+                  className="group relative min-h-[285px] overflow-hidden rounded-[30px] border border-white/70 bg-card/85 p-7 text-left shadow-[0_12px_35px_rgba(100,85,160,0.07)] backdrop-blur-xl transition-all duration-500 ease-out hover:-translate-y-2 hover:shadow-[0_24px_55px_rgba(100,85,160,0.14)]"
                 >
-                  {/* Ambient Glow */}
+                  {/* Card pastel wash */}
                   <div
-                    className="
-                      absolute
-                      -top-10
-                      left-1/2
-                      -translate-x-1/2
-                      w-44
-                      h-44
-                      rounded-full
-                      blur-3xl
-                      opacity-15
-                      transition-all
-                      duration-500
-                      group-hover:opacity-30
-                      group-hover:scale-110
-                    "
+                    className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${f.gradient} opacity-[0.045] transition-opacity duration-500 group-hover:opacity-[0.09]`}
+                  />
+
+                  {/* Card glow */}
+                  <div
+                    className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full blur-3xl opacity-20 transition-all duration-500 group-hover:scale-125 group-hover:opacity-30"
                     style={{
                       background: custom
                         ? hslToCss(custom)
-                        : "rgba(255,255,255,0.15)",
+                        : "rgba(168, 130, 255, 0.3)",
                     }}
                   />
 
-                  {/* Icon */}
-                  <div className="relative flex justify-center mt-2">
-                    {/* Ambient Glow */}
-                    <div
-                      className="
-                        absolute
-                        w-36
-                        h-36
-                        rounded-full
-                        blur-3xl
-                        opacity-30
-                        transition-all
-                        duration-500
-                        group-hover:opacity-50
-                        group-hover:scale-110
-                      "
-                      style={{
-                        backgroundColor: custom
-                          ? hslToCss(custom)
-                          : undefined,
-                      }}
+                  {/* Decorative card leaf */}
+                  <svg
+                    viewBox="0 0 130 150"
+                    className={`pointer-events-none absolute -bottom-5 -right-4 h-36 w-32 opacity-30 transition-all duration-500 group-hover:translate-x-1 group-hover:-translate-y-1 ${
+                      f.doodle === "blue"
+                        ? "text-blue-400"
+                        : f.doodle === "green"
+                          ? "text-emerald-400"
+                          : f.doodle === "pink"
+                            ? "text-rose-400"
+                            : "text-purple-400"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M105 150 C91 104 65 65 23 32"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
                     />
 
-                    {/* Icon Container */}
+                    <path
+                      d="M79 105 C106 96 120 76 114 54 C88 59 75 79 79 105Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    />
+
+                    <path
+                      d="M60 82 C36 78 19 60 22 38 C45 42 63 59 60 82Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    />
+
+                    <path
+                      d="M39 58 C59 36 59 15 44 3 C25 20 24 41 39 58Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    />
+
+                    <path
+                      d="M21 37 C8 31 1 19 5 7 C17 11 25 22 21 37Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    />
+                  </svg>
+
+                  {/* Icon */}
+                  <div className="relative flex items-center">
                     <div
-                      className={`
-                        relative
-                        z-10
-                        w-24
-                        h-24
-                        rounded-[30px]
-                        flex
-                        items-center
-                        justify-center
-                        bg-gradient-to-br
-                        ${f.gradient}
-                        shadow-xl
-                        transition-all
-                        duration-500
-                        group-hover:-translate-y-2
-                        group-hover:scale-110
-                        group-hover:rotate-2
-                      `}
+                      className={`flex h-[88px] w-[88px] items-center justify-center rounded-[28px] bg-gradient-to-br ${f.gradient} shadow-lg transition-all duration-500 group-hover:-translate-y-1 group-hover:rotate-2 group-hover:scale-105`}
                       style={
                         custom
-                          ? { backgroundColor: hslToCss(custom) }
+                          ? {
+                              backgroundColor: hslToCss(custom),
+                            }
                           : undefined
                       }
                     >
                       <Icon
-                        className="
-                          w-12
-                          h-12
-                          text-white
-                          drop-shadow-xl
-                          transition-all
-                          duration-500
-                          group-hover:scale-110
-                        "
-                        strokeWidth={2.2}
+                        className="h-11 w-11 text-white drop-shadow-md"
+                        strokeWidth={2.1}
                       />
                     </div>
                   </div>
 
-                  {/* Title */}
-                  <div className="mt-12">
-                    <h3 className="text-2xl font-bold tracking-tight">
+                  {/* Text */}
+                  <div className="relative mt-7 max-w-[240px]">
+                    <h3 className="text-xl font-bold tracking-tight text-primary sm:text-2xl">
                       {f.title}
                     </h3>
 
-                    <p className="mt-3 text-sm text-muted-foreground leading-7">
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
                       {f.description}
                     </p>
                   </div>
 
-                  {/* Spacer */}
-                  <div className="flex-1" />
-
                   {/* Arrow */}
-                  <div className="flex justify-end">
-                    <div
-                      className="
-                        w-12
-                        h-12
-                        rounded-full
-                        flex
-                        items-center
-                        justify-center
-                        bg-white/5
-                        border
-                        border-white/10
-                        transition-all
-                        duration-300
-                        group-hover:bg-white/10
-                        group-hover:border-white/30
-                        group-hover:translate-x-2
-                        group-hover:scale-110
-                      "
-                    >
-                      <ArrowRight
-                        className="
-                          w-6
-                          h-6
-                          transition-all
-                          duration-300
-                          group-hover:w-7
-                          group-hover:h-7
-                        "
-                      />
+                  <div className="relative mt-6 flex justify-start">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/10 bg-primary/5 text-primary transition-all duration-300 group-hover:translate-x-2 group-hover:bg-primary/10">
+                      <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-0.5" />
                     </div>
                   </div>
                 </motion.button>
@@ -1056,7 +844,7 @@ export default function Dashboard(): JSX.Element {
 
         {/* Quick Actions */}
         <section>
-          <div className="space-y-5">
+          <div className="space-y-4">
             {quickActions.map((a) => {
               const Icon = a.icon;
 
@@ -1064,96 +852,33 @@ export default function Dashboard(): JSX.Element {
                 <motion.button
                   key={a.title}
                   onClick={() => navigate(a.route)}
-                  whileHover={{ y: -4, scale: 1.01 }}
+                  whileHover={{ y: -3, scale: 1.005 }}
                   transition={{ duration: 0.25 }}
-                  className="
-                    group
-                    w-full
-                    rounded-[28px]
-                    border
-                    border-white/10
-                    bg-card/90
-                    backdrop-blur-xl
-                    px-6
-                    py-5
-                    flex
-                    items-center
-                    justify-between
-                    transition-all
-                    duration-300
-                    hover:border-white/20
-                    hover:shadow-[0_20px_45px_rgba(0,0,0,0.12)]
-                  "
+                  className="group flex w-full items-center justify-between rounded-[28px] border border-white/70 bg-card/85 px-5 py-5 text-left shadow-[0_12px_35px_rgba(100,85,160,0.06)] backdrop-blur-xl transition-all duration-300 hover:border-primary/10 hover:shadow-[0_20px_45px_rgba(100,85,160,0.12)] sm:px-7"
                 >
-                  {/* Left Section */}
-                  <div className="flex items-center gap-5">
-                    {/* Icon */}
+                  <div className="flex items-center gap-4 sm:gap-5">
                     <div
-                      className={`
-                        relative
-                        w-16
-                        h-16
-                        rounded-[22px]
-                        flex
-                        items-center
-                        justify-center
-                        bg-gradient-to-br
-                        ${a.gradient ?? "from-blue-500 to-cyan-500"}
-                        transition-all
-                        duration-300
-                        group-hover:scale-110
-                        group-hover:-translate-y-1
-                        shadow-lg
-                      `}
+                      className={`flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${a.gradient} shadow-lg transition-all duration-300 group-hover:-translate-y-1 group-hover:scale-105`}
                     >
                       <Icon
-                        className="w-8 h-8 text-white"
-                        strokeWidth={2.3}
+                        className="h-8 w-8 text-white"
+                        strokeWidth={2.2}
                       />
                     </div>
 
-                    {/* Text */}
-                    <div className="text-left">
-                      <h4 className="text-lg font-semibold tracking-tight">
+                    <div>
+                      <h4 className="text-lg font-bold tracking-tight text-primary">
                         {a.title}
                       </h4>
 
-                      <p className="text-sm text-muted-foreground">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         Tap to continue
                       </p>
                     </div>
                   </div>
 
-                  {/* Arrow */}
-                  <div
-                    className="
-                      w-12
-                      h-12
-                      rounded-full
-                      flex
-                      items-center
-                      justify-center
-                      border
-                      border-white/10
-                      bg-white/5
-                      transition-all
-                      duration-300
-                      group-hover:translate-x-2
-                      group-hover:scale-110
-                      group-hover:border-white/30
-                      group-hover:bg-white/10
-                    "
-                  >
-                    <ArrowRight
-                      className="
-                        w-6
-                        h-6
-                        transition-all
-                        duration-300
-                        group-hover:w-7
-                        group-hover:h-7
-                      "
-                    />
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/10 bg-primary/5 text-primary transition-all duration-300 group-hover:translate-x-1 group-hover:bg-primary/10">
+                    <ArrowRight className="h-5 w-5" />
                   </div>
                 </motion.button>
               );
@@ -1161,78 +886,29 @@ export default function Dashboard(): JSX.Element {
 
             {/* Share Moment */}
             <motion.button
-              whileHover={{ y: -4, scale: 1.01 }}
+              whileHover={{ y: -3, scale: 1.005 }}
               transition={{ duration: 0.25 }}
               onClick={() => setOpenShare(true)}
-              className="
-                group
-                w-full
-                rounded-[28px]
-                border
-                border-white/10
-                bg-card/90
-                backdrop-blur-xl
-                px-6
-                py-5
-                flex
-                items-center
-                justify-between
-                transition-all
-                duration-300
-                hover:border-white/20
-                hover:shadow-[0_20px_45px_rgba(0,0,0,0.12)]
-              "
+              className="group flex w-full items-center justify-between rounded-[28px] border border-white/70 bg-card/85 px-5 py-5 text-left shadow-[0_12px_35px_rgba(100,85,160,0.06)] backdrop-blur-xl transition-all duration-300 hover:border-primary/10 hover:shadow-[0_20px_45px_rgba(100,85,160,0.12)] sm:px-7"
             >
-              <div className="flex items-center gap-5">
-                <div
-                  className="
-                    w-16
-                    h-16
-                    rounded-[22px]
-                    bg-gradient-to-br
-                    from-pink-500
-                    to-rose-500
-                    flex
-                    items-center
-                    justify-center
-                    transition-all
-                    duration-300
-                    group-hover:scale-110
-                    group-hover:-translate-y-1
-                  "
-                >
-                  <Share2 className="w-8 h-8 text-white" />
+              <div className="flex items-center gap-4 sm:gap-5">
+                <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br from-pink-400 to-rose-500 shadow-lg transition-all duration-300 group-hover:-translate-y-1 group-hover:scale-105">
+                  <Share2 className="h-8 w-8 text-white" />
                 </div>
 
                 <div className="text-left">
-                  <h4 className="text-lg font-semibold">
+                  <h4 className="text-lg font-bold text-primary">
                     Share Moment
                   </h4>
 
-                  <p className="text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Inspire your friends
                   </p>
                 </div>
               </div>
 
-              <div
-                className="
-                  w-12
-                  h-12
-                  rounded-full
-                  border
-                  border-white/10
-                  bg-white/5
-                  flex
-                  items-center
-                  justify-center
-                  transition-all
-                  duration-300
-                  group-hover:translate-x-2
-                  group-hover:scale-110
-                "
-              >
-                <ArrowRight className="w-6 h-6" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/10 bg-primary/5 text-primary transition-all duration-300 group-hover:translate-x-1 group-hover:bg-primary/10">
+                <ArrowRight className="h-5 w-5" />
               </div>
             </motion.button>
           </div>
