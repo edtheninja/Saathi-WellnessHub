@@ -102,7 +102,7 @@ const Journal = () => {
     }
 
     try {
-      const { data } = await apiFetch("/api/data/journals?order=created_at:desc");
+      const { data } = await apiFetch("/data/journals?order=created_at:desc");
       setEntries(data || []);
     } catch (error) {
       console.error("Fetch journals error:", error);
@@ -201,7 +201,7 @@ const Journal = () => {
     setIsDeleting(true);
 
     try {
-      await apiFetch(`/api/data/journals?id=${encodeURIComponent(selectedEntry.id)}`, {
+      await apiFetch(`/data/journals?id=${encodeURIComponent(selectedEntry.id)}`, {
         method: "DELETE",
       });
 
