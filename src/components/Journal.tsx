@@ -102,7 +102,7 @@ const Journal = () => {
     }
 
     try {
-      const { data } = await apiFetch("/api/data/journals?order=created_at:desc");
+      const { data } = await apiFetch("/data/journals?order=created_at:desc");
       setEntries(data || []);
     } catch (error) {
       console.error("Fetch journals error:", error);
@@ -165,7 +165,7 @@ const Journal = () => {
     try {
       // Images are intentionally NOT uploaded yet — media_url/media_type
       // on the journals table are ready for this once you wire up storage.
-      await apiFetch("/api/data/journals", {
+      await apiFetch("/data/journals", {
         method: "POST",
         body: JSON.stringify({
           title: currentTitle.trim(),
@@ -201,7 +201,7 @@ const Journal = () => {
     setIsDeleting(true);
 
     try {
-      await apiFetch(`/api/data/journals?id=${encodeURIComponent(selectedEntry.id)}`, {
+      await apiFetch(`/data/journals?id=${encodeURIComponent(selectedEntry.id)}`, {
         method: "DELETE",
       });
 
