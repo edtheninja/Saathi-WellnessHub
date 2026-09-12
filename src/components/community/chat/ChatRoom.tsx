@@ -62,7 +62,7 @@ export default function ChatRoom({ room }: Props) {
             const [{ data: user }, { data }] = await Promise.all([
                 supabase.auth.getUser(),
                 supabase
-                    .from("chat_messages")
+                    .from("community_messages")
                     .select("*")
                     .eq("room_id", room.id)
                     .order("created_at", { ascending: true }),
@@ -145,7 +145,7 @@ export default function ChatRoom({ room }: Props) {
         const { data: user } = await supabase.auth.getUser();
         if (!user.user) return;
 
-        await supabase.from("chat_messages").insert({
+        await supabase.from("community_messages").insert({
             id: message.id,
             room_id: message.roomId,
             sender_id: user.user.id,
@@ -308,7 +308,7 @@ export default function ChatRoom({ room }: Props) {
                 };
 
                 void supabase
-                    .from("chat_messages")
+                    .from("community_messages")
                     .update({ reactions })
                     .eq("id", item.id);
                 getCommunitySocket().emit("message:react", { roomId: room.id, messageId: item.id, reactions });
