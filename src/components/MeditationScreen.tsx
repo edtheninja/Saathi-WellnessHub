@@ -187,7 +187,7 @@ const MeditationScreen = () => {
           immediately. finalizeSession() replaces it with the
           actual elapsed duration when the session ends.
         */
-        duration: selectedDuration,
+        duration:0,
         completed: false,
       })
       .select("id")
@@ -240,10 +240,11 @@ const actualElapsedMs = Math.min(
   durationMs
 );
 
-const actualDuration = Math.floor(actualElapsedMs / 60000);
+const actualDuration = Math.floor(
+  actualElapsedMs / 1000
+);
 
 const completed = actualElapsedMs >= durationMs;
-
 await supabase
   .from("meditation_sessions")
   .update({
