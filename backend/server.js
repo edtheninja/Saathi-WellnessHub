@@ -401,6 +401,12 @@ const gemini = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+const GEMINI_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+];
+
 app.post("/api/ai/chat", authRequired, async (req, res) => {
   try {
     const { messages = [] } = req.body;
@@ -411,48 +417,123 @@ app.post("/api/ai/chat", authRequired, async (req, res) => {
       });
     }
 
-    const conversation = messages
+    // Limit the conversation size so requests don't become unnecessarily large.
+    const recentMessages = messages.slice(-20);
+
+    const conversation = recentMessages
       .map((message) => {
         const role =
           message.role === "assistant"
             ? "SAATHI"
             : "User";
 
-        return `${role}: ${String(message.content || "")}`;
+        return `${role}: ${String(message.content || "").trim()}`;
       })
+      .filter(Boolean)
       .join("\n");
 
-    const response = await gemini.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: `
+    const prompt = `
 You are SAATHI, a supportive AI wellness companion.
 
 Your role:
 - Listen empathetically.
 - Respond naturally and calmly.
-- Help users reflect on emotions.
-- Suggest practical wellness strategies.
-- Encourage professional support when appropriate.
-- Never claim to be a doctor or therapist.
-- Do not diagnose mental health conditions.
+- Help users reflect on their emotions.
+- Suggest practical and safe wellness strategies.
+- Encourage healthy habits and professional support when appropriate.
+- Never claim to be a doctor, therapist, or emergency service.
+- Never diagnose mental health conditions.
+- Never prescribe medication.
+- Do not make medical claims with certainty.
+- Keep responses helpful and reasonably concise.
+- Ask one gentle follow-up question when appropriate.
+
+Safety:
 - If the user expresses immediate self-harm or suicide risk,
-  encourage immediate human/emergency support.
+  encourage them to seek immediate human help.
+- Encourage contacting a trusted person nearby.
+- Encourage local emergency services when there is immediate danger.
+- In India, mention Tele-MANAS at 14416 when appropriate.
+- Do not provide instructions for self-harm.
 
 Conversation:
 
 ${conversation}
 
 Respond as SAATHI.
-      `,
-    });
+`;
 
-    res.json({
-      message: response.text,
+    let response = null;
+    let lastError = null;
+
+    /*
+     * Try the available Gemini models one by one.
+     *
+     * This protects the application when one model temporarily
+     * returns 503 / UNAVAILABLE because of high demand.
+     */
+    for (const model of GEMINI_MODELS) {
+      try {
+        console.log(`Trying Gemini model: ${model}`);
+
+        response = await gemini.models.generateContent({
+          model,
+          contents: prompt,
+        });
+
+        console.log(`Gemini model succeeded: ${model}`);
+
+        break;
+      } catch (error) {
+        lastError = error;
+
+        console.error(`Gemini model ${model} failed:`, {
+          status: error?.status,
+          message: error?.message,
+        });
+
+        /*
+         * If Gemini returns 503, try the next model.
+         *
+         * For other errors, stop immediately because they may
+         * indicate a configuration/authentication/request problem.
+         */
+        if (error?.status !== 503) {
+          throw error;
+        }
+      }
+    }
+
+    if (!response) {
+      console.error(
+        "All Gemini models failed:",
+        lastError
+      );
+
+      return res.status(503).json({
+        error:
+          "SAATHI AI is temporarily unavailable. Please try again in a moment.",
+      });
+    }
+
+    const message =
+      typeof response.text === "string"
+        ? response.text.trim()
+        : "";
+
+    if (!message) {
+      return res.status(502).json({
+        error: "SAATHI returned an empty response",
+      });
+    }
+
+    return res.json({
+      message,
     });
   } catch (error) {
     console.error("Gemini API error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Unable to generate AI response",
     });
   }
