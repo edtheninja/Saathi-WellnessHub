@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Camera,
   ChevronDown,
   CircleUserRound,
   Heart,
@@ -250,6 +249,293 @@ function getFilteredPosts(posts: VisualPost[], filter: Filter, myPostIds: Set<st
   });
 }
 
+function LotusLeavesDecoration() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+    >
+      {/* TOP LEFT — lotus + leaves */}
+      <svg
+        className="absolute -left-8 -top-4 h-40 w-40 opacity-60 sm:h-52 sm:w-52"
+        viewBox="0 0 200 200"
+        fill="none"
+      >
+        <path
+          d="M38 158C57 122 76 83 105 42"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-emerald-300"
+        />
+        <path
+          d="M66 112C45 95 25 94 12 101C28 117 48 123 66 112Z"
+          fill="currentColor"
+          className="text-emerald-200/70"
+        />
+        <path
+          d="M83 82C65 61 46 56 31 62C42 82 61 91 83 82Z"
+          fill="currentColor"
+          className="text-teal-200/70"
+        />
+        <path
+          d="M103 54C94 32 77 21 61 22C65 43 81 55 103 54Z"
+          fill="currentColor"
+          className="text-green-200/70"
+        />
+
+        {/* Lotus */}
+        <path
+          d="M82 154C64 143 53 128 54 113C70 117 81 131 82 154Z"
+          fill="currentColor"
+          className="text-pink-200/80"
+        />
+        <path
+          d="M82 154C100 143 111 128 110 113C94 117 83 131 82 154Z"
+          fill="currentColor"
+          className="text-pink-200/80"
+        />
+        <path
+          d="M82 151C72 132 74 111 82 98C90 111 92 132 82 151Z"
+          fill="currentColor"
+          className="text-rose-200/80"
+        />
+        <path
+          d="M82 151C91 132 91 112 82 99"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="text-pink-400/70"
+        />
+        <path
+          d="M52 155C68 164 96 164 114 155"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300/70"
+        />
+      </svg>
+
+      {/* TOP RIGHT — flowing leaves */}
+      <svg
+        className="absolute -right-8 top-0 h-44 w-44 opacity-55 sm:h-56 sm:w-56"
+        viewBox="0 0 220 220"
+        fill="none"
+      >
+        <path
+          d="M185 8C161 43 145 74 133 111C123 141 109 167 83 193"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300"
+        />
+        <path
+          d="M151 64C163 39 181 27 201 29C195 49 176 63 151 64Z"
+          fill="currentColor"
+          className="text-emerald-200/70"
+        />
+        <path
+          d="M136 91C157 76 176 75 190 84C175 100 154 103 136 91Z"
+          fill="currentColor"
+          className="text-teal-200/70"
+        />
+        <path
+          d="M119 125C139 111 158 112 171 123C154 137 135 139 119 125Z"
+          fill="currentColor"
+          className="text-green-200/70"
+        />
+        <path
+          d="M101 157C83 141 66 139 52 146C63 165 83 172 101 157Z"
+          fill="currentColor"
+          className="text-emerald-200/70"
+        />
+
+        {/* tiny petals */}
+        <path
+          d="M47 44C57 34 67 35 72 42C64 50 55 52 47 44Z"
+          fill="currentColor"
+          className="text-pink-200/70"
+        />
+        <path
+          d="M179 151C188 142 198 144 201 151C193 158 184 158 179 151Z"
+          fill="currentColor"
+          className="text-pink-200/70"
+        />
+      </svg>
+
+      {/* LEFT MID — little floating leaves */}
+      <svg
+        className="absolute -left-5 top-[38%] h-32 w-32 opacity-40 sm:h-40 sm:w-40"
+        viewBox="0 0 160 160"
+        fill="none"
+      >
+        <path
+          d="M23 137C42 108 57 82 82 54"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300"
+        />
+        <path
+          d="M50 96C32 84 17 85 7 94C20 106 37 108 50 96Z"
+          fill="currentColor"
+          className="text-teal-200/70"
+        />
+        <path
+          d="M69 70C56 52 42 48 30 53C36 69 51 77 69 70Z"
+          fill="currentColor"
+          className="text-emerald-200/70"
+        />
+      </svg>
+
+      {/* RIGHT MID — small botanical accent */}
+      <svg
+        className="absolute -right-5 top-[48%] h-36 w-36 opacity-40 sm:h-44 sm:w-44"
+        viewBox="0 0 180 180"
+        fill="none"
+      >
+        <path
+          d="M157 165C138 133 123 104 99 74"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300"
+        />
+        <path
+          d="M126 118C143 104 158 105 169 114C156 126 140 128 126 118Z"
+          fill="currentColor"
+          className="text-teal-200/70"
+        />
+        <path
+          d="M110 91C124 73 140 69 152 75C146 92 130 99 110 91Z"
+          fill="currentColor"
+          className="text-green-200/70"
+        />
+      </svg>
+
+      {/* BOTTOM LEFT — larger lotus */}
+      <svg
+        className="absolute -bottom-8 -left-6 h-48 w-48 opacity-55 sm:h-64 sm:w-64"
+        viewBox="0 0 240 240"
+        fill="none"
+      >
+        <path
+          d="M27 231C52 194 69 165 89 125"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300"
+        />
+
+        <path
+          d="M61 181C38 162 17 163 4 175C20 194 43 198 61 181Z"
+          fill="currentColor"
+          className="text-emerald-200/70"
+        />
+
+        <path
+          d="M82 151C57 130 36 131 22 143C40 162 63 165 82 151Z"
+          fill="currentColor"
+          className="text-teal-200/70"
+        />
+
+        {/* Lotus petals */}
+        <path
+          d="M93 218C67 202 53 179 57 158C79 165 92 188 93 218Z"
+          fill="currentColor"
+          className="text-pink-200/80"
+        />
+        <path
+          d="M93 218C119 202 133 179 129 158C107 165 94 188 93 218Z"
+          fill="currentColor"
+          className="text-pink-200/80"
+        />
+        <path
+          d="M93 214C79 190 81 164 93 147C105 164 107 190 93 214Z"
+          fill="currentColor"
+          className="text-rose-200/80"
+        />
+
+        <path
+          d="M56 218C77 229 109 229 130 218"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300/70"
+        />
+
+        {/* petals floating around */}
+        <path
+          d="M145 171C157 160 170 162 175 171C165 179 154 179 145 171Z"
+          fill="currentColor"
+          className="text-pink-200/70"
+        />
+      </svg>
+
+      {/* BOTTOM RIGHT — lotus + leaves */}
+      <svg
+        className="absolute -bottom-10 -right-8 h-52 w-52 opacity-55 sm:h-64 sm:w-64"
+        viewBox="0 0 250 250"
+        fill="none"
+      >
+        <path
+          d="M223 244C197 202 180 164 157 122"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300"
+        />
+
+        <path
+          d="M192 190C215 171 235 172 247 184C231 201 210 204 192 190Z"
+          fill="currentColor"
+          className="text-emerald-200/70"
+        />
+
+        <path
+          d="M171 157C194 136 214 137 228 149C210 168 188 171 171 157Z"
+          fill="currentColor"
+          className="text-teal-200/70"
+        />
+
+        <path
+          d="M148 128C164 107 181 102 195 109C188 128 170 138 148 128Z"
+          fill="currentColor"
+          className="text-green-200/70"
+        />
+
+        {/* Lotus */}
+        <path
+          d="M157 224C134 208 121 186 124 166C145 173 157 194 157 224Z"
+          fill="currentColor"
+          className="text-pink-200/80"
+        />
+        <path
+          d="M157 224C180 208 193 186 190 166C169 173 157 194 157 224Z"
+          fill="currentColor"
+          className="text-pink-200/80"
+        />
+        <path
+          d="M157 220C144 197 146 172 157 154C168 172 170 197 157 220Z"
+          fill="currentColor"
+          className="text-rose-200/80"
+        />
+        <path
+          d="M123 224C144 235 175 235 192 224"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="text-emerald-300/70"
+        />
+
+        <path
+          d="M74 91C84 81 96 83 101 91C92 99 82 99 74 91Z"
+          fill="currentColor"
+          className="text-pink-200/70"
+        />
+      </svg>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------
 // Composition budget — this is where the overflow bug lived.
 // The textarea's effective max length is computed from whatever
@@ -430,10 +716,10 @@ export default function AnonymousThoughts() {
         current.map((item) =>
           item.id === post.id
             ? {
-                ...item,
-                liked_by_me: result.liked,
-                likes_count: result.likesCount,
-              }
+              ...item,
+              liked_by_me: result.liked,
+              likes_count: result.likesCount,
+            }
             : item,
         ),
       );
@@ -443,8 +729,9 @@ export default function AnonymousThoughts() {
   };
 
   return (
-    <section className="min-h-screen w-full bg-background px-3 py-4 text-foreground sm:px-5 sm:py-6 lg:px-8">
-      <div className="mx-auto w-full max-w-7xl space-y-4">
+    <section className="relative min-h-screen w-full overflow-hidden bg-background px-3 py-4 text-foreground sm:px-5 sm:py-6 lg:px-8">
+      <LotusLeavesDecoration />
+      <div className="relative z-10 mx-auto w-full max-w-7xl space-y-4">
         {/* HERO */}
         <header className="relative min-h-[150px] overflow-hidden rounded-[28px] border border-white/50 bg-gradient-to-r from-violet-100 via-sky-50 to-blue-100 px-5 py-7 shadow-sm dark:border-white/10 dark:from-violet-950/50 dark:via-slate-900 dark:to-blue-950/50 sm:px-8 sm:py-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_90%,rgba(167,139,250,0.18),transparent_35%),radial-gradient(circle_at_75%_0%,rgba(125,211,252,0.18),transparent_40%)]" />
@@ -533,11 +820,10 @@ export default function AnonymousThoughts() {
                   setShowMoodPicker((value) => !value);
                   setShowTagPicker(false);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  selectedMood
-                    ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${selectedMood
+                  ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
               >
                 <Smile className="h-4 w-4 text-violet-500" />
                 {selectedMood || "Mood"}
@@ -569,11 +855,10 @@ export default function AnonymousThoughts() {
                   setShowTagPicker((value) => !value);
                   setShowMoodPicker(false);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  selectedTag
-                    ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${selectedTag
+                  ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
               >
                 <Tag className="h-4 w-4 text-violet-500" />
                 {selectedTag ? `#${selectedTag}` : "Tag"}
@@ -610,7 +895,7 @@ export default function AnonymousThoughts() {
                 <img
                   src={photoData}
                   alt="Selected work or day"
-                  className="max-h-48 w-full rounded-xl object-cover"
+                  className="block h-auto max-h-none w-full max-w-full rounded-xl object-contain"
                 />
 
                 <button
@@ -645,11 +930,10 @@ export default function AnonymousThoughts() {
                   key={filter}
                   type="button"
                   onClick={() => setActiveFilter(filter)}
-                  className={`rounded-full px-4 py-2 text-[11px] font-medium transition ${
-                    active
-                      ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
+                  className={`rounded-full px-4 py-2 text-[11px] font-medium transition ${active
+                    ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
                 >
                   {filter}
                 </button>
@@ -698,13 +982,12 @@ export default function AnonymousThoughts() {
                 {/* DECORATIVE RIGHT SIDE */}
                 <div className="pointer-events-none absolute right-0 top-0 hidden h-full w-[180px] overflow-hidden md:block">
                   <div
-                    className={`absolute right-5 top-1/2 flex h-28 w-28 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br ${
-                      index % 3 === 0
-                        ? "from-violet-100 via-fuchsia-50 to-blue-100"
-                        : index % 3 === 1
-                          ? "from-fuchsia-100 via-pink-50 to-violet-100"
-                          : "from-pink-100 via-violet-50 to-sky-100"
-                    } opacity-90`}
+                    className={`absolute right-5 top-1/2 flex h-28 w-28 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br ${index % 3 === 0
+                      ? "from-violet-100 via-fuchsia-50 to-blue-100"
+                      : index % 3 === 1
+                        ? "from-fuchsia-100 via-pink-50 to-violet-100"
+                        : "from-pink-100 via-violet-50 to-sky-100"
+                      } opacity-90`}
                   >
                     <div className="absolute inset-0 rounded-full bg-white/25 blur-md" />
 
@@ -766,15 +1049,15 @@ export default function AnonymousThoughts() {
 
                   {/* PHOTO */}
                   {post.photo_data && (
-                    <div className="mt-4 overflow-hidden rounded-2xl border border-border/50">
+                    <div className="mt-4 w-full overflow-hidden rounded-2xl border border-border/50 bg-muted/20">
                       <img
                         src={post.photo_data}
                         alt="Anonymous work or day"
-                        className="max-h-80 w-full object-cover"
+                        className="block h-auto max-h-none w-full max-w-full object-contain object-center"
+                        loading="lazy"
                       />
                     </div>
                   )}
-
                   {/* TAGS */}
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {post.tags.map((tag) => (
@@ -793,14 +1076,17 @@ export default function AnonymousThoughts() {
                       <button
                         type="button"
                         onClick={() => void handleLike(post)}
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs transition ${
-                          post.liked_by_me
-                            ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        }`}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs transition ${post.liked_by_me
+                          ? "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
                         aria-label="Like anonymous thought"
                       >
-                        <Heart className={`h-4 w-4 ${post.liked_by_me ? "fill-current" : ""}`} />
+                        <Heart
+                          className={`h-4 w-4 ${
+                            post.liked_by_me ? "fill-current" : ""
+                          }`}
+                        />
                         {post.likes_count}
                       </button>
 
