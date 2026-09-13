@@ -457,7 +457,7 @@ Respond as SAATHI.
     });
   }
 });
-app.get("/api/auth/oauth/google/callback", async (req, res) => {
+app.get("/api/auth/oauth/google/start", async (req, res) => {
   try {
     const state = jwt.verify(String(req.query.state || ""), jwtSecret);
     if (state.provider !== "google") throw new Error("Invalid OAuth state");
