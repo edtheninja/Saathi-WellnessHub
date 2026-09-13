@@ -34,89 +34,66 @@ const MeditationScreen = () => {
   const [timeLeft, setTimeLeft] = useState(300);
   const [selectedDuration, setSelectedDuration] = useState(5);
 
-  const meditationIdRef =
-    useRef<string | null>(null);
+  const meditationIdRef = useRef<string | null>(null);
 
-  const isFinalizedRef =
-    useRef(false);
+  const isFinalizedRef = useRef(false);
 
-  const sessionInsertPromiseRef =
-    useRef<Promise<string | null> | null>(null);
+  const sessionInsertPromiseRef = useRef<Promise<string | null> | null>(null);
 
-  const sessionVersionRef =
-    useRef(0);
+  const sessionVersionRef = useRef(0);
 
   /*
     Total real elapsed meditation time in milliseconds.
     This survives pause/resume because each active segment
     is added when the session is paused or finalized.
   */
-  const elapsedMsRef =
-    useRef(0);
+  const elapsedMsRef = useRef(0);
 
   /* Exact remaining time when the current active segment started. */
-  const segmentStartRemainingMsRef =
-    useRef(0);
+  const segmentStartRemainingMsRef = useRef(0);
 
   /* Exact remaining time captured when a session is paused. */
-  const pausedRemainingMsRef =
-    useRef<number | null>(null);
+  const pausedRemainingMsRef = useRef<number | null>(null);
 
-  const endTimeRef =
-    useRef<number | null>(null);
+  const endTimeRef = useRef<number | null>(null);
 
-  const timerFrameRef =
-    useRef<number | null>(null);
+  const timerFrameRef = useRef<number | null>(null);
 
-  const lastDisplayedSecondRef =
-    useRef(300);
+  const lastDisplayedSecondRef = useRef(300);
 
   /* =========================================================
      MUSIC
   ========================================================= */
 
-  const [musicList, setMusicList] =
-    useState<Music[]>([]);
+  const [musicList, setMusicList] = useState<Music[]>([]);
 
-  const [selectedMusic, setSelectedMusic] =
-    useState<Music | null>(null);
+  const [selectedMusic, setSelectedMusic] = useState<Music | null>(null);
 
-  const [isMusicPlaying, setIsMusicPlaying] =
-    useState(false);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
 
-  const [isMuted, setIsMuted] =
-    useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
-  const [musicLoading, setMusicLoading] =
-    useState(false);
+  const [musicLoading, setMusicLoading] = useState(false);
 
   /* =========================================================
      WAVEFORM
   ========================================================= */
 
-  const [waveform, setWaveform] =
-    useState<number[]>(
-      Array(96).fill(0.12)
-    );
+  const [waveform, setWaveform] = useState<number[]>(Array(96).fill(0.12));
 
   /* =========================================================
      AUDIO REFS
   ========================================================= */
 
-  const audioRef =
-    useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const audioContextRef =
-    useRef<AudioContext | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  const analyserRef =
-    useRef<AnalyserNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
-  const sourceRef =
-    useRef<MediaElementAudioSourceNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
-  const audioFrameRef =
-    useRef<number | null>(null);
+  const audioFrameRef = useRef<number | null>(null);
 
   /* =========================================================
      DURATIONS
@@ -161,10 +138,7 @@ const MeditationScreen = () => {
   const fetchMusic = async () => {
     setMusicLoading(true);
 
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("music")
       .select("id, title, audio_url")
       .order("title", {
@@ -172,10 +146,7 @@ const MeditationScreen = () => {
       });
 
     if (error) {
-      console.error(
-        "Failed to fetch music:",
-        error
-      );
+      console.error("Failed to fetch music:", error);
 
       setMusicLoading(false);
       return;
@@ -183,10 +154,7 @@ const MeditationScreen = () => {
 
     setMusicList(data ?? []);
 
-    if (
-      data &&
-      data.length > 0
-    ) {
+    if (data && data.length > 0) {
       setSelectedMusic(data[0]);
     }
 
@@ -198,25 +166,19 @@ const MeditationScreen = () => {
   ========================================================= */
 
   const startMeditation = async (
-    sessionVersion: number
+    sessionVersion: number,
   ): Promise<string | null> => {
     const {
       data: { user },
-    } =
-      await supabase.auth.getUser();
+    } = await supabase.auth.getUser();
 
     if (!user) {
-      console.error(
-        "No authenticated user found."
-      );
+      console.error("No authenticated user found.");
 
       return null;
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("meditation_sessions")
       .insert({
         user_id: user.id,
@@ -232,24 +194,17 @@ const MeditationScreen = () => {
       .single();
 
     if (error) {
-      console.error(
-        "Insert failed:",
-        error
-      );
+      console.error("Insert failed:", error);
 
       return null;
     }
 
     /* Do not attach an old in-flight row to a newer session. */
-    if (
-      sessionVersion !==
-      sessionVersionRef.current
-    ) {
+    if (sessionVersion !== sessionVersionRef.current) {
       return data.id;
     }
 
-    meditationIdRef.current =
-      data.id;
+    meditationIdRef.current = data.id;
 
     return data.id;
   };
@@ -259,94 +214,72 @@ const MeditationScreen = () => {
   ========================================================= */
 
   const finalizeSession = async () => {
-    if (
-      isFinalizedRef.current
-    ) {
+    if (isFinalizedRef.current) {
       return;
     }
 
-    isFinalizedRef.current =
-      true;
+    isFinalizedRef.current = true;
 
     /*
       If the timer is currently running, capture the exact
       remaining milliseconds before stopping it.
     */
     if (endTimeRef.current !== null) {
-      const remainingMs =
-        Math.max(
-          0,
-          endTimeRef.current -
-            Date.now()
-        );
+      const remainingMs = Math.max(0, endTimeRef.current - Date.now());
 
-      const activeSegmentMs =
-        Math.max(
-          0,
-          segmentStartRemainingMsRef.current -
-            remainingMs
-        );
+      const activeSegmentMs = Math.max(
+        0,
+        segmentStartRemainingMsRef.current - remainingMs,
+      );
 
-      elapsedMsRef.current +=
-        activeSegmentMs;
-    }
+      elapsedMsRef.current += activeSegmentMs;
+    }const durationMs = selectedDuration * 60 * 1000;
 
-    const durationMs =
-      selectedDuration * 60 * 1000;
+const actualElapsedMs = Math.min(
+  elapsedMsRef.current,
+  durationMs
+);
+
+const actualDuration = Math.floor(actualElapsedMs / 60000);
+
+const completed = actualElapsedMs >= durationMs;
+
+await supabase
+  .from("meditation_sessions")
+  .update({
+    duration: actualDuration,
+    completed,
+  })
+  .eq("id", meditationIdRef.current);
 
     /* Never allow elapsed time to exceed the selected duration. */
-    const actualElapsedMs =
-      Math.min(
-        elapsedMsRef.current,
-        durationMs
-      );
+   
 
     /*
       duration is stored in minutes, matching the existing
       presets. Store completed whole minutes so the existing
       data shape remains compatible.
     */
-    const actualDuration =
-      Math.floor(
-        actualElapsedMs /
-          60000
-      );
-
-    const completed =
-      actualElapsedMs >=
-      durationMs;
+  
 
     setTimeLeft(
       completed
         ? 0
-        : Math.max(
-            0,
-            Math.ceil(
-              (durationMs -
-                actualElapsedMs) /
-                1000
-            )
-          )
+        : Math.max(0, Math.ceil((durationMs - actualElapsedMs) / 1000)),
     );
 
     setIsActive(false);
 
-    endTimeRef.current =
-      null;
+    endTimeRef.current = null;
 
-    segmentStartRemainingMsRef.current =
-      0;
+    segmentStartRemainingMsRef.current = 0;
 
-    pausedRemainingMsRef.current =
-      null;
+    pausedRemainingMsRef.current = null;
 
     if (timerFrameRef.current) {
-      cancelAnimationFrame(
-        timerFrameRef.current
-      );
+      cancelAnimationFrame(timerFrameRef.current);
 
-      timerFrameRef.current =
-        null;
+      timerFrameRef.current = null;
     }
 
     stopMusic();
@@ -356,42 +289,28 @@ const MeditationScreen = () => {
       Wait for it here so a very fast checkmark click still
       updates the newly-created row.
     */
-    if (
-      !meditationIdRef.current &&
-      sessionInsertPromiseRef.current
-    ) {
+    if (!meditationIdRef.current && sessionInsertPromiseRef.current) {
       await sessionInsertPromiseRef.current;
     }
 
-    const meditationId =
-      meditationIdRef.current;
+    const meditationId = meditationIdRef.current;
 
     if (!meditationId) {
-      console.error(
-        "Cannot finalize meditation: session id is missing."
-      );
+      console.error("Cannot finalize meditation: session id is missing.");
 
       return;
     }
 
-    const {
-      error,
-    } = await supabase
+    const { error } = await supabase
       .from("meditation_sessions")
       .update({
         duration: actualDuration,
         completed,
       })
-      .eq(
-        "id",
-        meditationId
-      );
+      .eq("id", meditationId);
 
     if (error) {
-      console.error(
-        "Meditation session update failed:",
-        error
-      );
+      console.error("Meditation session update failed:", error);
     }
   };
 
@@ -402,12 +321,9 @@ const MeditationScreen = () => {
   useEffect(() => {
     if (!isActive) {
       if (timerFrameRef.current) {
-        cancelAnimationFrame(
-          timerFrameRef.current
-        );
+        cancelAnimationFrame(timerFrameRef.current);
 
-        timerFrameRef.current =
-          null;
+        timerFrameRef.current = null;
       }
 
       return;
@@ -418,26 +334,18 @@ const MeditationScreen = () => {
       subtracting 1 every second.
     */
     segmentStartRemainingMsRef.current =
-      pausedRemainingMsRef.current ??
-      timeLeft * 1000;
+      pausedRemainingMsRef.current ?? timeLeft * 1000;
 
-    pausedRemainingMsRef.current =
-      null;
+    pausedRemainingMsRef.current = null;
 
-    endTimeRef.current =
-      Date.now() +
-      segmentStartRemainingMsRef.current;
+    endTimeRef.current = Date.now() + segmentStartRemainingMsRef.current;
 
     const updateTimer = () => {
-      if (
-        endTimeRef.current === null
-      ) {
+      if (endTimeRef.current === null) {
         return;
       }
 
-      const remainingMs =
-        endTimeRef.current -
-        Date.now();
+      const remainingMs = endTimeRef.current - Date.now();
 
       if (remainingMs <= 0) {
         setTimeLeft(0);
@@ -445,44 +353,24 @@ const MeditationScreen = () => {
         return;
       }
 
-      const remainingSeconds =
-        Math.ceil(
-          remainingMs / 1000
-        );
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
 
-      if (
-        remainingSeconds !==
-        lastDisplayedSecondRef.current
-      ) {
-        lastDisplayedSecondRef.current =
-          remainingSeconds;
+      if (remainingSeconds !== lastDisplayedSecondRef.current) {
+        lastDisplayedSecondRef.current = remainingSeconds;
 
-        setTimeLeft(
-          remainingSeconds
-        );
+        setTimeLeft(remainingSeconds);
       }
 
-      timerFrameRef.current =
-        requestAnimationFrame(
-          updateTimer
-        );
+      timerFrameRef.current = requestAnimationFrame(updateTimer);
     };
 
-    timerFrameRef.current =
-      requestAnimationFrame(
-        updateTimer
-      );
+    timerFrameRef.current = requestAnimationFrame(updateTimer);
 
     return () => {
-      if (
-        timerFrameRef.current
-      ) {
-        cancelAnimationFrame(
-          timerFrameRef.current
-        );
+      if (timerFrameRef.current) {
+        cancelAnimationFrame(timerFrameRef.current);
 
-        timerFrameRef.current =
-          null;
+        timerFrameRef.current = null;
       }
     };
   }, [isActive]);
@@ -491,207 +379,128 @@ const MeditationScreen = () => {
      HELPERS
   ========================================================= */
 
-  const formatTime = (
-    seconds: number
-  ) => {
-    const mins = Math.floor(
-      seconds / 60
-    );
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
 
-    const secs =
-      seconds % 60;
+    const secs = seconds % 60;
 
-    return `${mins}:${secs
-      .toString()
-      .padStart(2, "0")}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const getProgress = () => {
-    const durationSeconds =
-      selectedDuration * 60;
+    const durationSeconds = selectedDuration * 60;
 
     if (!durationSeconds) {
       return 0;
     }
 
-    return (
-      ((durationSeconds -
-        timeLeft) /
-        durationSeconds) *
-      100
-    );
+    return ((durationSeconds - timeLeft) / durationSeconds) * 100;
   };
 
   /* =========================================================
      AUDIO ANALYSER
   ========================================================= */
 
-  const createAudioAnalyser =
-    () => {
-      if (!audioRef.current) {
-        return;
-      }
+  const createAudioAnalyser = () => {
+    if (!audioRef.current) {
+      return;
+    }
 
-      /*
+    /*
         Do not create the same
         MediaElementSource twice.
       */
-      if (
-        audioContextRef.current &&
-        analyserRef.current &&
-        sourceRef.current
-      ) {
-        return;
-      }
+    if (audioContextRef.current && analyserRef.current && sourceRef.current) {
+      return;
+    }
 
-      const AudioContextClass =
-        window.AudioContext ||
-        (
-          window as typeof window & {
-            webkitAudioContext?: typeof AudioContext;
-          }
-        ).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }
+      ).webkitAudioContext;
 
-      if (!AudioContextClass) {
-        console.error(
-          "Web Audio API is not supported."
-        );
+    if (!AudioContextClass) {
+      console.error("Web Audio API is not supported.");
 
-        return;
-      }
+      return;
+    }
 
-      const context =
-        new AudioContextClass();
+    const context = new AudioContextClass();
 
-      const analyser =
-        context.createAnalyser();
+    const analyser = context.createAnalyser();
 
-      analyser.fftSize = 256;
+    analyser.fftSize = 256;
 
-      analyser.smoothingTimeConstant =
-        0.8;
+    analyser.smoothingTimeConstant = 0.8;
 
-      const source =
-        context.createMediaElementSource(
-          audioRef.current
-        );
+    const source = context.createMediaElementSource(audioRef.current);
 
-      source.connect(analyser);
-      analyser.connect(
-        context.destination
-      );
+    source.connect(analyser);
+    analyser.connect(context.destination);
 
-      audioContextRef.current =
-        context;
+    audioContextRef.current = context;
 
-      analyserRef.current =
-        analyser;
+    analyserRef.current = analyser;
 
-      sourceRef.current =
-        source;
-    };
+    sourceRef.current = source;
+  };
 
   /* =========================================================
      AUDIO WAVEFORM
   ========================================================= */
 
   const updateWaveform = () => {
-    const analyser =
-      analyserRef.current;
+    const analyser = analyserRef.current;
 
-    if (
-      !analyser ||
-      !isMusicPlaying
-    ) {
+    if (!analyser || !isMusicPlaying) {
       return;
     }
 
-    const bufferLength =
-      analyser.frequencyBinCount;
+    const bufferLength = analyser.frequencyBinCount;
 
-    const dataArray =
-      new Uint8Array(
-        bufferLength
-      );
+    const dataArray = new Uint8Array(bufferLength);
 
-    analyser.getByteFrequencyData(
-      dataArray
-    );
+    analyser.getByteFrequencyData(dataArray);
 
     const barCount = 96;
 
-    const nextWaveform: number[] =
-      [];
+    const nextWaveform: number[] = [];
 
-    for (
-      let i = 0;
-      i < barCount;
-      i++
-    ) {
-      const start =
-        Math.floor(
-          (i / barCount) *
-            bufferLength
-        );
+    for (let i = 0; i < barCount; i++) {
+      const start = Math.floor((i / barCount) * bufferLength);
 
-      const end =
-        Math.floor(
-          ((i + 1) / barCount) *
-            bufferLength
-        );
+      const end = Math.floor(((i + 1) / barCount) * bufferLength);
 
       let sum = 0;
       let count = 0;
 
-      for (
-        let j = start;
-        j < end;
-        j++
-      ) {
+      for (let j = start; j < end; j++) {
         sum += dataArray[j];
         count++;
       }
 
-      const average =
-        count > 0
-          ? sum / count / 255
-          : 0;
+      const average = count > 0 ? sum / count / 255 : 0;
 
-      nextWaveform.push(
-        0.08 +
-        Math.min(1, average) *
-          0.92
-      );
+      nextWaveform.push(0.08 + Math.min(1, average) * 0.92);
     }
 
-    setWaveform(
-      nextWaveform
-    );
+    setWaveform(nextWaveform);
 
-    audioFrameRef.current =
-      requestAnimationFrame(
-        updateWaveform
-      );
+    audioFrameRef.current = requestAnimationFrame(updateWaveform);
   };
 
   useEffect(() => {
     if (!isMusicPlaying) {
-      if (
-        audioFrameRef.current
-      ) {
-        cancelAnimationFrame(
-          audioFrameRef.current
-        );
+      if (audioFrameRef.current) {
+        cancelAnimationFrame(audioFrameRef.current);
 
-        audioFrameRef.current =
-          null;
+        audioFrameRef.current = null;
       }
 
-      setWaveform(
-        Array(96).fill(
-          0.12
-        )
-      );
+      setWaveform(Array(96).fill(0.12));
 
       return;
     }
@@ -699,15 +508,10 @@ const MeditationScreen = () => {
     updateWaveform();
 
     return () => {
-      if (
-        audioFrameRef.current
-      ) {
-        cancelAnimationFrame(
-          audioFrameRef.current
-        );
+      if (audioFrameRef.current) {
+        cancelAnimationFrame(audioFrameRef.current);
 
-        audioFrameRef.current =
-          null;
+        audioFrameRef.current = null;
       }
     };
   }, [isMusicPlaying]);
@@ -726,33 +530,21 @@ const MeditationScreen = () => {
       audioRef.current.src = "";
     }
 
-    const audio =
-      new Audio(
-        selectedMusic.audio_url
-      );
+    const audio = new Audio(selectedMusic.audio_url);
 
     audio.preload = "auto";
     audio.loop = true;
     audio.muted = isMuted;
 
-    audio.addEventListener(
-      "error",
-      (event) => {
-        console.error(
-          "Audio loading failed:",
-          event
-        );
-      }
-    );
+    audio.addEventListener("error", (event) => {
+      console.error("Audio loading failed:", event);
+    });
 
-    audioRef.current =
-      audio;
+    audioRef.current = audio;
 
     setIsMusicPlaying(false);
 
-    setWaveform(
-      Array(96).fill(0.12)
-    );
+    setWaveform(Array(96).fill(0.12));
 
     return () => {
       audio.pause();
@@ -771,10 +563,7 @@ const MeditationScreen = () => {
 
     createAudioAnalyser();
 
-    if (
-      audioContextRef.current?.state ===
-      "suspended"
-    ) {
+    if (audioContextRef.current?.state === "suspended") {
       await audioContextRef.current.resume();
     }
 
@@ -782,10 +571,7 @@ const MeditationScreen = () => {
       await audioRef.current.play();
       setIsMusicPlaying(true);
     } catch (error) {
-      console.error(
-        "Music playback failed:",
-        error
-      );
+      console.error("Music playback failed:", error);
     }
   };
 
@@ -794,9 +580,7 @@ const MeditationScreen = () => {
       return;
     }
 
-    if (
-      audioRef.current.paused
-    ) {
+    if (audioRef.current.paused) {
       await startMusic();
     } else {
       audioRef.current.pause();
@@ -819,91 +603,62 @@ const MeditationScreen = () => {
       return;
     }
 
-    const nextMuted =
-      !audioRef.current.muted;
+    const nextMuted = !audioRef.current.muted;
 
-    audioRef.current.muted =
-      nextMuted;
+    audioRef.current.muted = nextMuted;
 
-    setIsMuted(
-      nextMuted
-    );
+    setIsMuted(nextMuted);
   };
 
   /* =========================================================
      SELECT MUSIC
   ========================================================= */
 
-  const handleMusicSelect = (
-    music: Music
-  ) => {
-    if (
-      selectedMusic?.id ===
-      music.id
-    ) {
+  const handleMusicSelect = (music: Music) => {
+    if (selectedMusic?.id === music.id) {
       return;
     }
 
     stopMusic();
 
-    setSelectedMusic(
-      music
-    );
+    setSelectedMusic(music);
   };
 
   /* =========================================================
      DURATION
   ========================================================= */
 
-  const handleDurationSelect = (
-    duration: (typeof durations)[number]
-  ) => {
+  const handleDurationSelect = (duration: (typeof durations)[number]) => {
     setIsActive(false);
 
     if (timerFrameRef.current) {
-      cancelAnimationFrame(
-        timerFrameRef.current
-      );
+      cancelAnimationFrame(timerFrameRef.current);
 
-      timerFrameRef.current =
-        null;
+      timerFrameRef.current = null;
     }
 
     /* Invalidate any previous/in-flight session. */
-    sessionVersionRef.current +=
-      1;
+    sessionVersionRef.current += 1;
 
-    setSelectedDuration(
-      duration.value
-    );
+    setSelectedDuration(duration.value);
 
-    setTimeLeft(
-      duration.seconds
-    );
+    setTimeLeft(duration.seconds);
 
-    meditationIdRef.current =
-      null;
+    meditationIdRef.current = null;
 
-    sessionInsertPromiseRef.current =
-      null;
+    sessionInsertPromiseRef.current = null;
 
-    isFinalizedRef.current =
-      false;
+    isFinalizedRef.current = false;
 
-    elapsedMsRef.current =
-      0;
+    elapsedMsRef.current = 0;
 
-    segmentStartRemainingMsRef.current =
-      0;
+    segmentStartRemainingMsRef.current = 0;
 
-    pausedRemainingMsRef.current =
-      null;
+    pausedRemainingMsRef.current = null;
 
-    endTimeRef.current =
-      null;
+    endTimeRef.current = null;
 
-    lastDisplayedSecondRef.current =
-      duration.seconds;
+    lastDisplayedSecondRef.current = duration.seconds;
 
     stopMusic();
   };
@@ -916,52 +671,29 @@ const MeditationScreen = () => {
     /* ---------------- PAUSE ---------------- */
 
     if (isActive) {
-      if (
-        endTimeRef.current !== null
-      ) {
-        const remainingMs =
-          Math.max(
-            0,
-            endTimeRef.current -
-              Date.now()
-          );
+      if (endTimeRef.current !== null) {
+        const remainingMs = Math.max(0, endTimeRef.current - Date.now());
 
         /* Capture the exact active time before pausing. */
-        const activeSegmentMs =
-          Math.max(
-            0,
-            segmentStartRemainingMsRef.current -
-              remainingMs
-          );
-
-        elapsedMsRef.current +=
-          activeSegmentMs;
-
-        pausedRemainingMsRef.current =
-          remainingMs;
-
-        const remainingSeconds =
-          Math.max(
-            0,
-            Math.ceil(
-              remainingMs /
-                1000
-            )
-          );
-
-        setTimeLeft(
-          remainingSeconds
+        const activeSegmentMs = Math.max(
+          0,
+          segmentStartRemainingMsRef.current - remainingMs,
         );
 
-        lastDisplayedSecondRef.current =
-          remainingSeconds;
+        elapsedMsRef.current += activeSegmentMs;
+
+        pausedRemainingMsRef.current = remainingMs;
+
+        const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+
+        setTimeLeft(remainingSeconds);
+
+        lastDisplayedSecondRef.current = remainingSeconds;
       }
 
-      endTimeRef.current =
-        null;
+      endTimeRef.current = null;
 
-      segmentStartRemainingMsRef.current =
-        0;
+      segmentStartRemainingMsRef.current = 0;
 
       setIsActive(false);
 
@@ -976,39 +708,26 @@ const MeditationScreen = () => {
       return;
     }
 
-    isFinalizedRef.current =
-      false;
+    isFinalizedRef.current = false;
 
     /*
       A null meditation id means this is a brand-new session.
       Create its database row without blocking the timer.
     */
-    if (
-      !meditationIdRef.current &&
-      !sessionInsertPromiseRef.current
-    ) {
-      sessionVersionRef.current +=
-        1;
+    if (!meditationIdRef.current && !sessionInsertPromiseRef.current) {
+      sessionVersionRef.current += 1;
 
-      elapsedMsRef.current =
-        0;
+      elapsedMsRef.current = 0;
 
-      const version =
-        sessionVersionRef.current;
+      const version = sessionVersionRef.current;
 
-      const insertPromise =
-        startMeditation(version);
+      const insertPromise = startMeditation(version);
 
-      sessionInsertPromiseRef.current =
-        insertPromise;
+      sessionInsertPromiseRef.current = insertPromise;
 
       insertPromise.then(() => {
-        if (
-          sessionVersionRef.current ===
-          version
-        ) {
-          sessionInsertPromiseRef.current =
-            null;
+        if (sessionVersionRef.current === version) {
+          sessionInsertPromiseRef.current = null;
         }
       });
     }
@@ -1032,61 +751,40 @@ const MeditationScreen = () => {
     setIsActive(false);
 
     if (timerFrameRef.current) {
-      cancelAnimationFrame(
-        timerFrameRef.current
-      );
+      cancelAnimationFrame(timerFrameRef.current);
 
-      timerFrameRef.current =
-        null;
+      timerFrameRef.current = null;
     }
 
-    const duration =
-      durations.find(
-        (item) =>
-          item.value ===
-          selectedDuration
-      );
+    const duration = durations.find((item) => item.value === selectedDuration);
 
-    const resetSeconds =
-      duration?.seconds ?? 300;
+    const resetSeconds = duration?.seconds ?? 300;
 
     /* Invalidate the current session and any pending insert. */
-    sessionVersionRef.current +=
-      1;
+    sessionVersionRef.current += 1;
 
-    setTimeLeft(
-      resetSeconds
-    );
+    setTimeLeft(resetSeconds);
 
-    meditationIdRef.current =
-      null;
+    meditationIdRef.current = null;
 
-    sessionInsertPromiseRef.current =
-      null;
+    sessionInsertPromiseRef.current = null;
 
-    isFinalizedRef.current =
-      false;
+    isFinalizedRef.current = false;
 
-    elapsedMsRef.current =
-      0;
+    elapsedMsRef.current = 0;
 
-    segmentStartRemainingMsRef.current =
-      0;
+    segmentStartRemainingMsRef.current = 0;
 
-    pausedRemainingMsRef.current =
-      null;
+    pausedRemainingMsRef.current = null;
 
-    endTimeRef.current =
-      null;
+    endTimeRef.current = null;
 
-    lastDisplayedSecondRef.current =
-      resetSeconds;
+    lastDisplayedSecondRef.current = resetSeconds;
 
     stopMusic();
 
     if (audioRef.current) {
-      audioRef.current.currentTime =
-        0;
+      audioRef.current.currentTime = 0;
     }
   };
 
@@ -1096,29 +794,19 @@ const MeditationScreen = () => {
 
   useEffect(() => {
     return () => {
-      if (
-        timerFrameRef.current
-      ) {
-        cancelAnimationFrame(
-          timerFrameRef.current
-        );
+      if (timerFrameRef.current) {
+        cancelAnimationFrame(timerFrameRef.current);
       }
 
-      if (
-        audioFrameRef.current
-      ) {
-        cancelAnimationFrame(
-          audioFrameRef.current
-        );
+      if (audioFrameRef.current) {
+        cancelAnimationFrame(audioFrameRef.current);
       }
 
       if (audioRef.current) {
         audioRef.current.pause();
       }
 
-      if (
-        audioContextRef.current
-      ) {
+      if (audioContextRef.current) {
         audioContextRef.current.close();
       }
     };
@@ -1170,7 +858,6 @@ const MeditationScreen = () => {
         `,
       }}
     >
-
       {/* =====================================================
           BACKGROUND ATMOSPHERE
       ===================================================== */}
@@ -1182,7 +869,6 @@ const MeditationScreen = () => {
           pointer-events-none
         "
       >
-
         <div
           className="
             absolute
@@ -1230,7 +916,6 @@ const MeditationScreen = () => {
               "color-mix(in srgb, hsl(var(--primary)) 6%, transparent)",
           }}
         />
-
       </div>
 
       {/* =====================================================
@@ -1248,7 +933,6 @@ const MeditationScreen = () => {
           sm:p-6
         "
       >
-
         <div
           className="
             w-full
@@ -1272,7 +956,6 @@ const MeditationScreen = () => {
               "0 0 80px color-mix(in srgb, hsl(var(--primary)) 14%, transparent)",
           }}
         >
-
           {/* Card glow */}
 
           <div
@@ -1319,9 +1002,7 @@ const MeditationScreen = () => {
               pt-5
             "
           >
-
             <div className="flex items-center gap-4">
-
               <div
                 className="
                   w-9
@@ -1342,21 +1023,17 @@ const MeditationScreen = () => {
                     "0 0 25px color-mix(in srgb, hsl(var(--primary)) 18%, transparent)",
                 }}
               >
-
                 <div
                   className="text-xl"
                   style={{
-                    color:
-                      "hsl(var(--primary))",
+                    color: "hsl(var(--primary))",
                   }}
                 >
                   〰
                 </div>
-
               </div>
 
               <div>
-
                 <h1
                   className="
                     text-xl
@@ -1365,8 +1042,7 @@ const MeditationScreen = () => {
                     tracking-tight
                   "
                   style={{
-                    color:
-                      "hsl(var(--foreground))",
+                    color: "hsl(var(--foreground))",
                   }}
                 >
                   Focus Timer
@@ -1375,15 +1051,12 @@ const MeditationScreen = () => {
                 <p
                   className="text-sm"
                   style={{
-                    color:
-                      "hsl(var(--muted-foreground))",
+                    color: "hsl(var(--muted-foreground))",
                   }}
                 >
                   Flow. Focus. Finish.
                 </p>
-
               </div>
-
             </div>
 
             <button
@@ -1397,15 +1070,11 @@ const MeditationScreen = () => {
                 transition
               "
               style={{
-                color:
-                  "hsl(var(--muted-foreground))",
+                color: "hsl(var(--muted-foreground))",
               }}
             >
-              <MoreVertical
-                size={20}
-              />
+              <MoreVertical size={20} />
             </button>
-
           </div>
 
           {/* =================================================
@@ -1432,11 +1101,9 @@ const MeditationScreen = () => {
               leading-5
             "
             style={{
-              color:
-                "color-mix(in srgb, hsl(var(--primary)) 45%, transparent)",
+              color: "color-mix(in srgb, hsl(var(--primary)) 45%, transparent)",
             }}
           >
-
             <p>Good</p>
             <p>Things</p>
             <p>Take</p>
@@ -1459,14 +1126,11 @@ const MeditationScreen = () => {
                 ml-auto
               "
               style={{
-                backgroundColor:
-                  "hsl(var(--primary))",
+                backgroundColor: "hsl(var(--primary))",
 
-                boxShadow:
-                  "0 0 10px hsl(var(--primary))",
+                boxShadow: "0 0 10px hsl(var(--primary))",
               }}
             />
-
           </div>
 
           {/* =================================================
@@ -1484,9 +1148,7 @@ const MeditationScreen = () => {
               sm:mt-20
             "
           >
-
             <div className="relative">
-
               {/* Outer glow */}
 
               <div
@@ -1502,15 +1164,9 @@ const MeditationScreen = () => {
                   backgroundColor:
                     "color-mix(in srgb, hsl(var(--primary)) 10%, transparent)",
 
-                  opacity:
-                    isActive
-                      ? 1
-                      : 0.6,
+                  opacity: isActive ? 1 : 0.6,
 
-                  transform:
-                    isActive
-                      ? "scale(1.1)"
-                      : "scale(1)",
+                  transform: isActive ? "scale(1.1)" : "scale(1)",
                 }}
               />
 
@@ -1527,8 +1183,7 @@ const MeditationScreen = () => {
                   p-[3px]
                 "
                 style={{
-                  background:
-                    `linear-gradient(
+                  background: `linear-gradient(
                       90deg,
                       hsl(var(--primary)),
                       hsl(var(--accent)),
@@ -1539,7 +1194,6 @@ const MeditationScreen = () => {
                     "0 0 50px color-mix(in srgb, hsl(var(--primary)) 32%, transparent)",
                 }}
               >
-
                 {/* Inner circle */}
 
                 <div
@@ -1549,8 +1203,7 @@ const MeditationScreen = () => {
                     rounded-full
                   "
                   style={{
-                    backgroundColor:
-                      "hsl(var(--background))",
+                    backgroundColor: "hsl(var(--background))",
 
                     border:
                       "1px solid color-mix(in srgb, hsl(var(--primary)) 18%, transparent)",
@@ -1567,8 +1220,7 @@ const MeditationScreen = () => {
                     opacity-80
                   "
                   style={{
-                    background:
-                      `conic-gradient(
+                    background: `conic-gradient(
                         from 0deg,
                         hsl(var(--primary))
                         ${getProgress()}%,
@@ -1576,8 +1228,7 @@ const MeditationScreen = () => {
                         ${getProgress()}%
                       )`,
 
-                    mask:
-                      "radial-gradient(farthest-side, transparent calc(100% - 8px), #000 0)",
+                    mask: "radial-gradient(farthest-side, transparent calc(100% - 8px), #000 0)",
 
                     WebkitMask:
                       "radial-gradient(farthest-side, transparent calc(100% - 8px), #000 0)",
@@ -1596,7 +1247,6 @@ const MeditationScreen = () => {
                     justify-center
                   "
                 >
-
                   <div
                     className="
                       text-4xl
@@ -1606,18 +1256,14 @@ const MeditationScreen = () => {
                       tracking-tight
                     "
                     style={{
-                      color:
-                        "hsl(var(--foreground))",
+                      color: "hsl(var(--foreground))",
 
-                      textShadow:
-                        isActive
-                          ? "0 0 15px color-mix(in srgb, hsl(var(--primary)) 70%, transparent)"
-                          : "none",
+                      textShadow: isActive
+                        ? "0 0 15px color-mix(in srgb, hsl(var(--primary)) 70%, transparent)"
+                        : "none",
                     }}
                   >
-                    {formatTime(
-                      timeLeft
-                    )}
+                    {formatTime(timeLeft)}
                   </div>
 
                   <div
@@ -1626,19 +1272,13 @@ const MeditationScreen = () => {
                       text-sm
                     "
                     style={{
-                      color:
-                        "hsl(var(--primary))",
+                      color: "hsl(var(--primary))",
                     }}
                   >
-                    {isActive
-                      ? "Focus..."
-                      : "Ready"}
+                    {isActive ? "Focus..." : "Ready"}
                   </div>
-
                 </div>
-
               </div>
-
             </div>
 
             {/* =================================================
@@ -1655,7 +1295,6 @@ const MeditationScreen = () => {
                 overflow-hidden
               "
             >
-
               {/* Ambient glow */}
 
               <div
@@ -1670,10 +1309,7 @@ const MeditationScreen = () => {
                   backgroundColor:
                     "color-mix(in srgb, hsl(var(--primary)) 8%, transparent)",
 
-                  opacity:
-                    isMusicPlaying
-                      ? 1
-                      : 0.4,
+                  opacity: isMusicPlaying ? 1 : 0.4,
                 }}
               />
 
@@ -1687,16 +1323,14 @@ const MeditationScreen = () => {
                   h-px
                 "
                 style={{
-                  background:
-                    `linear-gradient(
+                  background: `linear-gradient(
                       to right,
                       transparent,
                       hsl(var(--primary)),
                       transparent
                     )`,
 
-                  boxShadow:
-                    "0 0 15px hsl(var(--primary))",
+                  boxShadow: "0 0 15px hsl(var(--primary))",
                 }}
               />
 
@@ -1713,72 +1347,43 @@ const MeditationScreen = () => {
                   px-2
                 "
               >
+                {waveform.map((height, index) => {
+                  const centerDistance =
+                    Math.abs(index - waveform.length / 2) /
+                    (waveform.length / 2);
 
-                {waveform.map(
-                  (
-                    height,
-                    index
-                  ) => {
+                  const scale = 1 - centerDistance * 0.2;
 
-                    const centerDistance =
-                      Math.abs(
-                        index -
-                          waveform.length /
-                            2
-                      ) /
-                      (waveform.length /
-                        2);
+                  const finalHeight = Math.max(4, height * 54 * scale);
 
-                    const scale =
-                      1 -
-                      centerDistance *
-                        0.2;
-
-                    const finalHeight =
-                      Math.max(
-                        4,
-                        height *
-                          54 *
-                          scale
-                      );
-
-                    return (
-                      <div
-                        key={index}
-                        className="
+                  return (
+                    <div
+                      key={index}
+                      className="
                           flex-1
                           max-w-[4px]
                           rounded-full
                         "
-                        style={{
-                          height:
-                            `${finalHeight}px`,
+                      style={{
+                        height: `${finalHeight}px`,
 
-                          opacity:
-                            isMusicPlaying
-                              ? 0.95
-                              : 0.3,
+                        opacity: isMusicPlaying ? 0.95 : 0.3,
 
-                          background:
-                            `linear-gradient(
+                        background: `linear-gradient(
                               to top,
                               hsl(var(--primary)),
                               hsl(var(--accent))
                             )`,
 
-                          boxShadow:
-                            "0 0 8px color-mix(in srgb, hsl(var(--primary)) 65%, transparent)",
+                        boxShadow:
+                          "0 0 8px color-mix(in srgb, hsl(var(--primary)) 65%, transparent)",
 
-                          transition:
-                            "height 60ms linear",
-                        }}
-                      />
-                    );
-                  }
-                )}
-
+                        transition: "height 60ms linear",
+                      }}
+                    />
+                  );
+                })}
               </div>
-
             </div>
 
             {/* =================================================
@@ -1793,13 +1398,10 @@ const MeditationScreen = () => {
                 mt-[-5px]
               "
             >
-
               {/* Play / Pause */}
 
               <button
-                onClick={
-                  toggleTimer
-                }
+                onClick={toggleTimer}
                 className="
                   w-13
                   h-13
@@ -1814,15 +1416,13 @@ const MeditationScreen = () => {
                   transition-all
                 "
                 style={{
-                  background:
-                    `linear-gradient(
+                  background: `linear-gradient(
                       135deg,
                       hsl(var(--primary)),
                       hsl(var(--accent))
                     )`,
 
-                  color:
-                    "hsl(var(--primary-foreground))",
+                  color: "hsl(var(--primary-foreground))",
 
                   borderColor:
                     "color-mix(in srgb, hsl(var(--primary)) 45%, transparent)",
@@ -1831,28 +1431,17 @@ const MeditationScreen = () => {
                     "0 0 35px color-mix(in srgb, hsl(var(--primary)) 40%, transparent)",
                 }}
               >
-
                 {isActive ? (
-                  <Pause
-                    size={28}
-                    fill="currentColor"
-                  />
+                  <Pause size={28} fill="currentColor" />
                 ) : (
-                  <Play
-                    size={28}
-                    fill="currentColor"
-                    className="ml-1"
-                  />
+                  <Play size={28} fill="currentColor" className="ml-1" />
                 )}
-
               </button>
 
               {/* Reset */}
 
               <button
-                onClick={
-                  resetTimer
-                }
+                onClick={resetTimer}
                 className="
                   w-13
                   h-13
@@ -1870,26 +1459,19 @@ const MeditationScreen = () => {
                   backgroundColor:
                     "color-mix(in srgb, hsl(var(--background)) 88%, hsl(var(--primary)))",
 
-                  color:
-                    "hsl(var(--foreground))",
+                  color: "hsl(var(--foreground))",
 
                   borderColor:
                     "color-mix(in srgb, hsl(var(--primary)) 28%, transparent)",
                 }}
               >
-
-                <RotateCcw
-                  size={25}
-                />
-
+                <RotateCcw size={25} />
               </button>
 
               {/* Complete */}
 
               <button
-                onClick={
-                  finalizeSession
-                }
+                onClick={finalizeSession}
                 className="
                   w-13
                   h-13
@@ -1907,23 +1489,15 @@ const MeditationScreen = () => {
                   backgroundColor:
                     "color-mix(in srgb, hsl(var(--background)) 92%, #22c55e)",
 
-                  borderColor:
-                    "#34d399",
+                  borderColor: "#34d399",
 
-                  color:
-                    "#34d399",
+                  color: "#34d399",
 
-                  boxShadow:
-                    "0 0 25px rgba(52,211,153,0.2)",
+                  boxShadow: "0 0 25px rgba(52,211,153,0.2)",
                 }}
               >
-
-                <Check
-                  size={29}
-                />
-
+                <Check size={29} />
               </button>
-
             </div>
 
             {/* =================================================
@@ -1941,25 +1515,14 @@ const MeditationScreen = () => {
                 px-4
               "
             >
+              {durations.map((duration) => {
+                const selected = selectedDuration === duration.value;
 
-              {durations.map(
-                (duration) => {
-
-                  const selected =
-                    selectedDuration ===
-                    duration.value;
-
-                  return (
-                    <button
-                      key={
-                        duration.value
-                      }
-                      onClick={() =>
-                        handleDurationSelect(
-                          duration
-                        )
-                      }
-                      className="
+                return (
+                  <button
+                    key={duration.value}
+                    onClick={() => handleDurationSelect(duration)}
+                    className="
                         min-w-[60px]
                         sm:min-w-[72px]
                         px-5
@@ -1970,38 +1533,32 @@ const MeditationScreen = () => {
                         transition-all
                         border
                       "
-                      style={{
-                        background:
-                          selected
-                            ? `linear-gradient(
+                    style={{
+                      background: selected
+                        ? `linear-gradient(
                                 90deg,
                                 hsl(var(--primary)),
                                 hsl(var(--accent))
                               )`
-                            : "color-mix(in srgb, hsl(var(--background)) 86%, hsl(var(--primary)))",
+                        : "color-mix(in srgb, hsl(var(--background)) 86%, hsl(var(--primary)))",
 
-                        borderColor:
-                          selected
-                            ? "color-mix(in srgb, hsl(var(--primary)) 48%, transparent)"
-                            : "color-mix(in srgb, hsl(var(--primary)) 20%, transparent)",
+                      borderColor: selected
+                        ? "color-mix(in srgb, hsl(var(--primary)) 48%, transparent)"
+                        : "color-mix(in srgb, hsl(var(--primary)) 20%, transparent)",
 
-                        color:
-                          selected
-                            ? "hsl(var(--primary-foreground))"
-                            : "hsl(var(--muted-foreground))",
+                      color: selected
+                        ? "hsl(var(--primary-foreground))"
+                        : "hsl(var(--muted-foreground))",
 
-                        boxShadow:
-                          selected
-                            ? "0 0 25px color-mix(in srgb, hsl(var(--primary)) 30%, transparent)"
-                            : "none",
-                      }}
-                    >
-                      {duration.label}
-                    </button>
-                  );
-                }
-              )}
-
+                      boxShadow: selected
+                        ? "0 0 25px color-mix(in srgb, hsl(var(--primary)) 30%, transparent)"
+                        : "none",
+                    }}
+                  >
+                    {duration.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* =================================================
@@ -2015,7 +1572,6 @@ const MeditationScreen = () => {
                 mt-2
               "
             >
-
               <div
                 className="
                   flex
@@ -2024,7 +1580,6 @@ const MeditationScreen = () => {
                   mb-2
                 "
               >
-
                 <div
                   className="
                     flex
@@ -2032,50 +1587,34 @@ const MeditationScreen = () => {
                     gap-2
                   "
                 >
-
                   <Music2
                     size={14}
                     style={{
-                      color:
-                        "hsl(var(--primary))",
+                      color: "hsl(var(--primary))",
                     }}
                   />
 
                   <span
                     className="text-xs"
                     style={{
-                      color:
-                        "hsl(var(--muted-foreground))",
+                      color: "hsl(var(--muted-foreground))",
                     }}
                   >
                     Meditation Music
                   </span>
-
                 </div>
 
                 <button
-                  onClick={
-                    toggleMute
-                  }
+                  onClick={toggleMute}
                   className="
                     transition
                   "
                   style={{
-                    color:
-                      "hsl(var(--muted-foreground))",
+                    color: "hsl(var(--muted-foreground))",
                   }}
                 >
-                  {isMuted ? (
-                    <VolumeX
-                      size={15}
-                    />
-                  ) : (
-                    <Volume2
-                      size={15}
-                    />
-                  )}
+                  {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
                 </button>
-
               </div>
 
               {/* Music list */}
@@ -2089,47 +1628,33 @@ const MeditationScreen = () => {
                   scrollbar-hide
                 "
               >
-
                 {musicLoading ? (
                   <div
                     className="text-xs"
                     style={{
-                      color:
-                        "hsl(var(--muted-foreground))",
+                      color: "hsl(var(--muted-foreground))",
                     }}
                   >
                     Loading music...
                   </div>
-                ) : musicList.length ===
-                  0 ? (
+                ) : musicList.length === 0 ? (
                   <div
                     className="text-xs"
                     style={{
-                      color:
-                        "hsl(var(--muted-foreground))",
+                      color: "hsl(var(--muted-foreground))",
                     }}
                   >
                     No music available
                   </div>
                 ) : (
-                  musicList.map(
-                    (music) => {
+                  musicList.map((music) => {
+                    const selected = selectedMusic?.id === music.id;
 
-                      const selected =
-                        selectedMusic?.id ===
-                        music.id;
-
-                      return (
-                        <button
-                          key={
-                            music.id
-                          }
-                          onClick={() =>
-                            handleMusicSelect(
-                              music
-                            )
-                          }
-                          className="
+                    return (
+                      <button
+                        key={music.id}
+                        onClick={() => handleMusicSelect(music)}
+                        className="
                             shrink-0
                             px-4
                             py-2
@@ -2138,37 +1663,30 @@ const MeditationScreen = () => {
                             border
                             transition-all
                           "
-                          style={{
-                            background:
-                              selected
-                                ? "color-mix(in srgb, hsl(var(--primary)) 18%, transparent)"
-                                : "color-mix(in srgb, hsl(var(--background)) 82%, transparent)",
+                        style={{
+                          background: selected
+                            ? "color-mix(in srgb, hsl(var(--primary)) 18%, transparent)"
+                            : "color-mix(in srgb, hsl(var(--background)) 82%, transparent)",
 
-                            borderColor:
-                              selected
-                                ? "color-mix(in srgb, hsl(var(--primary)) 55%, transparent)"
-                                : "color-mix(in srgb, hsl(var(--primary)) 15%, transparent)",
+                          borderColor: selected
+                            ? "color-mix(in srgb, hsl(var(--primary)) 55%, transparent)"
+                            : "color-mix(in srgb, hsl(var(--primary)) 15%, transparent)",
 
-                            color:
-                              selected
-                                ? "hsl(var(--foreground))"
-                                : "hsl(var(--muted-foreground))",
+                          color: selected
+                            ? "hsl(var(--foreground))"
+                            : "hsl(var(--muted-foreground))",
 
-                            boxShadow:
-                              selected
-                                ? "0 0 18px color-mix(in srgb, hsl(var(--primary)) 20%, transparent)"
-                                : "none",
-                          }}
-                        >
-                          {music.title}
-                        </button>
-                      );
-                    }
-                  )
+                          boxShadow: selected
+                            ? "0 0 18px color-mix(in srgb, hsl(var(--primary)) 20%, transparent)"
+                            : "none",
+                        }}
+                      >
+                        {music.title}
+                      </button>
+                    );
+                  })
                 )}
-
               </div>
-
             </div>
 
             {/* =================================================
@@ -2182,17 +1700,13 @@ const MeditationScreen = () => {
                   text-center
                 "
               >
-
                 <p
                   className="text-[11px]"
                   style={{
-                    color:
-                      "hsl(var(--muted-foreground))",
+                    color: "hsl(var(--muted-foreground))",
                   }}
                 >
-                  {isMusicPlaying
-                    ? "♪ Playing"
-                    : "♪ Paused"}
+                  {isMusicPlaying ? "♪ Playing" : "♪ Paused"}
                 </p>
 
                 <p
@@ -2207,16 +1721,11 @@ const MeditationScreen = () => {
                 >
                   {selectedMusic.title}
                 </p>
-
               </div>
             )}
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 };
