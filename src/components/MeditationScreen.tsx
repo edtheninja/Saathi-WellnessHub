@@ -233,15 +233,18 @@ const MeditationScreen = () => {
       );
 
       elapsedMsRef.current += activeSegmentMs;
-    }const durationMs = selectedDuration * 60 * 1000;
+    }
+    
+const durationMs = selectedDuration * 60 * 1000;
 
 const actualElapsedMs = Math.min(
   elapsedMsRef.current,
   durationMs
 );
 
-const actualDuration = Math.floor(
-  actualElapsedMs / 1000
+const actualDuration = Math.max(
+  1,
+  Math.floor(actualElapsedMs / 60000)
 );
 
 const completed = actualElapsedMs >= durationMs;
