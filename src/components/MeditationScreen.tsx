@@ -178,16 +178,22 @@ const MeditationScreen = () => {
       return null;
     }
 
+    console.log("Meditation started", {
+      selectedDuration,
+      sessionVersion,
+    });
+
     const { data, error } = await supabase
       .from("meditation_sessions")
       .insert({
         user_id: user.id,
         /*
-          Keep the preset at insert time so the row is valid
-          immediately. finalizeSession() replaces it with the
-          actual elapsed duration when the session ends.
+          The DB requires duration > 0 (meditation_sessions_duration_check),
+          so we cannot insert 0 here. Store the selected preset as a
+          valid temporary value; finalizeSession() overwrites it with
+          the actual elapsed duration once the session ends.
         */
-        duration:0,
+        duration: selectedDuration,
         completed: false,
       })
       .select("id")
@@ -234,37 +240,33 @@ const MeditationScreen = () => {
 
       elapsedMsRef.current += activeSegmentMs;
     }
-    
-const durationMs = selectedDuration * 60 * 1000;
 
-const actualElapsedMs = Math.min(
-  elapsedMsRef.current,
-  durationMs
-);
-
-const actualDuration = Math.max(
-  1,
-  Math.floor(actualElapsedMs / 60000)
-);
-
-const completed = actualElapsedMs >= durationMs;
-await supabase
-  .from("meditation_sessions")
-  .update({
-    duration: actualDuration,
-    completed,
-  })
-  .eq("id", meditationIdRef.current);
+    const durationMs = selectedDuration * 60 * 1000;
 
     /* Never allow elapsed time to exceed the selected duration. */
-   
+    const actualElapsedMs = Math.min(elapsedMsRef.current, durationMs);
 
     /*
-      duration is stored in minutes, matching the existing
-      presets. Store completed whole minutes so the existing
-      data shape remains compatible.
+      duration is stored in minutes, matching the existing presets.
+      The DB requires duration > 0, so sessions under a minute are
+      still stored as 1 minute (never 0) instead of being rejected.
     */
-  
+    const actualDuration = Math.max(1, Math.floor(actualElapsedMs / 60000));
+
+    /*
+      completed reflects whether the user actually ran out the clock,
+      not whether they pressed the checkmark.
+    */
+    const completed = actualElapsedMs >= durationMs;
+
+    console.log("Finalizing meditation", {
+      selectedDuration,
+      elapsedMs: elapsedMsRef.current,
+      actualElapsedMs,
+      actualDuration,
+      completed,
+      meditationId: meditationIdRef.current,
+    });
 
     setTimeLeft(
       completed
@@ -291,7 +293,9 @@ await supabase
     /*
       startMeditation() runs in parallel with the UI timer.
       Wait for it here so a very fast checkmark click still
-      updates the newly-created row.
+      updates the newly-created row instead of racing ahead
+      of the INSERT (this is what previously caused
+      PATCH ...?id=null).
     */
     if (!meditationIdRef.current && sessionInsertPromiseRef.current) {
       await sessionInsertPromiseRef.current;
@@ -1083,7 +1087,7 @@ await supabase
 
           {/* =================================================
               CONSISTENCY
-              
+
               Kept behind the timer so it can
               never cover the timer content.
           ================================================= */}
