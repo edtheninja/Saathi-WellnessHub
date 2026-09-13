@@ -13,22 +13,20 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import multer from "multer";
-import cors from "cors";
+import { GoogleGenAI } from "@google/genai";
+
 const { Pool } = pg;
 const app = express();
 app.set("trust proxy", 1);
-app.use(
-  cors({
-    origin: [
-      "https://saathi-wellness-hub.vercel.app",
-      "http://localhost:5173",
-    ],
-    credentials: true,
-  })
-);
+
 const port = Number(process.env.PORT || 4000);
 const jwtSecret = process.env.JWT_SECRET || "development-secret-change-me";
-const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+
+// Default includes the deployed Vercel origin so CORS keeps working
+// even if CLIENT_ORIGIN isn't set in Render's environment — set
+// CLIENT_ORIGIN explicitly in production instead of relying on this.
+const allowedOrigin =
+  process.env.CLIENT_ORIGIN || "https://saathi-wellness-hub.vercel.app,http://localhost:5173";
 const allowedOrigins = allowedOrigin.split(",").map((origin) => origin.trim());
 const frontendOrigin = allowedOrigins[0];
 
@@ -40,8 +38,9 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: allowedOrigins, credentials: true } });
 
 app.disable("x-powered-by");
-if (process.env.TRUST_PROXY === "true") app.set("trust proxy", 1);
 app.use(helmet());
+// Single CORS setup (there were previously two, which caused duplicate
+// CORS headers that browsers reject outright).
 app.use(cors({ origin: (origin, callback) => {
   if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
   return callback(new Error("Origin is not allowed"));
@@ -49,6 +48,9 @@ app.use(cors({ origin: (origin, callback) => {
 app.use(express.json({ limit: "10000kb" }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, message: { error: "Too many authentication attempts" } });
+
+const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
 // ---------------------------------------------------------------
 // Journal image uploads (local disk storage). Only ONE `upload`
@@ -397,33 +399,20 @@ app.get("/api/music/recommendations", authRequired, async (req, res) => {
   res.json({ data: result.rows, targetEnergy });
 });
 
-const wellnessSystemPrompt = `You are Saathi, a warm mental-wellness companion. Be concise, empathetic, practical, and non-judgmental. You are not a doctor, therapist, or emergency service. Never diagnose, prescribe medication, or claim certainty. For signs of immediate danger, self-harm, or suicide, encourage the person to contact local emergency services or Tele-MANAS at 14416 and suggest reaching a trusted person now. Ask one gentle follow-up question when useful.`;
-const fallbackChatResponses = [
-  "Thank you for sharing that. Your feelings matter. What feels like the smallest supportive step you could take right now?",
-  "I hear you. Try taking one slow breath and naming what you need most in this moment: rest, support, clarity, or connection.",
-  "That sounds difficult. You do not have to solve everything at once. What part feels heaviest today?",
-];
-
-import { GoogleGenAI } from "@google/genai";
-
-const gemini = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
-
-const GEMINI_MODELS = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-3.5-flash-lite",
-];
-
-app.post("/api/ai/chat", authRequired, async (req, res) => {
+// ---------------------------------------------------------------
+// AI chat (Gemini). authOptional — matches the frontend, which only
+// attaches a token if the user is logged in, so guests can chat too.
+// ---------------------------------------------------------------
+app.post("/api/ai/chat", authOptional, async (req, res) => {
   try {
     const { messages = [] } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({
-        error: "Messages are required",
-      });
+      return res.status(400).json({ error: "Messages are required" });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: "AI chat is not configured" });
     }
 
     // Limit the conversation size so requests don't become unnecessarily large.
@@ -431,11 +420,7 @@ app.post("/api/ai/chat", authRequired, async (req, res) => {
 
     const conversation = recentMessages
       .map((message) => {
-        const role =
-          message.role === "assistant"
-            ? "SAATHI"
-            : "User";
-
+        const role = message.role === "assistant" ? "SAATHI" : "User";
         return `${role}: ${String(message.content || "").trim()}`;
       })
       .filter(Boolean)
@@ -476,78 +461,53 @@ Respond as SAATHI.
     let lastError = null;
 
     /*
-     * Try the available Gemini models one by one.
-     *
-     * This protects the application when one model temporarily
-     * returns 503 / UNAVAILABLE because of high demand.
+     * Try the available Gemini models one by one. Only abort
+     * immediately on auth/config errors (401/403) — everything else
+     * (503 overloaded, 404 model retired/unavailable, etc.) moves on
+     * to the next candidate, since those are specific to one model,
+     * not the whole request.
      */
     for (const model of GEMINI_MODELS) {
       try {
         console.log(`Trying Gemini model: ${model}`);
-
-        response = await gemini.models.generateContent({
-          model,
-          contents: prompt,
-        });
-
+        response = await gemini.models.generateContent({ model, contents: prompt });
         console.log(`Gemini model succeeded: ${model}`);
-
         break;
       } catch (error) {
         lastError = error;
+        console.error(`Gemini model ${model} failed:`, { status: error?.status, message: error?.message });
 
-        console.error(`Gemini model ${model} failed:`, {
-          status: error?.status,
-          message: error?.message,
-        });
-
-        /*
-         * If Gemini returns 503, try the next model.
-         *
-         * For other errors, stop immediately because they may
-         * indicate a configuration/authentication/request problem.
-         */
-        if (error?.status !== 503) {
-          throw error;
-        }
+        if (error?.status === 401 || error?.status === 403) throw error;
       }
     }
 
     if (!response) {
-      console.error(
-        "All Gemini models failed:",
-        lastError
-      );
-
+      console.error("All Gemini models failed:", lastError);
       return res.status(503).json({
-        error:
-          "SAATHI AI is temporarily unavailable. Please try again in a moment.",
+        error: "SAATHI AI is temporarily unavailable. Please try again in a moment.",
       });
     }
 
-    const message =
-      typeof response.text === "string"
-        ? response.text.trim()
-        : "";
+    const message = typeof response.text === "string" ? response.text.trim() : "";
 
     if (!message) {
-      return res.status(502).json({
-        error: "SAATHI returned an empty response",
-      });
+      return res.status(502).json({ error: "SAATHI returned an empty response" });
     }
 
-    return res.json({
-      message,
-    });
+    return res.json({ message });
   } catch (error) {
     console.error("Gemini API error:", error);
-
-    return res.status(500).json({
-      error: "Unable to generate AI response",
-    });
+    return res.status(500).json({ error: "Unable to generate AI response" });
   }
 });
-app.get("/api/auth/oauth/google/start", async (req, res) => {
+
+app.get("/api/auth/oauth/google/start", (_req, res) => {
+  if (!oauthConfigured("google")) return res.status(503).json({ error: "Google OAuth is not configured" });
+  const params = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: process.env.GOOGLE_REDIRECT_URI, response_type: "code", scope: "openid email profile", access_type: "offline", state: oauthState("google") });
+  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+});
+
+app.get("/api/auth/oauth/google/callback", async (req, res) => {
   try {
     const state = jwt.verify(String(req.query.state || ""), jwtSecret);
     if (state.provider !== "google") throw new Error("Invalid OAuth state");
@@ -561,7 +521,6 @@ app.get("/api/auth/oauth/google/start", async (req, res) => {
     res.redirect(oauthCallbackUrl(tokenFor(user)));
   } catch (error) { res.redirect(`${frontendOrigin}/auth?oauth_error=${encodeURIComponent(error.message || "Google login failed")}`); }
 });
-
 
 app.get("/api/auth/oauth/apple/start", (_req, res) => {
   if (!oauthConfigured("apple")) return res.status(503).json({ error: "Apple OAuth is not configured" });
@@ -1028,6 +987,5 @@ io.on("connection", (socket) => {
     if (socket.data.roomId) broadcastPresence(socket.data.roomId);
   });
 });
-
 
 initializeDatabase().then(() => httpServer.listen(port, () => console.log(`Saathi PostgreSQL backend listening on http://localhost:${port}`))).catch((error) => { console.error("PostgreSQL connection failed:", error.message); process.exit(1); });
