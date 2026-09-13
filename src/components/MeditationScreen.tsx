@@ -193,7 +193,7 @@ const MeditationScreen = () => {
       data,
       error,
     } = await supabase
-      .from("meditation")
+      .from("meditation_sessions")
       .insert({
         user_id: user.id,
         duration: selectedDuration,
@@ -254,7 +254,7 @@ const MeditationScreen = () => {
     const {
       error,
     } = await supabase
-      .from("meditation")
+      .from("meditation_sessions")
       .update({
         completed: true,
       })
