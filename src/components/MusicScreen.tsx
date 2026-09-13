@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 
 import meditationGirl from "@/assets/meditation-girl-scene.png";
-import { supabase } from "@/supabaseClient";
 
 /* -------------------------------------------------------------------------- */
 /*                                Local music                                 */
@@ -36,6 +35,59 @@ const musicModules = import.meta.glob(
     import: "default",
   },
 ) as Record<string, string>;
+
+/* -------------------------------------------------------------------------- */
+/*                              Backend API                                   */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * VITE_API_URL should normally be your backend origin:
+ *
+ * VITE_API_URL=https://your-backend-domain.com
+ *
+ * If someone accidentally sets:
+ *
+ * VITE_API_URL=https://your-backend-domain.com/api
+ *
+ * we remove the trailing /api so the calls below still become:
+ *
+ * https://your-backend-domain.com/api/...
+ */
+const API_BASE = (import.meta.env.VITE_API_URL || "")
+  .replace(/\/$/, "")
+  .replace(/\/api$/, "");
+
+const getAuthToken = () => {
+  return localStorage.getItem("saathi_access_token");
+};
+
+const apiFetch = async <T = unknown,>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> => {
+  const token = getAuthToken();
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `Request failed (${response.status})`);
+  }
+
+  return payload as T;
+};
 
 /* -------------------------------------------------------------------------- */
 /*                                    Types                                   */
@@ -309,50 +361,12 @@ export default function MusicScreen() {
   /* ------------------------------------------------------------------------ */
 
   const loadLocalTracks = useCallback(async (): Promise<Track[]> => {
-    try {
-      const response = await fetch("/Music/music.json", {
-        cache: "no-store",
-      });
-
-      if (response.ok) {
-        const files = await response.json();
-
-        /*
-         * Expected:
-         *
-         * [
-         *   "song1.mp3",
-         *   "song2.mp3"
-         * ]
-         */
-        if (Array.isArray(files)) {
-          const localTracks = files
-            .filter(
-              (file): file is string =>
-                typeof file === "string" &&
-                /\.(mp3|wav|ogg|m4a|webm)$/i.test(file),
-            )
-            .map((file) => ({
-              id: createTrackId(file),
-              title: getTitle(file),
-              artist: "Saathi Music",
-              src: `/Music/${encodeURIComponent(file)}`,
-            }))
-            .sort((a, b) => a.title.localeCompare(b.title));
-
-          if (localTracks.length > 0) {
-            return localTracks;
-          }
-        }
-      }
-    } catch (error) {
-      console.warn("Could not load /Music/music.json:", error);
-    }
-
     /*
-     * Fallback:
+     * Songs are bundled by Vite from:
      *
      * src/assets/Music/*
+     *
+     * No /Music/music.json request is necessary.
      */
     return Object.entries(musicModules)
       .map(([path, src]) => ({
@@ -375,15 +389,6 @@ export default function MusicScreen() {
       setLibraryLoading(true);
 
       try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-
-        if (userError) {
-          console.error("Music authentication lookup failed:", userError);
-        }
-
         const localTracks = await loadLocalTracks();
 
         if (cancelled) {
@@ -391,31 +396,41 @@ export default function MusicScreen() {
         }
 
         /*
+         * Music files are local frontend assets.
+         * Metadata is stored per authenticated user
+         * in PostgreSQL through Express.
+         */
+        let authenticated = false;
+
+        try {
+          const authPayload = await apiFetch<{
+            user?: unknown;
+          }>("/api/auth/me");
+
+          authenticated = Boolean(authPayload?.user);
+        } catch (error) {
+          console.warn("Music authentication lookup failed:", error);
+        }
+
+        /*
          * If there is no authenticated user,
          * music still works locally.
          */
-        if (!user) {
+        if (!authenticated) {
           setTracks(localTracks);
           setCurrentTrackIndex(0);
           return;
         }
 
-        const { data: musicRows, error: musicError } = await supabase
-          .from("music")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          });
+        /*
+         * Backend automatically scopes this query
+         * to req.auth.sub.
+         */
+        const musicPayload = await apiFetch<{
+          data?: MusicRow[];
+        }>("/api/data/music");
 
-        if (musicError) {
-          console.error("Failed to load music metadata:", musicError);
-
-          setTracks(localTracks);
-          setCurrentTrackIndex(0);
-          return;
-        }
-
-        const rows = (musicRows ?? []) as MusicRow[];
+        const rows = Array.isArray(musicPayload?.data) ? musicPayload.data : [];
 
         /*
          * Find DB row for local track.
@@ -515,7 +530,7 @@ export default function MusicScreen() {
 
             /*
              * The actual audio remains in frontend.
-             * This only stores its URL.
+             * This only stores its Vite-generated URL.
              */
             audio_url: track.src,
 
@@ -524,10 +539,11 @@ export default function MusicScreen() {
             is_available: true,
 
             /*
-             * duration_seconds is intentionally
-             * NOT inserted as 0.
+             * Do NOT insert duration_seconds = 0.
              *
-             * Your DB constraint requires > 0.
+             * Your database constraint requires
+             * duration_seconds to be NULL or > 0.
+             *
              * Actual duration is saved after
              * loadedmetadata fires.
              */
@@ -535,21 +551,20 @@ export default function MusicScreen() {
             repetition: 0,
             is_favorite: false,
 
-            /*
-             * Energy can be assigned later.
-             */
             energy_level: null,
           }));
 
-          const { data: insertedRows, error: insertError } = await supabase
-            .from("music")
-            .insert(rowsToInsert)
-            .select("*");
+          try {
+            const insertPayload = await apiFetch<{
+              data?: MusicRow[];
+            }>("/api/data/music", {
+              method: "POST",
+              body: JSON.stringify(rowsToInsert),
+            });
 
-          if (insertError) {
-            console.error("Failed to create music metadata:", insertError);
-          } else {
-            const created = (insertedRows ?? []) as MusicRow[];
+            const created = Array.isArray(insertPayload?.data)
+              ? insertPayload.data
+              : [];
 
             for (const row of created) {
               const index = merged.findIndex(
@@ -597,6 +612,8 @@ export default function MusicScreen() {
                 lastListenedAt: row.last_listened_at ?? null,
               };
             }
+          } catch (error) {
+            console.error("Failed to create music metadata:", error);
           }
         }
 
@@ -675,6 +692,7 @@ export default function MusicScreen() {
       const source = context.createMediaElementSource(audio);
 
       source.connect(analyser);
+
       analyser.connect(context.destination);
 
       audioContextRef.current = context;
@@ -757,13 +775,14 @@ export default function MusicScreen() {
           payload.duration_seconds = Math.max(1, Math.ceil(knownDuration));
         }
 
-        const { error } = await supabase
-          .from("music")
-          .update(payload)
-          .eq("id", trackId);
-
-        if (error) {
+        try {
+          await apiFetch(`/api/data/music?id=${encodeURIComponent(trackId)}`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          });
+        } catch (error) {
           console.error("Failed to save listening progress:", error);
+
           return;
         }
 
@@ -849,16 +868,16 @@ export default function MusicScreen() {
 
     const timestamp = new Date().toISOString();
 
-    const { error } = await supabase
-      .from("music")
-      .update({
-        repetition: nextRepetition,
+    try {
+      await apiFetch(`/api/data/music?id=${encodeURIComponent(track.dbId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          repetition: nextRepetition,
 
-        last_listened_at: timestamp,
-      })
-      .eq("id", track.dbId);
-
-    if (error) {
+          last_listened_at: timestamp,
+        }),
+      });
+    } catch (error) {
       /*
        * Allow retry if DB update failed.
        */
@@ -965,22 +984,19 @@ export default function MusicScreen() {
 
       const track = loadedAudioTrackRef.current;
 
+      /*
+       * Store actual duration in DB.
+       */
       if (track?.dbId) {
         const durationSeconds = Math.max(1, Math.ceil(actualDuration));
 
-        void supabase
-          .from("music")
-          .update({
+        void apiFetch(`/api/data/music?id=${encodeURIComponent(track.dbId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
             duration_seconds: durationSeconds,
-          })
-          .eq("id", track.dbId)
-          .then(({ error }) => {
-            if (error) {
-              console.error("Failed to save song duration:", error);
-
-              return;
-            }
-
+          }),
+        })
+          .then(() => {
             setTracks((previous) =>
               previous.map((item) =>
                 item.dbId === track.dbId
@@ -991,6 +1007,9 @@ export default function MusicScreen() {
                   : item,
               ),
             );
+          })
+          .catch((error) => {
+            console.error("Failed to save song duration:", error);
           });
       }
 
@@ -1012,7 +1031,9 @@ export default function MusicScreen() {
 
           setCurrentTime(resumePosition);
         } catch {
-          // Ignore browser currentTime errors.
+          /*
+           * Ignore browser currentTime errors.
+           */
         }
       }
     };
@@ -1589,21 +1610,18 @@ export default function MusicScreen() {
 
     const loadFinalEnergy = async () => {
       try {
-        const { data, error } = await supabase
-          .from("wellness_scores")
-          .select("final_energy_level, computed_at")
-          .order("computed_at", {
-            ascending: false,
-          })
-          .limit(1);
+        /*
+         * Use the dedicated backend endpoint.
+         *
+         * Backend scopes this to the authenticated user.
+         */
+        const payload = await apiFetch<{
+          data?: {
+            final_energy_level?: number;
+          } | null;
+        }>("/api/wellness-score/latest");
 
-        if (error) {
-          console.error("Failed to load final energy:", error);
-
-          return;
-        }
-
-        const value = Number(data?.[0]?.final_energy_level);
+        const value = Number(payload?.data?.final_energy_level);
 
         if (Number.isFinite(value) && value >= 1 && value <= 100) {
           if (!cancelled) {
@@ -1618,6 +1636,12 @@ export default function MusicScreen() {
         }
       } catch (error) {
         console.error("Final energy lookup failed:", error);
+
+        if (!cancelled) {
+          setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
+
+          setHasFinalEnergy(false);
+        }
       }
     };
 
@@ -1648,6 +1672,7 @@ export default function MusicScreen() {
 
     return (
       tracks
+
         /*
          * Do not recommend currently playing track.
          */
@@ -1655,6 +1680,7 @@ export default function MusicScreen() {
           (track, index) =>
             index !== currentTrackIndex && track.isAvailable !== false,
         )
+
         .map((track) => {
           /*
            * Songs without energy metadata are neutral.
@@ -1726,6 +1752,7 @@ export default function MusicScreen() {
             energyDistance,
           };
         })
+
         .sort((a, b) => {
           if (a.score !== b.score) {
             return a.score - b.score;
@@ -1737,7 +1764,9 @@ export default function MusicScreen() {
 
           return a.track.title.localeCompare(b.track.title);
         })
+
         .slice(0, 4)
+
         .map(({ track }) => track)
     );
   }, [currentTrackIndex, finalEnergyLevel, hasFinalEnergy, tracks]);
@@ -1781,14 +1810,14 @@ export default function MusicScreen() {
       ),
     );
 
-    const { error } = await supabase
-      .from("music")
-      .update({
-        is_favorite: nextValue,
-      })
-      .eq("id", track.dbId);
-
-    if (error) {
+    try {
+      await apiFetch(`/api/data/music?id=${encodeURIComponent(track.dbId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          is_favorite: nextValue,
+        }),
+      });
+    } catch (error) {
       console.error("Failed to save favourite:", error);
 
       /*
@@ -1928,7 +1957,7 @@ export default function MusicScreen() {
                   </h2>
 
                   <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {currentTrack?.artist || "Add music to public/Music"}
+                    {currentTrack?.artist || "Add music to src/assets/Music"}
                   </p>
                 </div>
 
@@ -2138,7 +2167,7 @@ export default function MusicScreen() {
 
                     <p className="mt-1 max-w-xs text-sm text-muted-foreground">
                       {tracks.length === 0
-                        ? "Add your audio files to public/Music or src/assets/Music."
+                        ? "Add your audio files to src/assets/Music."
                         : "Try another search term."}
                     </p>
                   </div>
