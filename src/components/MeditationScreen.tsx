@@ -37,8 +37,30 @@ const MeditationScreen = () => {
   const meditationIdRef =
     useRef<string | null>(null);
 
-  const hasCompletedRef =
+  const isFinalizedRef =
     useRef(false);
+
+  const sessionInsertPromiseRef =
+    useRef<Promise<string | null> | null>(null);
+
+  const sessionVersionRef =
+    useRef(0);
+
+  /*
+    Total real elapsed meditation time in milliseconds.
+    This survives pause/resume because each active segment
+    is added when the session is paused or finalized.
+  */
+  const elapsedMsRef =
+    useRef(0);
+
+  /* Exact remaining time when the current active segment started. */
+  const segmentStartRemainingMsRef =
+    useRef(0);
+
+  /* Exact remaining time captured when a session is paused. */
+  const pausedRemainingMsRef =
+    useRef<number | null>(null);
 
   const endTimeRef =
     useRef<number | null>(null);
@@ -175,7 +197,9 @@ const MeditationScreen = () => {
      START MEDITATION
   ========================================================= */
 
-  const startMeditation = async () => {
+  const startMeditation = async (
+    sessionVersion: number
+  ): Promise<string | null> => {
     const {
       data: { user },
     } =
@@ -186,7 +210,7 @@ const MeditationScreen = () => {
         "No authenticated user found."
       );
 
-      return;
+      return null;
     }
 
     const {
@@ -196,6 +220,11 @@ const MeditationScreen = () => {
       .from("meditation_sessions")
       .insert({
         user_id: user.id,
+        /*
+          Keep the preset at insert time so the row is valid
+          immediately. finalizeSession() replaces it with the
+          actual elapsed duration when the session ends.
+        */
         duration: selectedDuration,
         completed: false,
       })
@@ -208,30 +237,107 @@ const MeditationScreen = () => {
         error
       );
 
-      return;
+      return null;
+    }
+
+    /* Do not attach an old in-flight row to a newer session. */
+    if (
+      sessionVersion !==
+      sessionVersionRef.current
+    ) {
+      return data.id;
     }
 
     meditationIdRef.current =
       data.id;
+
+    return data.id;
   };
 
   /* =========================================================
-     COMPLETE MEDITATION
+     FINALIZE MEDITATION
   ========================================================= */
 
-  const markCompleted = async () => {
+  const finalizeSession = async () => {
     if (
-      hasCompletedRef.current
+      isFinalizedRef.current
     ) {
       return;
     }
 
-    hasCompletedRef.current =
+    isFinalizedRef.current =
       true;
+
+    /*
+      If the timer is currently running, capture the exact
+      remaining milliseconds before stopping it.
+    */
+    if (endTimeRef.current !== null) {
+      const remainingMs =
+        Math.max(
+          0,
+          endTimeRef.current -
+            Date.now()
+        );
+
+      const activeSegmentMs =
+        Math.max(
+          0,
+          segmentStartRemainingMsRef.current -
+            remainingMs
+        );
+
+      elapsedMsRef.current +=
+        activeSegmentMs;
+    }
+
+    const durationMs =
+      selectedDuration * 60 * 1000;
+
+    /* Never allow elapsed time to exceed the selected duration. */
+    const actualElapsedMs =
+      Math.min(
+        elapsedMsRef.current,
+        durationMs
+      );
+
+    /*
+      duration is stored in minutes, matching the existing
+      presets. Store completed whole minutes so the existing
+      data shape remains compatible.
+    */
+    const actualDuration =
+      Math.floor(
+        actualElapsedMs /
+          60000
+      );
+
+    const completed =
+      actualElapsedMs >=
+      durationMs;
+
+    setTimeLeft(
+      completed
+        ? 0
+        : Math.max(
+            0,
+            Math.ceil(
+              (durationMs -
+                actualElapsedMs) /
+                1000
+            )
+          )
+    );
 
     setIsActive(false);
 
     endTimeRef.current =
+      null;
+
+    segmentStartRemainingMsRef.current =
+      0;
+
+    pausedRemainingMsRef.current =
       null;
 
     if (timerFrameRef.current) {
@@ -245,9 +351,26 @@ const MeditationScreen = () => {
 
     stopMusic();
 
+    /*
+      startMeditation() runs in parallel with the UI timer.
+      Wait for it here so a very fast checkmark click still
+      updates the newly-created row.
+    */
     if (
-      !meditationIdRef.current
+      !meditationIdRef.current &&
+      sessionInsertPromiseRef.current
     ) {
+      await sessionInsertPromiseRef.current;
+    }
+
+    const meditationId =
+      meditationIdRef.current;
+
+    if (!meditationId) {
+      console.error(
+        "Cannot finalize meditation: session id is missing."
+      );
+
       return;
     }
 
@@ -256,16 +379,17 @@ const MeditationScreen = () => {
     } = await supabase
       .from("meditation_sessions")
       .update({
-        completed: true,
+        duration: actualDuration,
+        completed,
       })
       .eq(
         "id",
-        meditationIdRef.current
+        meditationId
       );
 
     if (error) {
       console.error(
-        "Completion update failed:",
+        "Meditation session update failed:",
         error
       );
     }
@@ -293,13 +417,20 @@ const MeditationScreen = () => {
       Use a real timestamp instead of
       subtracting 1 every second.
     */
+    segmentStartRemainingMsRef.current =
+      pausedRemainingMsRef.current ??
+      timeLeft * 1000;
+
+    pausedRemainingMsRef.current =
+      null;
+
     endTimeRef.current =
       Date.now() +
-      timeLeft * 1000;
+      segmentStartRemainingMsRef.current;
 
     const updateTimer = () => {
       if (
-        !endTimeRef.current
+        endTimeRef.current === null
       ) {
         return;
       }
@@ -310,7 +441,7 @@ const MeditationScreen = () => {
 
       if (remainingMs <= 0) {
         setTimeLeft(0);
-        markCompleted();
+        finalizeSession();
         return;
       }
 
@@ -738,6 +869,10 @@ const MeditationScreen = () => {
         null;
     }
 
+    /* Invalidate any previous/in-flight session. */
+    sessionVersionRef.current +=
+      1;
+
     setSelectedDuration(
       duration.value
     );
@@ -749,14 +884,28 @@ const MeditationScreen = () => {
     meditationIdRef.current =
       null;
 
-    hasCompletedRef.current =
+    sessionInsertPromiseRef.current =
+      null;
+
+    isFinalizedRef.current =
       false;
+
+    elapsedMsRef.current =
+      0;
+
+    segmentStartRemainingMsRef.current =
+      0;
+
+    pausedRemainingMsRef.current =
+      null;
 
     endTimeRef.current =
       null;
 
     lastDisplayedSecondRef.current =
       duration.seconds;
+
+    stopMusic();
   };
 
   /* =========================================================
@@ -768,11 +917,28 @@ const MeditationScreen = () => {
 
     if (isActive) {
       if (
-        endTimeRef.current
+        endTimeRef.current !== null
       ) {
         const remainingMs =
-          endTimeRef.current -
-          Date.now();
+          Math.max(
+            0,
+            endTimeRef.current -
+              Date.now()
+          );
+
+        /* Capture the exact active time before pausing. */
+        const activeSegmentMs =
+          Math.max(
+            0,
+            segmentStartRemainingMsRef.current -
+              remainingMs
+          );
+
+        elapsedMsRef.current +=
+          activeSegmentMs;
+
+        pausedRemainingMsRef.current =
+          remainingMs;
 
         const remainingSeconds =
           Math.max(
@@ -794,6 +960,9 @@ const MeditationScreen = () => {
       endTimeRef.current =
         null;
 
+      segmentStartRemainingMsRef.current =
+        0;
+
       setIsActive(false);
 
       stopMusic();
@@ -801,26 +970,54 @@ const MeditationScreen = () => {
       return;
     }
 
-    /* ---------------- START ---------------- */
+    /* ---------------- START / RESUME ---------------- */
 
     if (timeLeft <= 0) {
       return;
     }
 
-    hasCompletedRef.current =
+    isFinalizedRef.current =
       false;
 
     /*
+      A null meditation id means this is a brand-new session.
+      Create its database row without blocking the timer.
+    */
+    if (
+      !meditationIdRef.current &&
+      !sessionInsertPromiseRef.current
+    ) {
+      sessionVersionRef.current +=
+        1;
+
+      elapsedMsRef.current =
+        0;
+
+      const version =
+        sessionVersionRef.current;
+
+      const insertPromise =
+        startMeditation(version);
+
+      sessionInsertPromiseRef.current =
+        insertPromise;
+
+      insertPromise.then(() => {
+        if (
+          sessionVersionRef.current ===
+          version
+        ) {
+          sessionInsertPromiseRef.current =
+            null;
+        }
+      });
+    }
+
+    /*
       UI timer starts immediately.
-      Supabase does not block it.
+      Database work does not block the timer.
     */
     setIsActive(true);
-
-    if (
-      !meditationIdRef.current
-    ) {
-      startMeditation();
-    }
 
     if (audioRef.current) {
       startMusic();
@@ -853,6 +1050,10 @@ const MeditationScreen = () => {
     const resetSeconds =
       duration?.seconds ?? 300;
 
+    /* Invalidate the current session and any pending insert. */
+    sessionVersionRef.current +=
+      1;
+
     setTimeLeft(
       resetSeconds
     );
@@ -860,8 +1061,20 @@ const MeditationScreen = () => {
     meditationIdRef.current =
       null;
 
-    hasCompletedRef.current =
+    sessionInsertPromiseRef.current =
+      null;
+
+    isFinalizedRef.current =
       false;
+
+    elapsedMsRef.current =
+      0;
+
+    segmentStartRemainingMsRef.current =
+      0;
+
+    pausedRemainingMsRef.current =
+      null;
 
     endTimeRef.current =
       null;
@@ -1675,7 +1888,7 @@ const MeditationScreen = () => {
 
               <button
                 onClick={
-                  markCompleted
+                  finalizeSession
                 }
                 className="
                   w-13
