@@ -13,10 +13,19 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import multer from "multer";
-
+import cors from "cors";
 const { Pool } = pg;
 const app = express();
 app.set("trust proxy", 1);
+app.use(
+  cors({
+    origin: [
+      "https://saathi-wellness-hub.vercel.app",
+      "http://localhost:5173",
+    ],
+    credentials: true,
+  })
+);
 const port = Number(process.env.PORT || 4000);
 const jwtSecret = process.env.JWT_SECRET || "development-secret-change-me";
 const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
@@ -552,6 +561,7 @@ app.get("/api/auth/oauth/google/start", async (req, res) => {
     res.redirect(oauthCallbackUrl(tokenFor(user)));
   } catch (error) { res.redirect(`${frontendOrigin}/auth?oauth_error=${encodeURIComponent(error.message || "Google login failed")}`); }
 });
+
 
 app.get("/api/auth/oauth/apple/start", (_req, res) => {
   if (!oauthConfigured("apple")) return res.status(503).json({ error: "Apple OAuth is not configured" });
