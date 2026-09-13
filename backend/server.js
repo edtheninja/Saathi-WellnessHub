@@ -16,6 +16,7 @@ import multer from "multer";
 
 const { Pool } = pg;
 const app = express();
+app.set("trust proxy", 1);
 const port = Number(process.env.PORT || 4000);
 const jwtSecret = process.env.JWT_SECRET || "development-secret-change-me";
 const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
@@ -422,7 +423,7 @@ app.post("/api/ai/chat", authRequired, async (req, res) => {
       .join("\n");
 
     const response = await gemini.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-3.6-flash",
       contents: `
 You are SAATHI, a supportive AI wellness companion.
 
