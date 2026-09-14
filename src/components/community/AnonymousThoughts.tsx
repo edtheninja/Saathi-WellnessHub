@@ -62,7 +62,7 @@ const tagOptions = [
 // outside this range once mood/tag prefixes are added on top of the
 // user's raw text.
 const MAX_THOUGHT_LENGTH = 1000;
-const MIN_THOUGHT_LENGTH = 20;
+const MIN_THOUGHT_LENGTH = 10;
 const COMPOSE_SEPARATOR = " • ";
 
 const demoPosts: AnonymousPost[] = [
@@ -640,8 +640,8 @@ export default function AnonymousThoughts() {
   const handlePhoto = (file: File | undefined) => {
     if (!file) return;
 
-    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
-      setError("Choose an image smaller than 2 MB.");
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+      setError("Choose an image smaller than 10 MB.");
       return;
     }
 
