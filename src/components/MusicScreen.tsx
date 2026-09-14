@@ -164,48 +164,40 @@ const DEFAULT_ENERGY_LEVEL = 50;
  * its midpoint as the song's stored energy value.
  *
  * Example: 60-64 -> 62, 64-68 -> 66, 68-72 -> 70.
- *
- * FIXED (2 entries): these two keys previously didn't match the actual
- * song titles, so getMusicEnergyLevel() silently returned null for them
- * (no energy ever got attached to those two tracks, in the UI OR in the
- * DB row created for them):
- *   - "chaand ke parinday" -> "khaabon ke parinday" (60-64 bucket)
- *   - "badtemeez dil"      -> "badtameez dil"       (96-100 bucket, typo: e -> a)
  */
 const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   "channa mereya": 2,
   "kun faya kun": 6,
   "sun saiyaan": 10,
-  hamdard: 14,
+  "hamdard": 14,
   "jiyein kyun": 18,
   "tere bina": 22,
   "kun faya kun (added)": 26,
-  iktara: 30,
+  "iktara": 30,
   "tu kisi rail si": 34,
   "kho gaye hum kahan": 38,
-  shaam: 42,
+  "shaam": 42,
   "aao milo chalen": 46,
-  banjara: 50,
-  safarnama: 54,
+  "banjara": 50,
+  "safarnama": 54,
   "phir se ud chala": 58,
-  "khaabon ke parinday": 62,
+  "chaand ke parinday": 62,
   "tum se hi": 66,
-  ilahi: 70,
+  "ilahi": 70,
   "love you zindagi": 74,
   "matargashti (added)": 78,
   "sooraj ki baahon mein": 82,
   "tumhi ho bandhu": 86,
   "patakha guddi": 90,
   "gallan goodiyaan": 94,
-  "badtameez dil": 98,
+  "badtemeez dil": 98,
 };
 
 const getMusicEnergyLevel = (title: string): number | null => {
-  const key = String(title || "")
-    .trim()
-    .toLowerCase();
+  const key = String(title || "").trim().toLowerCase();
   return MUSIC_ENERGY_BY_TITLE[key] ?? null;
 };
+
 
 /*
  * Progress is written approximately every 7 seconds.
@@ -401,9 +393,7 @@ export default function MusicScreen() {
     startPosition: number;
   } | null>(null);
 
-  const listeningSessionFinalizeInFlightRef = useRef<Promise<void> | null>(
-    null,
-  );
+  const listeningSessionFinalizeInFlightRef = useRef<Promise<void> | null>(null);
 
   /*
    * Serializes progress updates so two asynchronous
@@ -613,16 +603,7 @@ export default function MusicScreen() {
             repetition: 0,
             is_favorite: false,
 
-            /*
-             * FIXED: this used to be hardcoded to `null` even though
-             * `track.energyLevel` (from the MUSIC_ENERGY_BY_TITLE
-             * catalog above) was already known at this point. That
-             * meant every newly-created music row started with no
-             * energy value at all, so neither recommendations nor
-             * activity_history ever got a real energy signal for it.
-             * Now we store the catalog's fixed energy value up front.
-             */
-            energy_level: track.energyLevel ?? null,
+            energy_level: null,
           }));
 
           try {
@@ -685,62 +666,6 @@ export default function MusicScreen() {
             }
           } catch (error) {
             console.error("Failed to create music metadata:", error);
-          }
-        }
-
-        /*
-         * NEW: backfill energy_level for songs that ALREADY had a DB
-         * row from before this catalog existed (or from before the
-         * two title fixes above), so returning users' existing rows
-         * also end up with the correct fixed energy value — without
-         * this, only brand-new rows (created just above) would ever
-         * get one, and DB rows created before today would be stuck
-         * at energy_level = NULL forever.
-         *
-         * This is a plain data PATCH (no `record_listen` flag), so it
-         * does not create an activity_history row or change any UI —
-         * it only ever writes a value the catalog itself already
-         * assigned to that song title.
-         */
-        const needsEnergyBackfill = merged.filter((track) => {
-          if (!track.dbId) return false;
-          const catalogEnergy = getMusicEnergyLevel(track.title);
-          return (
-            catalogEnergy !== null &&
-            (track.energyLevel === null || track.energyLevel === undefined)
-          );
-        });
-
-        if (needsEnergyBackfill.length > 0) {
-          for (const track of needsEnergyBackfill) {
-            const catalogEnergy = getMusicEnergyLevel(track.title);
-
-            if (catalogEnergy === null || !track.dbId) {
-              continue;
-            }
-
-            try {
-              await apiFetch(
-                `/api/data/music?id=${encodeURIComponent(track.dbId)}`,
-                {
-                  method: "PATCH",
-                  body: JSON.stringify({ energy_level: catalogEnergy }),
-                },
-              );
-
-              const index = merged.findIndex(
-                (item) => item.dbId === track.dbId,
-              );
-
-              if (index !== -1) {
-                merged[index] = {
-                  ...merged[index],
-                  energyLevel: catalogEnergy,
-                };
-              }
-            } catch (error) {
-              console.error("Failed to backfill music energy level:", error);
-            }
           }
         }
 
@@ -992,10 +917,7 @@ export default function MusicScreen() {
   }, []);
 
   const finalizeListeningSession = useCallback(
-    async (
-      track: Track | undefined,
-      audio: HTMLAudioElement,
-    ): Promise<void> => {
+    async (track: Track | undefined, audio: HTMLAudioElement): Promise<void> => {
       const session = listeningSessionRef.current;
 
       if (!track?.dbId || !session || session.trackId !== track.id) {
@@ -1028,10 +950,7 @@ export default function MusicScreen() {
         listenedTill - Math.min(session.startPosition, listenedTill),
       );
 
-      const wallClockSeconds = Math.max(
-        0,
-        (Date.now() - session.startedAt) / 1000,
-      );
+      const wallClockSeconds = Math.max(0, (Date.now() - session.startedAt) / 1000);
 
       /*
        * A play/pause click at exactly 0 seconds is not a meaningful listen.
@@ -1048,57 +967,26 @@ export default function MusicScreen() {
         try {
           await persistTrackProgress(track, audio, true);
 
-          /*
-           * `record_listen: true` is the authoritative signal to the
-           * backend that this is a real, meaningful listen (not a
-           * volume tweak, a seek, or a play/pause click) — the
-           * backend increments `repetition` by exactly 1, server-side,
-           * and logs exactly one activity_history row using this
-           * song's fixed energy_level. See the dedicated
-           * PATCH /api/data/music handler in server.js.
-           */
-          const response = await apiFetch<{ data?: MusicRow[] }>(
-            `/api/data/music?id=${encodeURIComponent(trackId)}`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({
-                record_listen: true,
-                last_listened_at: timestamp,
-              }),
-            },
-          );
+          await apiFetch(`/api/data/music?id=${encodeURIComponent(trackId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              record_listen: true,
+              last_listened_at: timestamp,
+            }),
+          });
 
-          const updatedRow = Array.isArray(response?.data)
-            ? response.data[0]
-            : undefined;
-
-          /*
-           * Prefer the server's authoritative repetition count when
-           * available (it's the source of truth) and otherwise fall
-           * back to the previous optimistic +1, so the UI never
-           * regresses if the response shape ever changes.
-           */
           setTracks((previous) =>
             previous.map((item) =>
               item.dbId === trackId
                 ? {
                     ...item,
-                    repetition:
-                      typeof updatedRow?.repetition === "number"
-                        ? updatedRow.repetition
-                        : Math.max(0, Number(item.repetition ?? 0)) + 1,
-                    listenedTill:
-                      typeof updatedRow?.listened_till === "number"
-                        ? updatedRow.listened_till
-                        : listenedTill,
+                    repetition: Math.max(0, Number(item.repetition ?? 0)) + 1,
+                    listenedTill: listenedTill,
                     durationSeconds:
-                      typeof updatedRow?.duration_seconds === "number" &&
-                      updatedRow.duration_seconds > 0
-                        ? updatedRow.duration_seconds
-                        : knownDuration > 0
-                          ? Math.ceil(knownDuration)
-                          : item.durationSeconds,
-                    lastListenedAt: updatedRow?.last_listened_at ?? timestamp,
+                      knownDuration > 0
+                        ? Math.ceil(knownDuration)
+                        : item.durationSeconds,
+                    lastListenedAt: timestamp,
                   }
                 : item,
             ),
@@ -1184,13 +1072,7 @@ export default function MusicScreen() {
         setIsPlaying(false);
       });
     }
-  }, [
-    currentTrack?.id,
-    finalizeListeningSession,
-    getAudio,
-    initializeAnalyser,
-    isPlaying,
-  ]);
+  }, [currentTrack?.id, finalizeListeningSession, getAudio, initializeAnalyser, isPlaying]);
 
   /* ------------------------------------------------------------------------ */
   /*                            Audio events                                  */
@@ -1925,7 +1807,9 @@ export default function MusicScreen() {
         .filter((track) => {
           const energy = Number(track.energyLevel);
           return (
-            !usedIds.has(track.id) && energy >= rangeStart && energy <= rangeEnd
+            !usedIds.has(track.id) &&
+            energy >= rangeStart &&
+            energy <= rangeEnd
           );
         })
         .sort((a, b) => {
