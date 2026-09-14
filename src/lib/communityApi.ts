@@ -49,23 +49,31 @@ export function getCommunities() {
 export function checkCommunityMembership(roomId: string) {
   return communityRequest<{
     isMember: boolean;
-  }>(`/community/rooms/${roomId}/membership`);
+  }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/membership`,
+  );
 }
 
 export function joinCommunity(roomId: string) {
   return communityRequest<{
     message?: string;
     isMember: boolean;
-  }>(`/community/rooms/${roomId}/join`, {
-    method: "POST",
-  });
+  }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/join`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function leaveCommunity(roomId: string) {
   return communityRequest<{
     message?: string;
     isMember: boolean;
-  }>(`/community/rooms/${roomId}/leave`, {
-    method: "DELETE",
-  });
+  }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/leave`,
+    {
+      method: "DELETE",
+    },
+  );
 }
