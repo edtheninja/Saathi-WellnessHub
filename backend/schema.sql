@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS meditation_sessions (
   energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE meditation_sessions ADD COLUMN IF NOT EXISTS energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100);
 CREATE INDEX IF NOT EXISTS meditation_sessions_user_idx ON meditation_sessions(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS goals (

@@ -55,19 +55,21 @@ export default function Community() {
     {
       id: "anxiety",
       title: "Anxiety Support",
-      members: 342,
+      members: 0,
     },
     {
       id: "mindfulness",
       title: "Mindfulness Circle",
-      members: 218,
+      members: 0,
     },
     {
       id: "grief",
       title: "Grief & Loss",
-      members: 156,
+      members: 0,
     },
   ];
+
+const [communities, setCommunities] = useState<CreatedCommunity[]>([]);
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-8 pb-32 space-y-12">
@@ -91,29 +93,29 @@ export default function Community() {
         {activeTab === "events" && <Events />}
       </CommunityLayout>
 
-        {createdCommunities.length > 0 && (
-          <section className="rounded-[32px] border bg-card p-8">
-            <h2 className="mb-5 text-2xl font-bold">Your Communities</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {createdCommunities.map((community) => (
-                <button
-                  key={community.id}
-                  onClick={() => navigate(`/community/custom/${community.id}`)}
-                  className="rounded-2xl border p-5 text-left transition hover:-translate-y-1 hover:shadow-lg"
-                >
-                  <h3 className="font-semibold">{community.name}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{community.topic || community.description || "Community chat"}</p>
-                  <p className="mt-3 text-xs text-muted-foreground">{community.member_count} member</p>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
+      {createdCommunities.length > 0 && (
+        <section className="rounded-[32px] border bg-card p-8">
+          <h2 className="mb-5 text-2xl font-bold">Your Communities</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {createdCommunities.map((community) => (
+              <button
+                key={community.id}
+                onClick={() => navigate(`/community/custom/${community.id}`)}
+                className="rounded-2xl border p-5 text-left transition hover:-translate-y-1 hover:shadow-lg"
+              >
+                <h3 className="font-semibold">{community.name}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{community.topic || community.description || "Community chat"}</p>
+                <p className="mt-3 text-xs text-muted-foreground">{community.member_count} member</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Daily Discussion */}
       <DailyDiscussion
         question="What made you smile today?"
-        replies={128}
+        replies={0}
         onOpen={() =>
           navigate(communityRoutes.discussion("daily"))
         }
@@ -129,10 +131,8 @@ export default function Community() {
 
       {/* Support Groups */}
       <SupportGroups
-        groups={groups}
-        onOpen={(id) =>
-          navigate(communityRoutes.support(id))
-        }
+        groups={communities}
+        onOpen={(id) => navigate(communityRoutes.support(id))}
       />
 
       {/* <AnonymousThoughts /> */}

@@ -45,3 +45,27 @@ export function getCommunity(id: string) {
 export function getCommunities() {
   return communityRequest<{ data: CreatedCommunity[] }>("/community/rooms");
 }
+
+export function checkCommunityMembership(roomId: string) {
+  return communityRequest<{
+    isMember: boolean;
+  }>(`/community/rooms/${roomId}/membership`);
+}
+
+export function joinCommunity(roomId: string) {
+  return communityRequest<{
+    message?: string;
+    isMember: boolean;
+  }>(`/community/rooms/${roomId}/join`, {
+    method: "POST",
+  });
+}
+
+export function leaveCommunity(roomId: string) {
+  return communityRequest<{
+    message?: string;
+    isMember: boolean;
+  }>(`/community/rooms/${roomId}/leave`, {
+    method: "DELETE",
+  });
+}
