@@ -1106,35 +1106,118 @@ app.post("/api/anonymous-posts/:postId/like", authRequired, async (req, res) => 
 });
 
 // =================================================================
-// MOOD — dedicated create route (registered BEFORE the generic
-// /api/data/:resource block, same reason as journals/activity_history
-// below: Express matches routes in registration order). Saves to
-// `moods` AND records activity_history in the SAME transaction, so
-// the frontend only ever calls this one endpoint.
+// MOOD — dedicated update route.
+//
+// Every time an existing mood is saved/updated, create a NEW
+// activity_history row.
+//
+// Example:
+//
+// Happy 86  -> activity_history #1
+// Calm 70   -> activity_history #2
+// Sad 35    -> activity_history #3
+//
+// The moods table stores the latest/current mood.
+// activity_history stores every mood save as a separate event.
 // =================================================================
-app.post("/api/data/moods", authRequired, async (req, res) => {
-  const { mood, energy_level, note } = req.body;
+
+app.patch("/api/data/moods", authRequired, async (req, res) => {
+  const id = req.query.id;
+
+  if (!id) {
+    return res.status(400).json({
+      error: "An id query parameter is required",
+    });
+  }
+
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
-    const insertResult = await client.query(
-      `INSERT INTO moods (user_id, mood, energy_level, note) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.auth.sub, mood ?? null, energy_level !== undefined && energy_level !== null && energy_level !== "" ? Number(energy_level) : null, note ?? null]
+
+    // Get the existing mood first.
+    const existingResult = await client.query(
+      `SELECT *
+       FROM moods
+       WHERE user_id = $1 AND id = $2
+       FOR UPDATE`,
+      [req.auth.sub, id]
     );
-    const moodRow = insertResult.rows[0];
+
+    const existing = existingResult.rows[0];
+
+    if (!existing) {
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        error: "Record not found",
+      });
+    }
+
+    // Build the UPDATE dynamically using the allowed mood columns.
+    const assignments = [];
+    const values = [req.auth.sub, id];
+
+    for (const column of resourceConfig.moods.columns) {
+      if (req.body[column] === undefined) continue;
+
+      let value = req.body[column];
+
+      // Convert energy_level to a number.
+      if (column === "energy_level") {
+        value =
+          value !== null && value !== ""
+            ? Number(value)
+            : null;
+      }
+
+      values.push(value);
+      assignments.push(`${column} = $${values.length}`);
+    }
+
+    let updated = existing;
+
+    if (assignments.length > 0) {
+      const updateResult = await client.query(
+        `UPDATE moods
+         SET ${assignments.join(", ")}
+         WHERE user_id = $1 AND id = $2
+         RETURNING *`,
+        values
+      );
+
+      updated = updateResult.rows[0];
+    }
+
+    // -------------------------------------------------------------
+    // EVERY successful mood save creates a NEW activity.
+    // No change comparison here.
+    // -------------------------------------------------------------
 
     const activity = await recordActivity(client, {
       userId: req.auth.sub,
       activityType: "mood",
-      title: moodRow.mood ? String(moodRow.mood) : "Mood Logged",
+      title: updated.mood
+        ? String(updated.mood)
+        : "Mood Updated",
       subtitle: null,
-      energyLevel: moodRow.energy_level,
-      metadata: { mood_id: moodRow.id },
+      energyLevel: updated.energy_level,
+      metadata: {
+        mood_id: updated.id,
+        mood: updated.mood,
+        energy_level: updated.energy_level,
+      },
     });
-    console.log(`[ACTIVITY] mood created: ${activity.id}`);
+
+    console.log(
+      `[ACTIVITY] mood saved and activity recorded: ${activity.id}`
+    );
 
     await client.query("COMMIT");
-    res.status(201).json({ data: [moodRow] });
+
+    res.json({
+      data: [updated],
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     publicError(res, error);
