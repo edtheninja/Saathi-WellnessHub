@@ -667,6 +667,21 @@ app.post("/api/community/rooms/:roomId/join", authRequired, async (req, res) => 
   res.json({ ok: true });
 });
 
+app.delete("/api/community/rooms/:roomId/leave", authRequired, async (req, res) => {
+  await pool.query(`
+    DELETE FROM community_memberships
+    WHERE room_id = $1 AND user_id = $2
+  `, [req.params.roomId, req.auth.sub]);
+  res.json({ ok: true });
+});
+
+app.get("/api/community/rooms/:roomId/membership", authRequired, async (req, res) => {
+  const result = await pool.query(`
+    SELECT role FROM community_memberships WHERE room_id = $1 AND user_id = $2
+  `, [req.params.roomId, req.auth.sub]);
+  res.json({ isMember: result.rows.length > 0, role: result.rows[0]?.role || null });
+});
+
 app.get("/api/community/rooms/:roomId/messages", authRequired, async (req, res) => {
   const result = await pool.query(`
     SELECT m.*, u.full_name AS sender_name,
