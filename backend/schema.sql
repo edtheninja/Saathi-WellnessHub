@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS community_rooms (
 );
 ALTER TABLE community_rooms ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES saathi_users(id) ON DELETE SET NULL;
 ALTER TABLE community_rooms ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE community_rooms ADD energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100);
+ALTER TABLE community_rooms
+ADD COLUMN IF NOT EXISTS energy_level INTEGER
+CHECK (energy_level BETWEEN 1 AND 100);
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS community_room_id TEXT REFERENCES community_rooms(id) ON DELETE SET NULL;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
