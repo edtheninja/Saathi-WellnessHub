@@ -338,23 +338,22 @@ app.patch("/api/profile", authRequired, async (req, res) => {
   res.json({ data: result.rows[0] || null });
 });
 
-app.get("/api/profile/me", authRequired, async (req, res) => {
+app.get("/api/profile", authRequired, async (req, res) => {
   try {
     const userId = req.auth.sub;
 
     const profileResult = await pool.query(
-      `
-      SELECT
-        id,
-        name,
-        username,
-        avatar_url
-      FROM profiles
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [userId],
-    );
+  `
+  SELECT
+    id,
+    full_name,
+    avatar_url
+  FROM saathi_users
+  WHERE id = $1
+  LIMIT 1
+  `,
+  [req.auth.sub],
+);
 
     const moodResult = await pool.query(
       `
@@ -527,7 +526,7 @@ app.post("/api/ai/chat", authOptional, async (req, res) => {
       .join("\n");
 
     const prompt = `
-You are SAATHI, a supportive AI wellness companion.
+You are Saathi, a supportive AI wellness companion.
 
 Your role:
 - Listen empathetically.
