@@ -338,6 +338,106 @@ app.patch("/api/profile", authRequired, async (req, res) => {
   res.json({ data: result.rows[0] || null });
 });
 
+app.get("/api/profile", authRequired, async (req, res) => {
+  try {
+    const userId = req.auth.sub;
+
+    const profileResult = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        username,
+        avatar_url
+      FROM profiles
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [userId],
+    );
+
+    const moodResult = await pool.query(
+      `
+      SELECT
+        COALESCE(AVG(energy_level), 0) AS mood_average
+      FROM mood
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    const journalResult = await pool.query(
+      `
+      SELECT COUNT(*)::int AS journal_entries
+      FROM journal_entries
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    const meditationResult = await pool.query(
+      `
+      SELECT
+        COALESCE(SUM(duration_minutes), 0)::int AS meditation_minutes
+      FROM meditation_sessions
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    const moodAverage = Math.round(
+      Number(moodResult.rows[0]?.mood_average || 0),
+    );
+
+    const journalEntries =
+      journalResult.rows[0]?.journal_entries || 0;
+
+    const meditationMinutes =
+      meditationResult.rows[0]?.meditation_minutes || 0;
+
+    const wellnessScore = Math.min(
+      100,
+      Math.round(
+        moodAverage * 0.5 +
+          Math.min(journalEntries, 10) * 2 +
+          Math.min(meditationMinutes, 300) / 30,
+      ),
+    );
+
+    let wellnessStatus = "Attention";
+
+    if (wellnessScore >= 85) {
+      wellnessStatus = "Thriving";
+    } else if (wellnessScore >= 70) {
+      wellnessStatus = "Improving";
+    } else if (wellnessScore >= 50) {
+      wellnessStatus = "Balanced";
+    } else if (wellnessScore >= 30) {
+      wellnessStatus = "Recovery";
+    }
+
+    return res.json({
+      profile: profileResult.rows[0] || null,
+      stats: {
+        moodAverage,
+        happiestDay: "Not available",
+        streak: 0,
+        bestStreak: 0,
+        wellnessScore,
+        meditationMinutes,
+        journalEntries,
+        wellnessStatus,
+        summary: "Small steps are still progress.",
+      },
+    });
+  } catch (error) {
+    console.error("Profile wellness stats error:", error);
+
+    return res.status(500).json({
+      error: "Unable to load profile wellness data",
+    });
+  }
+});
 // ---------------------------------------------------------------
 // Wellness settings — composite (user_id, setting_key) primary key
 // ---------------------------------------------------------------
