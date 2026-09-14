@@ -105,6 +105,65 @@ type MusicRow = {
 /* -------------------------------------------------------------------------- */
 
 const DEFAULT_ENERGY_LEVEL = 50;
+/* -------------------------------------------------------------------------- */
+/*                         Music energy catalog                               */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * These are the exact energy buckets supplied for the local music library.
+ * The database stores one integer energy_level, so each 4-point bucket uses
+ * its midpoint as the song's stored energy value.
+ *
+ * Example: 60-64 -> 62, 64-68 -> 66, 68-72 -> 70.
+ */
+const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
+  "channa mereya": 2,
+  "kun faya kun": 6,
+  "sun saiyaan": 10,
+  hamdard: 14,
+  "jiyein kyun": 18,
+  "tere bina": 22,
+  "kun faya kun (added)": 26,
+  iktara: 30,
+  "tu kisi rail si": 34,
+  "kho gaye hum kahan": 38,
+  shaam: 42,
+  "aao milo chalen": 46,
+  banjara: 50,
+  safarnama: 54,
+  "phir se ud chala": 58,
+  "chaand ke parinday": 62,
+  "tum se hi": 66,
+  ilahi: 70,
+  "love you zindagi": 74,
+  "matargashti (added)": 78,
+  "sooraj ki baahon mein": 82,
+  "tumhi ho bandhu": 86,
+  "patakha guddi": 90,
+  "gallan goodiyaan": 94,
+  "badtemeez dil": 98,
+};
+
+const normalizeMusicTitle = (title: string): string => {
+  return (
+    String(title || "")
+      .trim()
+      // Convert camelCase/PascalCase filenames such as AaoMiloChalen
+      // into "aao milo chalen".
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .replace(/[()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase()
+  );
+};
+
+const getMusicEnergyLevel = (title: string): number | null => {
+  const key = normalizeMusicTitle(title);
+  return MUSIC_ENERGY_BY_TITLE[key] ?? null;
+};
 
 /*
  * Progress is written approximately every 7 seconds.
@@ -291,10 +350,19 @@ export default function MusicScreen() {
   const lastSavedSecondRef = useRef(-1);
 
   /*
-   * Prevents repetition from incrementing on every
-   * play/pause cycle.
+   * One listening session starts on `play` and is finalized on `pause`,
+   * `ended`, track change, or page hide. The backend increments repetition
+   * and creates exactly one music activity for that session.
    */
-  const playbackCountedTrackIdRef = useRef<string | null>(null);
+  const listeningSessionRef = useRef<{
+    trackId: string;
+    startedAt: number;
+    startPosition: number;
+  } | null>(null);
+
+  const listeningSessionFinalizeInFlightRef = useRef<Promise<void> | null>(
+    null,
+  );
 
   /*
    * Serializes progress updates so two asynchronous
@@ -326,6 +394,7 @@ export default function MusicScreen() {
         title: getTitle(path),
         artist: "Saathi Music",
         src,
+        energyLevel: getMusicEnergyLevel(getTitle(path)),
       }))
       .sort((a, b) => a.title.localeCompare(b.title));
   }, []);
@@ -393,6 +462,8 @@ export default function MusicScreen() {
         const merged: Track[] = localTracks.map((track) => {
           const row = findRow(track);
 
+          const catalogEnergy = getMusicEnergyLevel(track.title);
+
           if (!row) {
             return {
               ...track,
@@ -401,9 +472,16 @@ export default function MusicScreen() {
               listenedTill: 0,
               repetition: 0,
               isFavorite: false,
-              energyLevel: null,
+              // Use the local catalog immediately even before the DB row exists.
+              energyLevel: catalogEnergy,
             };
           }
+
+          const databaseEnergy =
+            typeof row.energy_level === "number" &&
+            Number.isFinite(row.energy_level)
+              ? row.energy_level
+              : null;
 
           return {
             ...track,
@@ -420,11 +498,11 @@ export default function MusicScreen() {
               row.duration_seconds > 0
                 ? row.duration_seconds
                 : undefined,
-            energyLevel:
-              typeof row.energy_level === "number" &&
-              Number.isFinite(row.energy_level)
-                ? row.energy_level
-                : null,
+
+            // Prefer the DB value, but fall back to the local music catalog
+            // for old rows where energy_level is still NULL.
+            energyLevel: databaseEnergy ?? catalogEnergy,
+
             listenedTill: Math.max(0, Number(row.listened_till ?? 0)),
             repetition: Math.max(0, Number(row.repetition ?? 0)),
             isFavorite: row.is_favorite === true,
@@ -449,7 +527,9 @@ export default function MusicScreen() {
             listened_till: 0,
             repetition: 0,
             is_favorite: false,
-            energy_level: null,
+
+            // Store the catalog energy in PostgreSQL for newly created rows.
+            energy_level: getMusicEnergyLevel(track.title),
           }));
 
           const { data: created, error: insertError } = await supabase
@@ -489,9 +569,11 @@ export default function MusicScreen() {
                     ? row.duration_seconds
                     : undefined,
                 energyLevel:
-                  typeof row.energy_level === "number"
+                  typeof row.energy_level === "number" &&
+                  Number.isFinite(row.energy_level)
                     ? row.energy_level
-                    : null,
+                    : getMusicEnergyLevel(row.song_name ?? merged[index].title),
+
                 listenedTill: Math.max(0, Number(row.listened_till ?? 0)),
                 repetition: Math.max(0, Number(row.repetition ?? 0)),
                 isFavorite: row.is_favorite === true,
@@ -499,6 +581,50 @@ export default function MusicScreen() {
               };
             }
           }
+        }
+
+        /*
+         * Backfill energy_level for existing rows created before the
+         * local music energy catalog was added.
+         */
+        if (!cancelled) {
+          const rowsNeedingEnergy = merged.filter(
+            (track) =>
+              Boolean(track.dbId) &&
+              typeof track.energyLevel === "number" &&
+              Number.isFinite(track.energyLevel),
+          );
+
+          await Promise.all(
+            rowsNeedingEnergy.map(async (track) => {
+              const row = rows.find((item) => item.id === track.dbId);
+
+              if (
+                !row ||
+                (typeof row.energy_level === "number" &&
+                  Number.isFinite(row.energy_level))
+              ) {
+                return;
+              }
+
+              try {
+                const { error } = await supabase
+                  .from("music")
+                  .update({ energy_level: track.energyLevel })
+                  .eq("id", track.dbId!)
+                  .eq("user_id", user.id);
+
+                if (error) {
+                  throw error;
+                }
+              } catch (error) {
+                console.warn(
+                  `Failed to backfill energy for "${track.title}":`,
+                  error,
+                );
+              }
+            }),
+          );
         }
 
         if (!cancelled) {
@@ -738,75 +864,138 @@ export default function MusicScreen() {
   );
 
   /* ------------------------------------------------------------------------ */
-  /*                          Repetition tracking                             */
+  /*                         Listening session tracking                        */
   /* ------------------------------------------------------------------------ */
 
-  const incrementRepetition = useCallback(async (track: Track | undefined) => {
+  const startListeningSession = useCallback((track: Track | undefined) => {
     if (!track?.dbId) {
       return;
     }
 
-    /*
-     * A single play session only increments once.
-     *
-     * Play -> Pause -> Play
-     *
-     * does NOT become two repetitions.
-     */
-    if (playbackCountedTrackIdRef.current === track.id) {
+    const existing = listeningSessionRef.current;
+
+    if (existing?.trackId === track.id) {
       return;
     }
 
-    playbackCountedTrackIdRef.current = track.id;
+    listeningSessionRef.current = {
+      trackId: track.id,
+      startedAt: Date.now(),
+      startPosition: Math.max(0, Number(currentTimeRef.current || 0)),
+    };
+  }, []);
 
-    const nextRepetition = Math.max(0, Number(track.repetition ?? 0)) + 1;
+  const finalizeListeningSession = useCallback(
+    async (
+      track: Track | undefined,
+      audio: HTMLAudioElement,
+    ): Promise<void> => {
+      const session = listeningSessionRef.current;
 
-    const timestamp = new Date().toISOString();
-
-    try {
-      const userId = currentUserIdRef.current;
-
-      if (!userId) {
+      if (!track?.dbId || !session || session.trackId !== track.id) {
         return;
       }
 
-      const { error } = await supabase
-        .from("music")
-        .update({
-          repetition: nextRepetition,
-          last_listened_at: timestamp,
-        })
-        .eq("id", track.dbId)
-        .eq("user_id", userId);
+      listeningSessionRef.current = null;
 
-      if (error) {
-        throw error;
+      const rawCurrentTime = Number(audio.currentTime);
+      const currentPosition = Number.isFinite(rawCurrentTime)
+        ? Math.max(0, rawCurrentTime)
+        : Math.max(0, Number(currentTimeRef.current || 0));
+
+      const rawDuration = Number(audio.duration);
+      const knownDuration =
+        Number.isFinite(rawDuration) && rawDuration > 0
+          ? rawDuration
+          : Number.isFinite(track.durationSeconds ?? NaN) &&
+              Number(track.durationSeconds ?? 0) > 0
+            ? Number(track.durationSeconds)
+            : 0;
+
+      const listenedTill =
+        knownDuration > 0
+          ? Math.min(currentPosition, knownDuration)
+          : currentPosition;
+
+      const sessionPositionChange = Math.max(
+        0,
+        listenedTill - Math.min(session.startPosition, listenedTill),
+      );
+
+      const wallClockSeconds = Math.max(
+        0,
+        (Date.now() - session.startedAt) / 1000,
+      );
+
+      if (sessionPositionChange <= 0 && wallClockSeconds < 1) {
+        return;
       }
-    } catch (error) {
-      /*
-       * Allow retry if DB update failed.
-       */
-      playbackCountedTrackIdRef.current = null;
 
-      console.error("Failed to save music repetition:", error);
+      const trackId = track.dbId;
+      const timestamp = new Date().toISOString();
 
-      return;
-    }
+      const save = async () => {
+        try {
+          await persistTrackProgress(track, audio, true);
 
-    setTracks((previous) =>
-      previous.map((item) =>
-        item.dbId === track.dbId
-          ? {
-              ...item,
+          const userId = currentUserIdRef.current;
 
+          if (!userId) {
+            return;
+          }
+
+          const nextRepetition =
+            Math.max(0, Number(track.repetition ?? 0)) + 1;
+
+          const { error } = await supabase
+            .from("music")
+            .update({
               repetition: nextRepetition,
+              last_listened_at: timestamp,
+            })
+            .eq("id", trackId)
+            .eq("user_id", userId);
 
-              lastListenedAt: timestamp,
-            }
-          : item,
-      ),
-    );
-  }, []);
+          if (error) {
+            throw error;
+          }
+
+          setTracks((previous) =>
+            previous.map((item) =>
+              item.dbId === trackId
+                ? {
+                    ...item,
+                    repetition: nextRepetition,
+                    listenedTill,
+                    durationSeconds:
+                      knownDuration > 0
+                        ? Math.ceil(knownDuration)
+                        : item.durationSeconds,
+                    lastListenedAt: timestamp,
+                  }
+                : item,
+            ),
+          );
+        } catch (error) {
+          console.error("Failed to save music listening session:", error);
+        }
+      };
+
+      const queued = listeningSessionFinalizeInFlightRef.current
+        ? listeningSessionFinalizeInFlightRef.current
+            .catch(() => undefined)
+            .then(save)
+        : save();
+
+      listeningSessionFinalizeInFlightRef.current = queued.then(
+        () => undefined,
+        () => undefined,
+      );
+
+      await queued;
+    },
+    [persistTrackProgress],
+  );
 
   /* ------------------------------------------------------------------------ */
   /*                          Track switching                                 */
@@ -820,11 +1009,14 @@ export default function MusicScreen() {
     const audio = getAudio();
 
     /*
-     * Pause old track first.
-     *
-     * Its pause event still sees the previous
-     * loadedAudioTrackRef.
+     * Finalize the old listening session before changing the audio source.
+     * The loaded track ref still points at the old track here.
      */
+    const oldTrack = loadedAudioTrackRef.current;
+    if (oldTrack && oldTrack.id !== currentTrack.id) {
+      void finalizeListeningSession(oldTrack, audio);
+    }
+
     audio.pause();
 
     audio.src = currentTrack.src;
@@ -854,8 +1046,6 @@ export default function MusicScreen() {
 
     setDuration(knownDuration);
 
-    playbackCountedTrackIdRef.current = null;
-
     lastSavedSecondRef.current = Math.floor(currentTimeRef.current);
 
     audio.load();
@@ -867,7 +1057,13 @@ export default function MusicScreen() {
         setIsPlaying(false);
       });
     }
-  }, [currentTrack?.id, getAudio, initializeAnalyser, isPlaying]);
+  }, [
+    currentTrack?.id,
+    finalizeListeningSession,
+    getAudio,
+    initializeAnalyser,
+    isPlaying,
+  ]);
 
   /* ------------------------------------------------------------------------ */
   /*                            Audio events                                  */
@@ -973,7 +1169,7 @@ export default function MusicScreen() {
     };
 
     const handlePlay = () => {
-      void incrementRepetition(loadedAudioTrackRef.current);
+      startListeningSession(loadedAudioTrackRef.current);
     };
 
     const handlePause = () => {
@@ -992,7 +1188,7 @@ export default function MusicScreen() {
         return;
       }
 
-      void persistTrackProgress(track, audio, true);
+      void finalizeListeningSession(track, audio);
     };
 
     const handleEnded = () => {
@@ -1010,10 +1206,10 @@ export default function MusicScreen() {
       setCurrentTime(currentTimeRef.current);
 
       /*
-       * Save listened_till = duration.
+       * Finalize this listening session with the final position.
        */
       if (track?.dbId) {
-        void persistTrackProgress(track, audio, true);
+        void finalizeListeningSession(track, audio);
       }
 
       /* ------------------------------ Repeat ----------------------------- */
@@ -1022,8 +1218,6 @@ export default function MusicScreen() {
         /*
          * A repeat is a new playback session.
          */
-        playbackCountedTrackIdRef.current = null;
-
         audio.currentTime = 0;
 
         currentTimeRef.current = 0;
@@ -1051,8 +1245,6 @@ export default function MusicScreen() {
           nextIndex = Math.floor(Math.random() * tracks.length);
         }
 
-        playbackCountedTrackIdRef.current = null;
-
         setCurrentTrackIndex(nextIndex);
 
         setIsPlaying(true);
@@ -1064,8 +1256,6 @@ export default function MusicScreen() {
 
       const nextIndex =
         currentTrackIndex + 1 >= tracks.length ? 0 : currentTrackIndex + 1;
-
-      playbackCountedTrackIdRef.current = null;
 
       setCurrentTrackIndex(nextIndex);
 
@@ -1095,8 +1285,9 @@ export default function MusicScreen() {
     };
   }, [
     currentTrackIndex,
+    finalizeListeningSession,
     getAudio,
-    incrementRepetition,
+    startListeningSession,
     isRepeated,
     isShuffled,
     persistTrackProgress,
@@ -1363,7 +1554,8 @@ export default function MusicScreen() {
        * Save current track before changing.
        */
       if (audioRef.current && currentTrackRef.current) {
-        void persistCurrentTrack(true);
+        const oldTrack = loadedAudioTrackRef.current || currentTrackRef.current;
+        void finalizeListeningSession(oldTrack, audioRef.current);
       }
 
       /*
@@ -1387,15 +1579,13 @@ export default function MusicScreen() {
       /*
        * New playback session.
        */
-      playbackCountedTrackIdRef.current = null;
-
       setCurrentTrackIndex(index);
 
       setIsPlaying(true);
 
       initializeAnalyser();
     },
-    [currentTrackIndex, initializeAnalyser, persistCurrentTrack, tracks],
+    [currentTrackIndex, finalizeListeningSession, initializeAnalyser, tracks],
   );
 
   /* ------------------------------------------------------------------------ */
@@ -1407,7 +1597,11 @@ export default function MusicScreen() {
       return;
     }
 
-    void persistCurrentTrack(true);
+    const audio = audioRef.current;
+    const track = loadedAudioTrackRef.current;
+    if (audio && track) {
+      void finalizeListeningSession(track, audio);
+    }
 
     let nextIndex = currentTrackIndex;
 
@@ -1420,12 +1614,10 @@ export default function MusicScreen() {
         currentTrackIndex + 1 >= tracks.length ? 0 : currentTrackIndex + 1;
     }
 
-    playbackCountedTrackIdRef.current = null;
-
     setCurrentTrackIndex(nextIndex);
 
     setIsPlaying(true);
-  }, [currentTrackIndex, isShuffled, persistCurrentTrack, tracks.length]);
+  }, [currentTrackIndex, finalizeListeningSession, isShuffled, tracks.length]);
 
   /* ------------------------------------------------------------------------ */
   /*                            Previous track                                */
@@ -1449,22 +1641,26 @@ export default function MusicScreen() {
 
       setCurrentTime(0);
 
-      void persistCurrentTrack(true);
+      const track = loadedAudioTrackRef.current || currentTrackRef.current;
+      if (track) {
+        void finalizeListeningSession(track, audio);
+      }
 
       return;
     }
 
-    void persistCurrentTrack(true);
+    const track = loadedAudioTrackRef.current || currentTrackRef.current;
+    if (track) {
+      void finalizeListeningSession(track, audio);
+    }
 
     const previousIndex =
       currentTrackIndex - 1 < 0 ? tracks.length - 1 : currentTrackIndex - 1;
 
-    playbackCountedTrackIdRef.current = null;
-
     setCurrentTrackIndex(previousIndex);
 
     setIsPlaying(true);
-  }, [currentTrackIndex, getAudio, persistCurrentTrack, tracks.length]);
+  }, [currentTrackIndex, finalizeListeningSession, getAudio, tracks.length]);
 
   /* ------------------------------------------------------------------------ */
   /*                                  Seek                                    */
@@ -1548,10 +1744,13 @@ export default function MusicScreen() {
 
         const value = Number(data?.final_energy_level);
 
-        if (Number.isFinite(value) && value >= 1 && value <= 100) {
+        if (Number.isFinite(value) && value >= 0 && value <= 100) {
           if (!cancelled) {
-            setFinalEnergyLevel(Math.round(value));
-            setHasFinalEnergy(true);
+            const normalizedValue =
+              value === 0 ? DEFAULT_ENERGY_LEVEL : Math.round(value);
+
+            setFinalEnergyLevel(normalizedValue);
+            setHasFinalEnergy(value > 0);
           }
         } else if (!cancelled) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
@@ -1579,118 +1778,76 @@ export default function MusicScreen() {
   /* ------------------------------------------------------------------------ */
 
   const recommendations = useMemo(() => {
-    /*
-     * If wellness score exists:
-     *
-     *   use final energy
-     *
-     * Otherwise:
-     *
-     *   use default 50
-     */
     const targetEnergy = hasFinalEnergy
-      ? finalEnergyLevel
+      ? Math.max(1, Math.min(100, Math.round(finalEnergyLevel)))
       : DEFAULT_ENERGY_LEVEL;
 
-    return (
-      tracks
+    /*
+     * Recommendation progression: four consecutive 4-point energy ranges
+     * starting from the range containing the user's final wellness score.
+     *
+     * Example: 63 -> 60-64, 64-68, 68-72, 72-76.
+     */
+    const firstRangeStart =
+      targetEnergy < 4 ? 1 : Math.min(96, Math.floor(targetEnergy / 4) * 4);
 
-        /*
-         * Do not recommend currently playing track.
-         */
-        .filter(
-          (track, index) =>
-            index !== currentTrackIndex && track.isAvailable !== false,
-        )
+    const getRangeStart = (slot: number) =>
+      firstRangeStart === 1 && slot > 0
+        ? 4 + (slot - 1) * 4
+        : Math.min(96, firstRangeStart + slot * 4);
 
-        .map((track) => {
-          /*
-           * Songs without energy metadata are neutral.
-           *
-           * They won't require a valid energy value
-           * just to appear in recommendations.
-           */
-          const energy =
-            typeof track.energyLevel === "number" &&
-            Number.isFinite(track.energyLevel)
-              ? track.energyLevel
-              : targetEnergy;
+    const getRangeEnd = (rangeStart: number) =>
+      rangeStart === 1 ? 4 : Math.min(100, rangeStart + 4);
 
-          /*
-           * PRIMARY:
-           *
-           * closest energy level.
-           */
-          const energyDistance = Math.abs(energy - targetEnergy);
-
-          /*
-           * SECONDARY:
-           *
-           * Favorites get a small boost.
-           */
-          const favoriteBonus = track.isFavorite ? 8 : 0;
-
-          /*
-           * Don't endlessly recommend a song
-           * that has already been played many times.
-           */
-          const repetitionPenalty = Math.min(
-            10,
-            Math.max(0, Number(track.repetition ?? 0)),
-          );
-
-          /*
-           * Recently listened songs get
-           * a small penalty.
-           */
-          const lastListenedTime = track.lastListenedAt
-            ? new Date(track.lastListenedAt).getTime()
-            : 0;
-
-          const daysSinceListened =
-            lastListenedTime > 0
-              ? Math.max(
-                  0,
-                  (Date.now() - lastListenedTime) / (24 * 60 * 60 * 1000),
-                )
-              : Infinity;
-
-          const recentPenalty = Number.isFinite(daysSinceListened)
-            ? Math.max(0, 5 - Math.min(5, daysSinceListened))
-            : 0;
-
-          /*
-           * Lower score = better recommendation.
-           */
-          const score =
-            energyDistance * 100 -
-            favoriteBonus +
-            repetitionPenalty +
-            recentPenalty;
-
-          return {
-            track,
-            score,
-            energyDistance,
-          };
-        })
-
-        .sort((a, b) => {
-          if (a.score !== b.score) {
-            return a.score - b.score;
-          }
-
-          if (a.energyDistance !== b.energyDistance) {
-            return a.energyDistance - b.energyDistance;
-          }
-
-          return a.track.title.localeCompare(b.track.title);
-        })
-
-        .slice(0, 4)
-
-        .map(({ track }) => track)
+    const available = tracks.filter(
+      (track, index) =>
+        index !== currentTrackIndex &&
+        track.isAvailable !== false &&
+        typeof track.energyLevel === "number" &&
+        Number.isFinite(track.energyLevel),
     );
+
+    const usedIds = new Set<string>();
+    const selected: Track[] = [];
+
+    for (let slot = 0; slot < 4; slot += 1) {
+      const rangeStart = getRangeStart(slot);
+      const rangeEnd = getRangeEnd(rangeStart);
+
+      const candidates = available
+        .filter((track) => {
+          const energy = Number(track.energyLevel);
+          return (
+            !usedIds.has(track.id) && energy >= rangeStart && energy <= rangeEnd
+          );
+        })
+        .sort((a, b) => {
+          const aRepetition = Math.max(0, Number(a.repetition ?? 0));
+          const bRepetition = Math.max(0, Number(b.repetition ?? 0));
+
+          if (aRepetition !== bRepetition) {
+            return aRepetition - bRepetition;
+          }
+
+          const aFavorite = a.isFavorite ? 1 : 0;
+          const bFavorite = b.isFavorite ? 1 : 0;
+
+          if (aFavorite !== bFavorite) {
+            return bFavorite - aFavorite;
+          }
+
+          return a.title.localeCompare(b.title);
+        });
+
+      const chosen = candidates[0];
+
+      if (chosen) {
+        selected.push(chosen);
+        usedIds.add(chosen.id);
+      }
+    }
+
+    return selected;
   }, [currentTrackIndex, finalEnergyLevel, hasFinalEnergy, tracks]);
 
   /* ------------------------------------------------------------------------ */
@@ -1776,12 +1933,20 @@ export default function MusicScreen() {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") {
-        void persistCurrentTrack(true);
+        const audio = audioRef.current;
+        const track = loadedAudioTrackRef.current || currentTrackRef.current;
+        if (audio && track) {
+          void finalizeListeningSession(track, audio);
+        }
       }
     };
 
     const handlePageHide = () => {
-      void persistCurrentTrack(true);
+      const audio = audioRef.current;
+      const track = loadedAudioTrackRef.current || currentTrackRef.current;
+      if (audio && track) {
+        void finalizeListeningSession(track, audio);
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
@@ -1794,9 +1959,13 @@ export default function MusicScreen() {
       window.removeEventListener("pagehide", handlePageHide);
 
       /*
-       * Best-effort final save.
+       * Best-effort final listening-session save.
        */
-      void persistCurrentTrack(true);
+      const audio = audioRef.current;
+      const track = loadedAudioTrackRef.current || currentTrackRef.current;
+      if (audio && track) {
+        void finalizeListeningSession(track, audio);
+      }
 
       if (audioRef.current) {
         audioRef.current.pause();
@@ -1814,7 +1983,7 @@ export default function MusicScreen() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [persistCurrentTrack]);
+  }, [finalizeListeningSession]);
 
   /* ------------------------------------------------------------------------ */
   /*                                    UI                                    */
