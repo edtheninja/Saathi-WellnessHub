@@ -627,13 +627,12 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
       "INSERT INTO profiles (user_id, full_name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING",
       [user.id, user.fullName],
     );
-    await pool.query(
-      `INSERT INTO wellness_scores
-   (user_id, final_energy_level, breakdown, computed_at)
-   VALUES ($1, NULL, NULL, NULL)
+  await pool.query(
+  `INSERT INTO wellness_scores (user_id)
+   VALUES ($1)
    ON CONFLICT (user_id) DO NOTHING`,
-      [user.id],
-    );
+  [user.id],
+);
     const payload = {
       id: user.id,
       email: user.email,

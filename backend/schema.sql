@@ -317,26 +317,24 @@ CREATE TABLE IF NOT EXISTS wellness_scores (
     REFERENCES saathi_users(id)
     ON DELETE CASCADE,
 
-  -- NULL initially.
-  -- ML will fill this after processing activities.
-  final_energy_level INTEGER
-    CHECK (final_energy_level BETWEEN 1 AND 100),
+  -- 0 = not calculated by ML yet
+  -- ML will update this to a value from 1-100
+  final_energy_level INTEGER NOT NULL DEFAULT 0
+    CHECK (final_energy_level BETWEEN 0 AND 100),
 
-  -- NULL initially.
-  -- ML can store the breakdown later.
+  -- ML can store the individual activity breakdown
   breakdown JSONB,
 
-  -- NULL initially.
-  -- Set when ML calculates the score.
+  -- NULL until ML calculates the wellness score
   computed_at TIMESTAMPTZ,
 
-  -- When this wellness-score row was created.
+  -- When this row was created
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 
 -- ============================================
--- ONE ROW PER USER
+-- ONE WELLNESS SCORE ROW PER USER
 -- ============================================
 
 CREATE UNIQUE INDEX IF NOT EXISTS wellness_scores_user_unique
@@ -354,17 +352,31 @@ ON wellness_scores(user_id, computed_at DESC);
 -- ============================================
 -- FIX EXISTING TABLE
 -- ============================================
--- These are needed if wellness_scores already
--- existed with NOT NULL constraints.
+-- If the table already existed with NULL values,
+-- convert existing NULL energy values to 0.
+
+UPDATE wellness_scores
+SET final_energy_level = 0
+WHERE final_energy_level IS NULL;
+
+
+-- Make sure final_energy_level cannot be NULL
+ALTER TABLE wellness_scores
+ALTER COLUMN final_energy_level SET NOT NULL;
+
+
+-- Make sure the default is 0
+ALTER TABLE wellness_scores
+ALTER COLUMN final_energy_level SET DEFAULT 0;
+
+
+-- Make sure 0-100 is allowed
+ALTER TABLE wellness_scores
+DROP CONSTRAINT IF EXISTS wellness_scores_final_energy_level_check;
 
 ALTER TABLE wellness_scores
-ALTER COLUMN final_energy_level DROP NOT NULL;
-
-ALTER TABLE wellness_scores
-ALTER COLUMN breakdown DROP NOT NULL;
-
-ALTER TABLE wellness_scores
-ALTER COLUMN computed_at DROP NOT NULL;
+ADD CONSTRAINT wellness_scores_final_energy_level_check
+CHECK (final_energy_level BETWEEN 0 AND 100);
 
 
 -- ============================================
@@ -379,7 +391,7 @@ INSERT INTO wellness_scores (
 )
 SELECT
   id,
-  NULL,
+  0,
   NULL,
   NULL
 FROM saathi_users
