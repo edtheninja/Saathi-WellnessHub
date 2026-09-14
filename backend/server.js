@@ -338,7 +338,7 @@ app.patch("/api/profile", authRequired, async (req, res) => {
   res.json({ data: result.rows[0] || null });
 });
 
-app.get("/api/profile", authRequired, async (req, res) => {
+app.get("/api/profile/me", authRequired, async (req, res) => {
   try {
     const userId = req.auth.sub;
 
