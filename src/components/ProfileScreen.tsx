@@ -1,4 +1,4 @@
-// src/components/ProfileScreen.tsx
+﻿// src/components/ProfileScreen.tsx
 import { useState, useEffect } from "react";
 import { supabase } from '@/supabaseClient';
 
@@ -44,7 +44,7 @@ export default function ProfileScreen() {
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
 
-  /* ✅ REAL STATS STATE */
+  /* âœ… REAL STATS STATE */
   const [statsData, setStatsData] = useState({
     daysActive: 0,
     meditationMinutes: 0,
@@ -52,7 +52,7 @@ export default function ProfileScreen() {
     goalsAchieved: 0
   });
 
-  /* ✅ LOAD PROFILE STATS */
+  /* âœ… LOAD PROFILE STATS */
   const loadProfileStats = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -60,7 +60,7 @@ export default function ProfileScreen() {
 
     // Days Active (from mood)
     const { data: moodData } = await supabase
-      .from('mood')
+      .from('moods')
       .select('created_at')
       .eq('user_id', user.id);
 
@@ -72,7 +72,7 @@ export default function ProfileScreen() {
 
     // Meditation Minutes (completed only)
     const { data: meditationData } = await supabase
-      .from('meditation')
+      .from('meditation_sessions')
       .select('duration')
       .eq('user_id', user.id)
       .eq('completed', true);
@@ -95,7 +95,7 @@ export default function ProfileScreen() {
       .eq('user_id', user.id)
       .eq('completed', true);
 
-    /* ✅ CORRECT SETTER */
+    /* âœ… CORRECT SETTER */
     setStatsData({
       daysActive: uniqueDays.size,
       meditationMinutes: totalMeditationMinutes,
@@ -122,7 +122,7 @@ export default function ProfileScreen() {
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name")
-        .eq("id", authData.user.id)
+        .eq("user_id", authData.user.id)
         .single();
 
       if (profile) {
@@ -139,7 +139,7 @@ export default function ProfileScreen() {
     const { error } = await supabase
       .from("profiles")
       .update({ full_name: userName })
-      .eq("id", userId);
+      .eq("user_id", userId);
 
     if (!error) setIsEditing(false);
   };
@@ -149,7 +149,7 @@ export default function ProfileScreen() {
     navigate("/auth");
   };
 
-  /* ✅ CONNECT STATS TO UI */
+  /* âœ… CONNECT STATS TO UI */
   const stats = [
     { label: "Days Active", value: statsData.daysActive, icon: Calendar },
     { label: "Meditation Minutes", value: statsData.meditationMinutes, icon: BarChart3 },
@@ -431,3 +431,5 @@ export default function ProfileScreen() {
     </div >
   );
 }
+
+
