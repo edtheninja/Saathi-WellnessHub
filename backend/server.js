@@ -786,8 +786,8 @@ app.post("/api/anonymous-posts", authRequired, async (req, res) => {
   const { thought, photoData = null } = req.body;
   const validationError = validateAnonymousThought(thought);
   if (validationError) return res.status(400).json({ error: validationError });
-  if (photoData && (!String(photoData).startsWith("data:image/") || String(photoData).length > 2_500_000)) {
-    return res.status(400).json({ error: "Photo must be an image smaller than 2 MB" });
+  if (photoData && (!String(photoData).startsWith("data:image/") || String(photoData).length > 14000000)) {
+    return res.status(400).json({ error: "Photo must be an image smaller than 10 MB" });
   }
   const recent = await pool.query(`
     SELECT COUNT(*)::int AS count FROM anonymous_posts
