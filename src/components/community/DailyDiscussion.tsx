@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 
 interface DailyDiscussionProps {
   question: string;
-  replies: number;
+  replies?: number;
   onOpen?: () => void;
 }
 
@@ -14,6 +14,7 @@ export default function DailyDiscussion({
 }: DailyDiscussionProps) {
   return (
     <motion.button
+      type="button"
       whileHover={{ y: -5 }}
       transition={{ duration: 0.25 }}
       onClick={onOpen}
@@ -30,15 +31,13 @@ export default function DailyDiscussion({
         backdrop-blur-2xl
         transition-all
         duration-300
-
         hover:shadow-2xl
-
         dark:border-white/[0.12]
         dark:bg-white/[0.06]
         dark:hover:bg-white/[0.09]
       "
     >
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <div className="mb-4 flex items-center gap-3">
             <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-yellow-300 via-amber-300 to-orange-400 shadow-lg">
@@ -59,12 +58,14 @@ export default function DailyDiscussion({
             {question}
           </p>
 
-          <p className="mt-3 text-muted-foreground">
-            {replies} replies
-          </p>
+          {typeof replies === "number" && (
+            <p className="mt-3 text-muted-foreground">
+              {replies} replies
+            </p>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <span className="text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
             Join
           </span>
