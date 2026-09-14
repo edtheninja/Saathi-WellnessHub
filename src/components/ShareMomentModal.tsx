@@ -1,409 +1,501 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-
-import HighlightCard from "./HighlightCard";
-import JourneyCard from "./JourneyCard";
+import { toPng } from "html-to-image";
 
 import { shareToSocial } from "@/utils/shareToSocial";
-import { supabase } from "@/supabaseClient";
 
 type WellnessStats = {
   moodAverage: number;
   happiestDay: string;
   streak: number;
   bestStreak?: number;
+  wellnessScore?: number;
+  meditationMinutes?: number;
+  journalEntries?: number;
+  wellnessStatus?: string;
   summary?: string;
+};
+
+type Profile = {
+  name?: string;
+  full_name?: string;
+  username?: string;
+  avatar_url?: string;
 };
 
 type Props = {
   open: boolean;
   onClose: () => void;
+};
+
+type ProfileResponse = {
+  profile: Profile | null;
   stats: WellnessStats;
 };
 
-function ShareCard({ stats }: { stats: WellnessStats }) {
-  if (!stats) return null;
+const apiBase = import.meta.env.VITE_API_URL || "/api";
+
+async function fetchProfileAndStats(): Promise<ProfileResponse> {
+  const token = localStorage.getItem("saathi_access_token");
+
+  const response = await fetch(`${apiBase}/profile/me`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Unable to load wellness profile");
+  }
+
+  return payload;
+}
+
+function getDisplayName(profile: Profile | null) {
+  return (
+    profile?.full_name ||
+    profile?.name ||
+    profile?.username ||
+    "Saathi User"
+  );
+}
+
+function getMoodLabel(moodAverage: number) {
+  if (moodAverage >= 85) return "Thriving";
+  if (moodAverage >= 70) return "Improving";
+  if (moodAverage >= 50) return "Balanced";
+  if (moodAverage >= 30) return "Recovery";
+  return "Attention";
+}
+
+function getMoodEmoji(moodAverage: number) {
+  if (moodAverage >= 85) return "🥰";
+  if (moodAverage >= 70) return "😊";
+  if (moodAverage >= 50) return "😌";
+  if (moodAverage >= 30) return "😔";
+  return "🌱";
+}
+
+function formatDate() {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date());
+}
+
+function WellnessStatsCard({
+  profile,
+  stats,
+  cardRef,
+}: {
+  profile: Profile | null;
+  stats: WellnessStats;
+  cardRef: React.RefObject<HTMLDivElement>;
+}) {
+  const moodAverage = Math.round(stats.moodAverage ?? 0);
+  const wellnessScore = Math.round(
+    stats.wellnessScore ?? stats.moodAverage ?? 0,
+  );
+
+  const moodLabel =
+    stats.wellnessStatus || getMoodLabel(moodAverage);
 
   return (
-    <div className="rounded-3xl border bg-card p-5">
-      <h2 className="text-xl font-bold">
-        Your Wellness Journey
-      </h2>
+    <div
+      ref={cardRef}
+      className="relative mx-auto w-full max-w-[440px] overflow-hidden rounded-[32px] bg-gradient-to-br from-violet-600 via-purple-500 to-cyan-500 p-5 text-white shadow-2xl"
+    >
+      <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-cyan-300/20 blur-3xl" />
 
-      <p className="mt-2 text-muted-foreground">
-        {stats?.summary ?? "Keep tracking your wellness."}
-      </p>
+      <div className="relative z-10 space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-white/80">
+              Saathi
+            </p>
+
+            <h2 className="mt-1 text-2xl font-bold">
+              My Wellness Journey
+            </h2>
+
+            <p className="mt-1 text-sm text-white/75">
+              Your progress, one day at a time
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white/20 px-3 py-2 text-right backdrop-blur-sm">
+            <p className="text-xs text-white/75">Today</p>
+            <p className="text-xs font-semibold">
+              {formatDate()}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 rounded-3xl bg-white/15 p-4 backdrop-blur-sm">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-white text-5xl shadow-lg">
+            {getMoodEmoji(moodAverage)}
+          </div>
+
+          <div>
+            <p className="text-sm text-white/75">
+              Your wellness status
+            </p>
+
+            <h3 className="text-2xl font-bold">
+              {moodLabel}
+            </h3>
+
+            <p className="mt-1 text-sm text-white/80">
+              {stats.summary ||
+                "Small steps are still progress."}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-3xl bg-white p-5 text-slate-900 shadow-xl">
+          <div className="grid grid-cols-2 gap-5">
+            <div className="flex flex-col items-center justify-center border-r border-slate-200 pr-4">
+              <div
+                className="flex h-28 w-28 items-center justify-center rounded-full"
+                style={{
+                  background: `conic-gradient(#7c3aed ${
+                    wellnessScore * 3.6
+                  }deg, #e9d5ff 0deg)`,
+                }}
+              >
+                <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white">
+                  <span className="text-3xl font-bold">
+                    {wellnessScore}
+                  </span>
+
+                  <span className="text-xs text-slate-500">
+                    / 100
+                  </span>
+                </div>
+              </div>
+
+              <p className="mt-3 text-center text-sm font-semibold">
+                Wellness Score
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-slate-500">
+                  😊 Mood Average
+                </p>
+
+                <p className="text-xl font-bold">
+                  {moodAverage}/100
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-500">
+                  🔥 Longest Streak
+                </p>
+
+                <p className="text-xl font-bold">
+                  {stats.bestStreak ?? stats.streak ?? 0} days
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-500">
+                  🧘 Meditation
+                </p>
+
+                <p className="text-xl font-bold">
+                  {stats.meditationMinutes ?? 0} min
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="my-5 h-px bg-slate-200" />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-slate-500">
+                📔 Journal Entries
+              </p>
+
+              <p className="text-lg font-bold">
+                {stats.journalEntries ?? 0}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-slate-500">
+                🥰 Happiest Day
+              </p>
+
+              <p className="text-lg font-bold">
+                {stats.happiestDay || "Not available"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">
+              {getDisplayName(profile)}
+            </p>
+
+            <p className="text-xs text-white/70">
+              Your zen companion
+            </p>
+          </div>
+
+          <p className="text-right text-xs italic text-white/80">
+            Small steps.
+            <br />
+            Real progress. 🌱
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-const moods = [
-  "😊",
-  "😌",
-  "😁",
-  "🥰",
-  "😔",
-  "😴",
-  "😤",
-];
-
 export default function ShareMomentModal({
   open,
   onClose,
-  stats,
 }: Props) {
-  const navigate = useNavigate();
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  const [title, setTitle] = useState("");
-  const [reflection, setReflection] = useState("");
-  const [selectedMood, setSelectedMood] = useState("😊");
-  const [visibility, setVisibility] = useState<
-    "community" | "private"
-  >("community");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<WellnessStats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
 
-  if (!open || !stats) return null;
+  useEffect(() => {
+    if (!open) return;
 
-  const handleExternalShare = async () => {
+    let cancelled = false;
+
+    async function loadData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await fetchProfileAndStats();
+
+        if (!cancelled) {
+          setProfile(response.profile);
+          setStats(response.stats);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load your wellness data",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  async function generateCardImage() {
+    if (!cardRef.current) {
+      throw new Error("Wellness card is not ready");
+    }
+
+    return toPng(cardRef.current, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#8b5cf6",
+    });
+  }
+
+  async function handleSaveImage() {
     try {
+      setExporting(true);
+
+      const imageUrl = await generateCardImage();
+
+      const link = document.createElement("a");
+      link.download = "saathi-wellness-journey.png";
+      link.href = imageUrl;
+      link.click();
+    } catch (err) {
+      console.error("Unable to save wellness card:", err);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleShare() {
+    try {
+      setExporting(true);
+
+      const imageUrl = await generateCardImage();
+
+      const blob = await fetch(imageUrl).then((response) =>
+        response.blob(),
+      );
+
+      const file = new File(
+        [blob],
+        "saathi-wellness-journey.png",
+        {
+          type: "image/png",
+        },
+      );
+
+      if (
+        navigator.share &&
+        navigator.canShare?.({ files: [file] })
+      ) {
+        await navigator.share({
+          title: "My Wellness Journey 🌱",
+          text: "My wellness progress with Saathi",
+          files: [file],
+        });
+
+        return;
+      }
+
       await shareToSocial({
         title: "My Wellness Journey 🌱",
-        text: `Mood Avg: ${stats?.moodAverage ?? "-"}
-Streak: ${stats?.streak ?? 0} days
-Happiest Day: ${stats?.happiestDay ?? "-"}`,
+        text: `My wellness progress with Saathi.\n\nWellness Score: ${
+          stats?.wellnessScore ?? stats?.moodAverage ?? 0
+        }/100\nLongest Streak: ${
+          stats?.bestStreak ?? stats?.streak ?? 0
+        } days`,
       });
     } catch (err) {
-      console.error(err);
+      console.error("Unable to share wellness card:", err);
+    } finally {
+      setExporting(false);
     }
-  };
-
-  const handleCommunityShare = async () => {
-    const post = {
-      title,
-      reflection,
-      mood: selectedMood,
-      visibility,
-      stats,
-    };
-
-    const { data: user } = await supabase.auth.getUser();
-    if (user.user) {
-      await supabase.from("community_posts").insert({
-        title,
-        body: reflection,
-        mood: selectedMood,
-        visibility,
-        type: "reflection",
-        stats,
-      });
-    }
-
-    onClose();
-
-    navigate("/community");
-  };
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-
-      <div className="bg-background rounded-[32px] shadow-2xl border w-[95%] max-w-3xl max-h-[92vh] overflow-y-auto">
-
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6">
+      <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border bg-background shadow-2xl">
         {/* Header */}
+        <div className="flex items-center justify-between border-b px-5 py-5 sm:px-8">
+          <div>
+            <p className="text-sm font-medium text-primary">
+              Saathi Wellness
+            </p>
 
-        <div className="border-b px-8 py-6">
+            <h1 className="text-2xl font-bold sm:text-3xl">
+              Share My Progress
+            </h1>
 
-          <h1 className="text-3xl font-bold">
-            🌱 Share Your Journey
-          </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your wellness journey, beautifully captured.
+            </p>
+          </div>
 
-          <p className="text-muted-foreground mt-2">
-            Inspire others with your wellness progress.
-          </p>
-
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onClose}
+            className="rounded-full text-xl"
+            aria-label="Close share progress modal"
+          >
+            ×
+          </Button>
         </div>
 
-        <div className="p-8 space-y-8">
-
-          <ShareCard stats={stats} />
-
-          {/* Highlights */}
-
-          <div className="space-y-3">
-
-            <h3 className="text-lg font-semibold">
-              Highlights
-            </h3>
-
-            <HighlightCard
-              title="Happiest Day"
-              value={stats?.happiestDay}
-              icon="🥰"
-            />
-
-            <HighlightCard
-              title="Longest Streak"
-              value={`${stats?.bestStreak ?? 0} Days`}
-              icon="🔥"
-            />
-
-          </div>
-
-          {/* Journey */}
-
-          <div className="space-y-3">
-
-            <h3 className="text-lg font-semibold">
-              Journey Cards
-            </h3>
-
-            <div className="flex gap-4 overflow-x-auto pb-2">
-
-              <JourneyCard
-                title="My Mood Journey"
-                subtitle="Tracking wellness every day 💙"
-                emoji="📊"
-              />
-
-              <JourneyCard
-                title="Small Wins Matter"
-                subtitle="Progress over perfection ✨"
-                emoji="🏆"
-              />
-
-              <JourneyCard
-                title="Healing in Progress"
-                subtitle="One day at a time 🌱"
-                emoji="🌈"
-              />
-
+        {/* Scrollable content */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 pb-[150px] sm:px-8 sm:py-8 sm:pb-32">
+          {loading && (
+            <div className="rounded-3xl border bg-muted/30 p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Preparing your wellness card...
+              </p>
             </div>
+          )}
 
-          </div>
-
-          {/* Mood */}
-
-          <div>
-
-            <h3 className="font-semibold mb-4">
-              How are you feeling?
-            </h3>
-
-            <div className="flex flex-wrap gap-3">
-
-              {moods.map((mood) => (
-
-                <button
-                  key={mood}
-                  onClick={() => setSelectedMood(mood)}
-                  className={`
-                    w-14
-                    h-14
-                    rounded-full
-                    text-2xl
-                    transition-all
-                    duration-300
-                    ${
-                      selectedMood === mood
-                        ? "bg-primary text-white scale-110 shadow-lg"
-                        : "bg-muted hover:scale-105"
-                    }
-                  `}
-                >
-                  {mood}
-                </button>
-
-              ))}
-
+          {error && (
+            <div className="rounded-3xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+              {error}
             </div>
+          )}
 
-          </div>
-
-          {/* Title */}
-
-          <div className="space-y-3">
-
-            <label className="font-semibold">
-              Title
-            </label>
-
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Give today's journey a title..."
-            />
-
-          </div>
-
-          {/* Reflection */}
-
-          <div className="space-y-3">
-
-            <label className="font-semibold">
-              Reflection
-            </label>
-
-            <Textarea
-              rows={5}
-              value={reflection}
-              onChange={(e) => setReflection(e.target.value)}
-              placeholder="Write about today's experience..."
-            />
-
-          </div>
-
-            {/* Visibility */}
-
-          <div className="space-y-3">
-
-            <label className="font-semibold">
-              Who can see this?
-            </label>
-
-            <div className="grid grid-cols-2 gap-4">
-
-              <button
-                onClick={() => setVisibility("community")}
-                className={`
-                  rounded-2xl
-                  border
-                  p-5
-                  text-left
-                  transition-all
-                  duration-300
-                  ${
-                    visibility === "community"
-                      ? "border-green-500 bg-green-500/10"
-                      : "hover:border-primary"
-                  }
-                `}
-              >
-                <div className="text-3xl mb-2">🌍</div>
-
-                <h4 className="font-semibold">
-                  Community
-                </h4>
-
-                <p className="text-sm text-muted-foreground">
-                  Inspire and encourage others.
-                </p>
-
-              </button>
-
-              <button
-                onClick={() => setVisibility("private")}
-                className={`
-                  rounded-2xl
-                  border
-                  p-5
-                  text-left
-                  transition-all
-                  duration-300
-                  ${
-                    visibility === "private"
-                      ? "border-blue-500 bg-blue-500/10"
-                      : "hover:border-primary"
-                  }
-                `}
-              >
-                <div className="text-3xl mb-2">🔒</div>
-
-                <h4 className="font-semibold">
-                  Private
-                </h4>
-
-                <p className="text-sm text-muted-foreground">
-                  Save this only for yourself.
-                </p>
-
-              </button>
-
-            </div>
-
-          </div>
-
-          {/* Preview */}
-
-          <div className="rounded-3xl border bg-muted/30 p-6">
-
-            <h3 className="font-semibold mb-4">
-              Preview
-            </h3>
-
-            <div className="rounded-2xl bg-card border p-5">
-
-              <div className="flex items-center gap-3">
-
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xl">
-
-                  {selectedMood}
-
-                </div>
-
-                <div>
-
-                  <h4 className="font-semibold">
-
-                    {title || "Your Journey"}
-
-                  </h4>
+          {!loading && !error && stats && (
+            <div className="space-y-6">
+              <div className="rounded-3xl border bg-muted/20 p-3 sm:p-5">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold">
+                    Your Wellness Card
+                  </h2>
 
                   <p className="text-sm text-muted-foreground">
-
-                    Just now
-
+                    Automatically generated from your progress.
                   </p>
-
                 </div>
 
+                <WellnessStatsCard
+                  profile={profile}
+                  stats={stats}
+                  cardRef={cardRef}
+                />
               </div>
 
-              <p className="mt-5 text-sm leading-7">
+              <div className="rounded-3xl border bg-card p-5 text-center">
+                <p className="text-sm text-muted-foreground">
+                  No typing required. Your card uses your saved
+                  wellness data automatically.
+                </p>
+              </div>
 
-                {reflection ||
-                  "Your reflection will appear here..."}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  onClick={handleShare}
+                  disabled={exporting}
+                  className="h-12 rounded-2xl bg-gradient-to-r from-violet-600 to-cyan-500 text-base font-semibold hover:from-violet-700 hover:to-cyan-600"
+                >
+                  {exporting
+                    ? "Preparing..."
+                    : "📤 Share Card"}
+                </Button>
 
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSaveImage}
+                  disabled={exporting}
+                  className="h-12 rounded-2xl text-base font-semibold"
+                >
+                  🖼️ Save Image
+                </Button>
+              </div>
+
+              <p className="text-center text-xs text-muted-foreground">
+                Share your progress whenever you feel proud of it. 💜
               </p>
-
             </div>
-
-          </div>
-
-          {/* Action Buttons */}
-
-          <div className="grid md:grid-cols-3 gap-4 pt-2">
-
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="rounded-2xl h-12"
-            >
-              Cancel
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={handleExternalShare}
-              className="rounded-2xl h-12"
-            >
-              📤 Share Externally
-            </Button>
-
-            <Button
-              onClick={handleCommunityShare}
-              className="rounded-2xl h-12 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
-            >
-              🌱 Share to Community
-            </Button>
-
-          </div>
-
+          )}
         </div>
-
       </div>
-
     </div>
   );
 }
