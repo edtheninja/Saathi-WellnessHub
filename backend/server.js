@@ -145,7 +145,13 @@ const resourceConfig = {
 
 async function initializeDatabase() {
   // schema.sql is the single source of truth for every table —
-  // no second, conflicting CREATE TABLE block here.
+  // no second, conflicting CREATE TABLE block here. schema.sql uses
+  // CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS everywhere
+  // (including the community_rooms.energy_level column that
+  // previously crashed startup with a bare, repeated ALTER TABLE ...
+  // ADD COLUMN), so re-running this on every boot is safe and
+  // idempotent — it will never fail because a column/table already
+  // exists, and it never drops or resets anything.
   await pool.query(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
 }
 
@@ -396,6 +402,15 @@ app.patch("/api/auth/password", authRequired, async (req, res) => {
 // ---------------------------------------------------------------
 // Profile — its own endpoints because `profiles` is keyed by
 // user_id, not a generic `id`, so it doesn't fit the /api/data shape.
+//
+// FIXED: there used to be a SECOND `app.get("/api/profile", ...)`
+// registered further down. Express only ever runs the first matching
+// handler for a given method+path (this one never calls next()), so
+// that second block was dead code — and it was also broken: it
+// queried tables that don't exist in schema.sql (`mood`,
+// `journal_entries`; the real tables are `moods` and `journals`), so
+// it would have thrown a 500 if it had ever actually run. It has
+// been removed. This is now the ONE authoritative /api/profile GET.
 // ---------------------------------------------------------------
 const profileColumns = ["full_name", "bio", "avatar_url", "timezone", "preferred_mood", "wellness_goal", "energy_level", "reminder_enabled", "reminder_time", "preferred_meditation_duration", "onboarding_completed"];
 app.get("/api/profile", authRequired, async (req, res) => {
@@ -414,105 +429,6 @@ app.patch("/api/profile", authRequired, async (req, res) => {
   res.json({ data: result.rows[0] || null });
 });
 
-app.get("/api/profile", authRequired, async (req, res) => {
-  try {
-    const userId = req.auth.sub;
-
-    const profileResult = await pool.query(
-  `
-  SELECT
-    id,
-    full_name,
-    avatar_url
-  FROM saathi_users
-  WHERE id = $1
-  LIMIT 1
-  `,
-  [req.auth.sub],
-);
-
-    const moodResult = await pool.query(
-      `
-      SELECT
-        COALESCE(AVG(energy_level), 0) AS mood_average
-      FROM mood
-      WHERE user_id = $1
-      `,
-      [userId],
-    );
-
-    const journalResult = await pool.query(
-      `
-      SELECT COUNT(*)::int AS journal_entries
-      FROM journal_entries
-      WHERE user_id = $1
-      `,
-      [userId],
-    );
-
-    const meditationResult = await pool.query(
-      `
-      SELECT
-        COALESCE(SUM(duration_minutes), 0)::int AS meditation_minutes
-      FROM meditation_sessions
-      WHERE user_id = $1
-      `,
-      [userId],
-    );
-
-    const moodAverage = Math.round(
-      Number(moodResult.rows[0]?.mood_average || 0),
-    );
-
-    const journalEntries =
-      journalResult.rows[0]?.journal_entries || 0;
-
-    const meditationMinutes =
-      meditationResult.rows[0]?.meditation_minutes || 0;
-
-    const wellnessScore = Math.min(
-      100,
-      Math.round(
-        moodAverage * 0.5 +
-          Math.min(journalEntries, 10) * 2 +
-          Math.min(meditationMinutes, 300) / 30,
-      ),
-    );
-
-    let wellnessStatus = "Attention";
-
-    if (wellnessScore >= 85) {
-      wellnessStatus = "Thriving";
-    } else if (wellnessScore >= 70) {
-      wellnessStatus = "Improving";
-    } else if (wellnessScore >= 50) {
-      wellnessStatus = "Balanced";
-    } else if (wellnessScore >= 30) {
-      wellnessStatus = "Recovery";
-    }
-
-    return res.json({
-      profile: profileResult.rows[0] || null,
-      stats: {
-        moodAverage,
-        happiestDay: "Not available",
-        streak: 0,
-        bestStreak: 0,
-        wellnessScore,
-        meditationMinutes,
-        journalEntries,
-        wellnessStatus,
-        summary: "Small steps are still progress.",
-      },
-    });
-  } catch (error) {
-    console.error("Profile wellness stats error:", error);
-
-    return res.status(500).json({
-      error: "Unable to load profile wellness data",
-    });
-  }
-});
 // ---------------------------------------------------------------
 // Wellness settings — composite (user_id, setting_key) primary key
 // ---------------------------------------------------------------
@@ -531,41 +447,73 @@ app.put("/api/settings/:key", authRequired, async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// Wellness score — computed from recent activity across every
-// energy-tracking table, then stored in the `wellness_scores` table.
+// Wellness score — Express NEVER computes final_energy_level.
 //
-// ARCHITECTURE CONFLICT (flagged, not removed — see PR notes):
-// This averages activity_history.energy_level (and moods/journals/
-// music/meditation_sessions) into final_energy_level itself. Once
-// the separate ML backend is live, IT should own final_energy_level
-// entirely — this in-process averaging duplicates that
-// responsibility and will disagree with the ML result. It's left
-// running for now because /api/music/recommendations still reads
-// from wellness_scores. When the ML pipeline is ready, replace the
-// body of this recompute step with "accept final_energy_level from
-// the ML backend and store it," rather than computing it here.
+// FIXED (architecture violation): this used to average
+// activity_history / moods / journals / music / meditation_sessions
+// itself in POST /api/wellness-score/recompute. That duplicated the
+// separate ML backend's job and would disagree with its result. The
+// ML backend is the single source of truth for final_energy_level.
+//
+// New flow:
+//   1. The ML backend reads GET /api/activity-history/unprocessed,
+//      computes final_energy_level itself, and POSTs the result to
+//      the new ML-only route below (POST /api/wellness-score),
+//      authenticated the same way as the other ML routes
+//      (x-ml-service-secret / ML_SERVICE_SECRET — no new auth
+//      architecture invented).
+//   2. Express only validates (1–100) and stores it.
+//   3. GET /api/wellness-score/latest still lets the frontend read
+//      the latest stored score, unchanged.
+//   4. POST /api/wellness-score/recompute is kept so an existing
+//      frontend "recompute" button doesn't 404 or break, but it no
+//      longer calculates anything — it just returns the latest
+//      ML-computed score, since a fresh computation now only happens
+//      when the ML backend pushes one.
 // ---------------------------------------------------------------
-const energySourceTables = ["moods", "journals", "music", "meditation_sessions", "activity_history"];
-app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
+
+// ML-only: store a final_energy_level result computed by the
+// separate ML backend. This is the ONLY place final_energy_level is
+// ever written from — Express performs no averaging or derivation.
+app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
   try {
-    const breakdown = {};
-    for (const table of energySourceTables) {
-      const result = await pool.query(
-        `SELECT AVG(energy_level)::numeric(5,1) AS avg_energy FROM ${table} WHERE user_id = $1 AND energy_level IS NOT NULL AND created_at > NOW() - INTERVAL '7 days'`,
-        [req.auth.sub]
-      );
-      const value = result.rows[0]?.avg_energy;
-      if (value !== null) breakdown[table] = Number(value);
+    const { user_id, final_energy_level, breakdown = {} } = req.body || {};
+    if (!user_id) return res.status(400).json({ error: "user_id is required" });
+
+    const numericEnergy = Number(final_energy_level);
+    if (!Number.isFinite(numericEnergy) || numericEnergy < 1 || numericEnergy > 100) {
+      return res.status(400).json({ error: "final_energy_level must be a number between 1 and 100" });
     }
-    const sources = Object.values(breakdown);
-    const finalEnergyLevel = sources.length ? Math.round(sources.reduce((sum, value) => sum + value, 0) / sources.length) : 50;
+
     const inserted = await pool.query(
       "INSERT INTO wellness_scores (user_id, final_energy_level, breakdown) VALUES ($1, $2, $3) RETURNING *",
-      [req.auth.sub, finalEnergyLevel, JSON.stringify(breakdown)]
+      [user_id, Math.round(numericEnergy), JSON.stringify(breakdown ?? {})]
     );
+    console.log(`[ML] final_energy_level stored for user ${user_id}: ${inserted.rows[0].final_energy_level}`);
     res.status(201).json({ data: inserted.rows[0] });
+  } catch (error) {
+    console.error("Wellness score store error:", error.message);
+    publicError(res, error);
+  }
+});
+
+// Kept for frontend backward-compatibility (previously computed
+// energy locally). It now performs NO calculation — it simply
+// returns whatever the ML backend has most recently stored, so a
+// fresh score only ever comes from POST /api/wellness-score above.
+app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1",
+      [req.auth.sub]
+    );
+    res.status(200).json({
+      data: result.rows[0] || null,
+      note: "final_energy_level is computed by the separate ML backend from activity_history; this endpoint no longer performs local calculation.",
+    });
   } catch (error) { publicError(res, error); }
 });
+
 app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
   const result = await pool.query("SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1", [req.auth.sub]);
   res.json({ data: result.rows[0] || null });
@@ -573,7 +521,9 @@ app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
 
 // ---------------------------------------------------------------
 // Music recommendations — pick tracks whose energy_level is closest
-// to the user's latest final_energy_level.
+// to the user's latest ML-generated final_energy_level. If no ML
+// score exists yet, falls back to a neutral midpoint (50) — Express
+// still never derives a replacement energy value from raw activity.
 // ---------------------------------------------------------------
 app.get("/api/music/recommendations", authRequired, async (req, res) => {
   const latest = await pool.query("SELECT final_energy_level FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1", [req.auth.sub]);
@@ -850,7 +800,7 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
       VALUES ($1, $2, 'admin')
     `, [roomId, req.auth.sub]);
 
-    await recordActivity(client, {
+    const activity = await recordActivity(client, {
       userId: req.auth.sub,
       activityType: "community",
       title: "Created Community",
@@ -858,6 +808,7 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
       energyLevel: null,
       metadata: { community_id: roomId, action: "created" },
     });
+    console.log(`[ACTIVITY] community activity recorded: ${activity.id} (created ${roomId})`);
 
     await client.query("COMMIT");
     res.status(201).json({ data: { ...result.rows[0], member_count: 1 } });
@@ -887,7 +838,7 @@ app.post("/api/community/rooms/:roomId/join", authRequired, async (req, res) => 
 
     if (insertResult.rowCount > 0) {
       const room = await client.query("SELECT name FROM community_rooms WHERE id = $1", [req.params.roomId]);
-      await recordActivity(client, {
+      const activity = await recordActivity(client, {
         userId: req.auth.sub,
         activityType: "community",
         title: "Joined Community",
@@ -895,6 +846,7 @@ app.post("/api/community/rooms/:roomId/join", authRequired, async (req, res) => 
         energyLevel: null,
         metadata: { community_id: req.params.roomId, action: "joined" },
       });
+      console.log(`[ACTIVITY] community activity recorded: ${activity.id} (joined ${req.params.roomId})`);
     }
 
     await client.query("COMMIT");
@@ -921,7 +873,7 @@ app.delete("/api/community/rooms/:roomId/leave", authRequired, async (req, res) 
     // activity_history row for a leave call on a non-membership).
     if (deleteResult.rowCount > 0) {
       const room = await client.query("SELECT name FROM community_rooms WHERE id = $1", [req.params.roomId]);
-      await recordActivity(client, {
+      const activity = await recordActivity(client, {
         userId: req.auth.sub,
         activityType: "community",
         title: "Left Community",
@@ -929,6 +881,7 @@ app.delete("/api/community/rooms/:roomId/leave", authRequired, async (req, res) 
         energyLevel: null,
         metadata: { community_id: req.params.roomId, action: "left" },
       });
+      console.log(`[ACTIVITY] community activity recorded: ${activity.id} (left ${req.params.roomId})`);
     }
 
     await client.query("COMMIT");
@@ -1127,7 +1080,7 @@ app.post("/api/data/moods", authRequired, async (req, res) => {
     );
     const moodRow = insertResult.rows[0];
 
-    await recordActivity(client, {
+    const activity = await recordActivity(client, {
       userId: req.auth.sub,
       activityType: "mood",
       title: moodRow.mood ? String(moodRow.mood) : "Mood Logged",
@@ -1135,6 +1088,7 @@ app.post("/api/data/moods", authRequired, async (req, res) => {
       energyLevel: moodRow.energy_level,
       metadata: { mood_id: moodRow.id },
     });
+    console.log(`[ACTIVITY] mood created: ${activity.id}`);
 
     await client.query("COMMIT");
     res.status(201).json({ data: [moodRow] });
@@ -1205,7 +1159,7 @@ app.patch("/api/data/music", authRequired, async (req, res) => {
     const crossedThreshold = threshold !== null && oldListenedTill < threshold && newListenedTill >= threshold;
 
     if (repetitionIncreased || crossedThreshold) {
-      await recordActivity(client, {
+      const activity = await recordActivity(client, {
         userId: req.auth.sub,
         activityType: "music",
         title: updated.song_name || "Music",
@@ -1219,6 +1173,7 @@ app.patch("/api/data/music", authRequired, async (req, res) => {
           duration_seconds: updated.duration_seconds,
         },
       });
+      console.log(`[ACTIVITY] music listening recorded: ${activity.id}`);
     }
 
     await client.query("COMMIT");
@@ -1252,7 +1207,7 @@ app.post("/api/data/meditation_sessions", authRequired, async (req, res) => {
     const session = insertResult.rows[0];
 
     if (isCompleted) {
-      await recordActivity(client, {
+      const activity = await recordActivity(client, {
         userId: req.auth.sub,
         activityType: "meditation",
         title: "Meditation Session",
@@ -1260,6 +1215,7 @@ app.post("/api/data/meditation_sessions", authRequired, async (req, res) => {
         energyLevel: session.energy_level,
         metadata: { session_id: session.id, duration_seconds: session.duration },
       });
+      console.log(`[ACTIVITY] meditation completed: ${activity.id}`);
     }
 
     await client.query("COMMIT");
@@ -1310,7 +1266,7 @@ app.patch("/api/data/meditation_sessions", authRequired, async (req, res) => {
     // completed session never produces a second activity_history row.
     const justCompleted = !existing.completed && updated.completed;
     if (justCompleted) {
-      await recordActivity(client, {
+      const activity = await recordActivity(client, {
         userId: req.auth.sub,
         activityType: "meditation",
         title: "Meditation Session",
@@ -1318,6 +1274,7 @@ app.patch("/api/data/meditation_sessions", authRequired, async (req, res) => {
         energyLevel: updated.energy_level,
         metadata: { session_id: updated.id, duration_seconds: updated.duration },
       });
+      console.log(`[ACTIVITY] meditation completed: ${activity.id}`);
     }
 
     await client.query("COMMIT");
@@ -1500,7 +1457,7 @@ app.post("/api/data/journals", authRequired, upload.array("images", 10), async (
     );
     const journal = result.rows[0];
 
-    await recordActivity(client, {
+    const activity = await recordActivity(client, {
       userId: req.auth.sub,
       activityType: "journal",
       title: "Journal Entry",
@@ -1510,6 +1467,7 @@ app.post("/api/data/journals", authRequired, upload.array("images", 10), async (
       energyLevel: journal.energy_level,
       metadata: { journal_id: journal.id },
     });
+    console.log(`[ACTIVITY] journal created: ${activity.id}`);
 
     await client.query("COMMIT");
     res.status(201).json({ data: journal });
