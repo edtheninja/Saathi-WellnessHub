@@ -347,20 +347,34 @@ async function recordActivity(client, { userId, activityType, title, subtitle = 
   // DEFAULT, so omitting it leaves it NULL (meaning "ML has not
   // processed this activity yet") until the ML service marks it via
   // PATCH /api/activity-history/:id/process.
-  const result = await runner.query(
-    `INSERT INTO activity_history (user_id, activity_type, title, subtitle, energy_level, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [
-      userId,
-      activityType,
-      String(title).trim(),
-      subtitle ? String(subtitle).trim() : null,
-      normalizedEnergy,
-      JSON.stringify(metadata ?? {}),
-    ]
-  );
-  return result.rows[0];
+  console.log("[ACTIVITY] INSERT START", {
+  userId,
+  activityType,
+  title,
+  subtitle,
+  energyLevel: normalizedEnergy,
+  metadata,
+});
+
+const result = await runner.query(
+  `INSERT INTO activity_history
+   (user_id, activity_type, title, subtitle, energy_level, metadata)
+   VALUES ($1, $2, $3, $4, $5, $6)
+   RETURNING *`,
+  [
+    userId,
+    activityType,
+    String(title).trim(),
+    subtitle ? String(subtitle).trim() : null,
+    normalizedEnergy,
+    JSON.stringify(metadata ?? {}),
+  ]
+);
+
+console.log("[ACTIVITY] INSERT SUCCESS", result.rows[0]);
+
+return result.rows[0];
+
 }
 app.get("/api/debug/activity-history-db", authRequired, async (req, res) => {
   try {
