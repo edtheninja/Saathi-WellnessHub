@@ -169,21 +169,21 @@ const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   "channa mereya": 2,
   "kun faya kun": 6,
   "sun saiyaan": 10,
-  "hamdard": 14,
+  hamdard: 14,
   "jiyein kyun": 18,
   "tere bina": 22,
   "kun faya kun (added)": 26,
-  "iktara": 30,
+  iktara: 30,
   "tu kisi rail si": 34,
   "kho gaye hum kahan": 38,
-  "shaam": 42,
+  shaam: 42,
   "aao milo chalen": 46,
-  "banjara": 50,
-  "safarnama": 54,
+  banjara: 50,
+  safarnama: 54,
   "phir se ud chala": 58,
   "chaand ke parinday": 62,
   "tum se hi": 66,
-  "ilahi": 70,
+  ilahi: 70,
   "love you zindagi": 74,
   "matargashti (added)": 78,
   "sooraj ki baahon mein": 82,
@@ -193,11 +193,26 @@ const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   "badtemeez dil": 98,
 };
 
-const getMusicEnergyLevel = (title: string): number | null => {
-  const key = String(title || "").trim().toLowerCase();
-  return MUSIC_ENERGY_BY_TITLE[key] ?? null;
+const normalizeMusicTitle = (title: string): string => {
+  return (
+    String(title || "")
+      .trim()
+      // Convert camelCase/PascalCase filenames such as AaoMiloChalen
+      // into "aao milo chalen".
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .replace(/[()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase()
+  );
 };
 
+const getMusicEnergyLevel = (title: string): number | null => {
+  const key = normalizeMusicTitle(title);
+  return MUSIC_ENERGY_BY_TITLE[key] ?? null;
+};
 
 /*
  * Progress is written approximately every 7 seconds.
@@ -393,7 +408,9 @@ export default function MusicScreen() {
     startPosition: number;
   } | null>(null);
 
-  const listeningSessionFinalizeInFlightRef = useRef<Promise<void> | null>(null);
+  const listeningSessionFinalizeInFlightRef = useRef<Promise<void> | null>(
+    null,
+  );
 
   /*
    * Serializes progress updates so two asynchronous
@@ -511,6 +528,8 @@ export default function MusicScreen() {
         const merged: Track[] = localTracks.map((track) => {
           const row = findRow(track);
 
+          const catalogEnergy = getMusicEnergyLevel(track.title);
+
           if (!row) {
             return {
               ...track,
@@ -519,9 +538,16 @@ export default function MusicScreen() {
               listenedTill: 0,
               repetition: 0,
               isFavorite: false,
-              energyLevel: null,
+              // Use the local catalog immediately even before the DB row exists.
+              energyLevel: catalogEnergy,
             };
           }
+
+          const databaseEnergy =
+            typeof row.energy_level === "number" &&
+            Number.isFinite(row.energy_level)
+              ? row.energy_level
+              : null;
 
           return {
             ...track,
@@ -547,11 +573,9 @@ export default function MusicScreen() {
                 ? row.duration_seconds
                 : undefined,
 
-            energyLevel:
-              typeof row.energy_level === "number" &&
-              Number.isFinite(row.energy_level)
-                ? row.energy_level
-                : null,
+            // Prefer the DB value, but fall back to the local music catalog
+            // for old rows where energy_level is still NULL.
+            energyLevel: databaseEnergy ?? catalogEnergy,
 
             listenedTill: Math.max(0, Number(row.listened_till ?? 0)),
 
@@ -603,7 +627,8 @@ export default function MusicScreen() {
             repetition: 0,
             is_favorite: false,
 
-            energy_level: null,
+            // Store the catalog energy in PostgreSQL for newly created rows.
+            energy_level: getMusicEnergyLevel(track.title),
           }));
 
           try {
@@ -651,9 +676,10 @@ export default function MusicScreen() {
                     : undefined,
 
                 energyLevel:
-                  typeof row.energy_level === "number"
+                  typeof row.energy_level === "number" &&
+                  Number.isFinite(row.energy_level)
                     ? row.energy_level
-                    : null,
+                    : getMusicEnergyLevel(row.song_name ?? merged[index].title),
 
                 listenedTill: Math.max(0, Number(row.listened_till ?? 0)),
 
@@ -667,6 +693,52 @@ export default function MusicScreen() {
           } catch (error) {
             console.error("Failed to create music metadata:", error);
           }
+        }
+
+        /*
+         * Backfill energy_level for existing music rows that were created
+         * before the energy catalog was added.
+         *
+         * This does not create an activity because record_listen is not sent.
+         */
+        if (authenticated && !cancelled) {
+          const rowsNeedingEnergy = merged.filter(
+            (track) =>
+              Boolean(track.dbId) &&
+              typeof track.energyLevel === "number" &&
+              Number.isFinite(track.energyLevel),
+          );
+
+          await Promise.all(
+            rowsNeedingEnergy.map(async (track) => {
+              const row = rows.find((item) => item.id === track.dbId);
+
+              if (
+                !row ||
+                (typeof row.energy_level === "number" &&
+                  Number.isFinite(row.energy_level))
+              ) {
+                return;
+              }
+
+              try {
+                await apiFetch(
+                  `/api/data/music?id=${encodeURIComponent(track.dbId!)}`,
+                  {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                      energy_level: track.energyLevel,
+                    }),
+                  },
+                );
+              } catch (error) {
+                console.warn(
+                  `Failed to backfill energy for "${track.title}":`,
+                  error,
+                );
+              }
+            }),
+          );
         }
 
         if (!cancelled) {
@@ -917,7 +989,10 @@ export default function MusicScreen() {
   }, []);
 
   const finalizeListeningSession = useCallback(
-    async (track: Track | undefined, audio: HTMLAudioElement): Promise<void> => {
+    async (
+      track: Track | undefined,
+      audio: HTMLAudioElement,
+    ): Promise<void> => {
       const session = listeningSessionRef.current;
 
       if (!track?.dbId || !session || session.trackId !== track.id) {
@@ -950,7 +1025,10 @@ export default function MusicScreen() {
         listenedTill - Math.min(session.startPosition, listenedTill),
       );
 
-      const wallClockSeconds = Math.max(0, (Date.now() - session.startedAt) / 1000);
+      const wallClockSeconds = Math.max(
+        0,
+        (Date.now() - session.startedAt) / 1000,
+      );
 
       /*
        * A play/pause click at exactly 0 seconds is not a meaningful listen.
@@ -1072,7 +1150,13 @@ export default function MusicScreen() {
         setIsPlaying(false);
       });
     }
-  }, [currentTrack?.id, finalizeListeningSession, getAudio, initializeAnalyser, isPlaying]);
+  }, [
+    currentTrack?.id,
+    finalizeListeningSession,
+    getAudio,
+    initializeAnalyser,
+    isPlaying,
+  ]);
 
   /* ------------------------------------------------------------------------ */
   /*                            Audio events                                  */
@@ -1733,11 +1817,13 @@ export default function MusicScreen() {
 
         const value = Number(payload?.data?.final_energy_level);
 
-        if (Number.isFinite(value) && value >= 1 && value <= 100) {
+        if (Number.isFinite(value) && value >= 0 && value <= 100) {
           if (!cancelled) {
-            setFinalEnergyLevel(Math.round(value));
+            const normalizedValue =
+              value === 0 ? DEFAULT_ENERGY_LEVEL : Math.round(value);
 
-            setHasFinalEnergy(true);
+            setFinalEnergyLevel(normalizedValue);
+            setHasFinalEnergy(value > 0);
           }
         } else if (!cancelled) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
@@ -1807,9 +1893,7 @@ export default function MusicScreen() {
         .filter((track) => {
           const energy = Number(track.energyLevel);
           return (
-            !usedIds.has(track.id) &&
-            energy >= rangeStart &&
-            energy <= rangeEnd
+            !usedIds.has(track.id) && energy >= rangeStart && energy <= rangeEnd
           );
         })
         .sort((a, b) => {
