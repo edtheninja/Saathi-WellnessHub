@@ -1318,34 +1318,69 @@ app.patch("/api/data/music", authRequired, async (req, res) => {
 // clients only POST once the session finishes — or PATCHed from
 // false to true) logs exactly one activity_history row.
 // =================================================================
+// =================================================================
+// MEDITATION — dedicated create route.
+//
+// Every time a meditation session is saved, create a NEW
+// activity_history row.
+//
+// `meditation_sessions` = current/session record
+// `activity_history` = every saved meditation activity
+// =================================================================
+
 app.post("/api/data/meditation_sessions", authRequired, async (req, res) => {
   const { duration, completed, energy_level } = req.body;
-  const isCompleted = completed === undefined ? true : Boolean(completed);
+
+  const isCompleted =
+    completed === undefined ? true : Boolean(completed);
 
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
+
     const insertResult = await client.query(
-      `INSERT INTO meditation_sessions (user_id, duration, completed, energy_level)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.auth.sub, duration ?? null, isCompleted, energy_level !== undefined && energy_level !== null && energy_level !== "" ? Number(energy_level) : null]
+      `INSERT INTO meditation_sessions
+       (user_id, duration, completed, energy_level)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [
+        req.auth.sub,
+        duration ?? null,
+        isCompleted,
+        energy_level !== undefined &&
+        energy_level !== null &&
+        energy_level !== ""
+          ? Number(energy_level)
+          : null,
+      ]
     );
+
     const session = insertResult.rows[0];
 
-    if (isCompleted) {
-      const activity = await recordActivity(client, {
-        userId: req.auth.sub,
-        activityType: "meditation",
-        title: "Meditation Session",
-        subtitle: null,
-        energyLevel: session.energy_level,
-        metadata: { session_id: session.id, duration_seconds: session.duration },
-      });
-      console.log(`[ACTIVITY] meditation completed: ${activity.id}`);
-    }
+    // Every meditation save creates an activity_history row.
+    const activity = await recordActivity(client, {
+      userId: req.auth.sub,
+      activityType: "meditation",
+      title: "Meditation Session",
+      subtitle: null,
+      energyLevel: session.energy_level,
+      metadata: {
+        session_id: session.id,
+        duration_seconds: session.duration,
+        completed: session.completed,
+      },
+    });
+
+    console.log(
+      `[ACTIVITY] meditation saved: ${activity.id}`
+    );
 
     await client.query("COMMIT");
-    res.status(201).json({ data: [session] });
+
+    res.status(201).json({
+      data: [session],
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     publicError(res, error);
@@ -1354,57 +1389,118 @@ app.post("/api/data/meditation_sessions", authRequired, async (req, res) => {
   }
 });
 
+
+// =================================================================
+// MEDITATION — dedicated update route.
+//
+// Every successful PATCH/save creates a NEW activity_history row.
+// No false -> true transition check.
+// =================================================================
+
 app.patch("/api/data/meditation_sessions", authRequired, async (req, res) => {
   const id = req.query.id;
-  if (!id) return res.status(400).json({ error: "An id query parameter is required" });
+
+  if (!id) {
+    return res.status(400).json({
+      error: "An id query parameter is required",
+    });
+  }
 
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
+
+    // Get existing session.
     const existingResult = await client.query(
-      `SELECT * FROM meditation_sessions WHERE user_id = $1 AND id = $2 FOR UPDATE`,
+      `SELECT *
+       FROM meditation_sessions
+       WHERE user_id = $1 AND id = $2
+       FOR UPDATE`,
       [req.auth.sub, id]
     );
+
     const existing = existingResult.rows[0];
+
     if (!existing) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Record not found" });
+
+      return res.status(404).json({
+        error: "Record not found",
+      });
     }
 
+    // Build UPDATE using only allowed columns.
     const assignments = [];
     const values = [req.auth.sub, id];
+
     for (const column of resourceConfig.meditation_sessions.columns) {
       if (req.body[column] === undefined) continue;
-      values.push(req.body[column]);
+
+      let value = req.body[column];
+
+      if (column === "duration") {
+        value =
+          value !== null && value !== ""
+            ? Number(value)
+            : null;
+      }
+
+      if (column === "energy_level") {
+        value =
+          value !== null && value !== ""
+            ? Number(value)
+            : null;
+      }
+
+      if (column === "completed") {
+        value = Boolean(value);
+      }
+
+      values.push(value);
       assignments.push(`${column} = $${values.length}`);
     }
 
     let updated = existing;
-    if (assignments.length) {
+
+    if (assignments.length > 0) {
       const updateResult = await client.query(
-        `UPDATE meditation_sessions SET ${assignments.join(", ")} WHERE user_id = $1 AND id = $2 RETURNING *`,
+        `UPDATE meditation_sessions
+         SET ${assignments.join(", ")}
+         WHERE user_id = $1 AND id = $2
+         RETURNING *`,
         values
       );
+
       updated = updateResult.rows[0];
     }
 
-    // Only log the false -> true transition, so re-saving an already
-    // completed session never produces a second activity_history row.
-    const justCompleted = !existing.completed && updated.completed;
-    if (justCompleted) {
-      const activity = await recordActivity(client, {
-        userId: req.auth.sub,
-        activityType: "meditation",
-        title: "Meditation Session",
-        subtitle: null,
-        energyLevel: updated.energy_level,
-        metadata: { session_id: updated.id, duration_seconds: updated.duration },
-      });
-      console.log(`[ACTIVITY] meditation completed: ${activity.id}`);
-    }
+    // -------------------------------------------------------------
+    // EVERY successful meditation save creates a NEW activity.
+    // -------------------------------------------------------------
+
+    const activity = await recordActivity(client, {
+      userId: req.auth.sub,
+      activityType: "meditation",
+      title: "Meditation Session",
+      subtitle: null,
+      energyLevel: updated.energy_level,
+      metadata: {
+        session_id: updated.id,
+        duration_seconds: updated.duration,
+        completed: updated.completed,
+      },
+    });
+
+    console.log(
+      `[ACTIVITY] meditation saved: ${activity.id}`
+    );
 
     await client.query("COMMIT");
-    res.json({ data: [updated] });
+
+    res.json({
+      data: [updated],
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     publicError(res, error);
@@ -1412,7 +1508,6 @@ app.patch("/api/data/meditation_sessions", authRequired, async (req, res) => {
     client.release();
   }
 });
-
 // =================================================================
 // ACTIVITY HISTORY — pipeline into the separate ML backend.
 //
