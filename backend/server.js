@@ -605,11 +605,9 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
     const { email, password, fullName = "" } = req.body;
     if (!email || !password || password.length < 6)
-      return res
-        .status(400)
-        .json({
-          error: "Email and a password of at least 6 characters are required",
-        });
+      return res.status(400).json({
+        error: "Email and a password of at least 6 characters are required",
+      });
     const normalizedEmail = String(email).trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
       return res.status(400).json({ error: "A valid email is required" });
@@ -627,24 +625,22 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
       "INSERT INTO profiles (user_id, full_name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING",
       [user.id, user.fullName],
     );
-  await pool.query(
-  `INSERT INTO wellness_scores (user_id)
+    await pool.query(
+      `INSERT INTO wellness_scores (user_id)
    VALUES ($1)
    ON CONFLICT (user_id) DO NOTHING`,
-  [user.id],
-);
+      [user.id],
+    );
     const payload = {
       id: user.id,
       email: user.email,
       full_name: user.fullName,
       email_confirmed_at: new Date().toISOString(),
     };
-    res
-      .status(201)
-      .json({
-        user: userPayload(payload),
-        session: { access_token: tokenFor(payload) },
-      });
+    res.status(201).json({
+      user: userPayload(payload),
+      session: { access_token: tokenFor(payload) },
+    });
   } catch (error) {
     publicError(res, error);
   }
@@ -1857,18 +1853,42 @@ app.patch("/api/data/moods", authRequired, async (req, res) => {
 });
 
 // =================================================================
-// MUSIC — dedicated update route. Creating a music row (adding a
-// song to the library) is not itself a "listening" event, so POST
-// still falls through to the generic /api/data/:resource handler
-// below with no activity_history side effect.
+// MUSIC — dedicated update route.
 //
-// A MEANINGFUL listening event is detected here on PATCH, using two
-// signals so we never log on trivial UI noise (volume, seeking,
-// play/pause clicks):
-//   1. `repetition` increased — the existing music-tracking logic
-//      already increments this on a completed/near-complete listen.
-//   2. `listened_till` just CROSSED the 80%-of-duration mark for the
-//      first time (compared old vs new value, not just "is above").
+// The frontend sends TWO different kinds of PATCH here, and they
+// must be handled differently:
+//
+//   1. Progress bookkeeping (listened_till / duration_seconds /
+//      last_listened_at / is_favorite / energy_level backfill) —
+//      just persist the fields, no activity_history side effect.
+//      This happens roughly every 7 seconds while a song plays, on
+//      seek, when metadata first loads, and when toggling favorite —
+//      logging an activity on every one of these would spam the ML
+//      pipeline with noise.
+//
+//   2. A finished LISTENING SESSION — the frontend's own
+//      `finalizeListeningSession()` already does the debouncing
+//      (it only fires on pause / seek / track-change / ended / page
+//      hide, AND only if the session actually advanced playback) and
+//      signals this with a dedicated `record_listen: true` flag in
+//      the PATCH body. This is the single, authoritative signal for
+//      "a meaningful listen just happened" — the backend trusts it
+//      rather than re-deriving meaningfulness from a repetition/
+//      threshold diff (the previous approach silently did nothing,
+//      because the frontend never actually sends `repetition` in the
+//      PATCH body — only this `record_listen` flag).
+//
+// When `record_listen` is true:
+//   - `repetition` is incremented by exactly 1, SERVER-SIDE — the
+//     client can never set `repetition` directly (excluded from the
+//     generic column loop below), so this can't be spoofed or drift
+//     out of sync with real listens.
+//   - One activity_history row is recorded with activity_type
+//     "music", using this song's actual stored energy_level (the
+//     fixed catalog value chosen up front — e.g. "Ilahi" = 70 — never
+//     invented or averaged), so the ML backend gets exactly one
+//     signal per real listen, carrying that listen's energy AND the
+//     running repetition count in metadata.
 // =================================================================
 app.patch("/api/data/music", authRequired, async (req, res) => {
   const id = req.query.id;
@@ -1888,12 +1908,31 @@ app.patch("/api/data/music", authRequired, async (req, res) => {
       return res.status(404).json({ error: "Record not found" });
     }
 
+    // `record_listen` is a control flag, not a music table column —
+    // strip it out before building the column-assignment loop so it
+    // can never accidentally get treated as a real field.
+    const shouldRecordListen = req.body.record_listen === true;
+    const { record_listen: _ignoredRecordListen, ...updateFields } = req.body;
+
     const assignments = [];
     const values = [req.auth.sub, id];
     for (const column of resourceConfig.music.columns) {
-      if (req.body[column] === undefined) continue;
-      values.push(req.body[column]);
+      // `repetition` is NEVER settable directly by the client — it is
+      // only ever incremented below, atomically, when a real listen
+      // is confirmed. This prevents a client from spoofing repetition
+      // counts (which would fabricate activity_history / recommendation
+      // signal) independent of any actual listening.
+      if (column === "repetition") continue;
+      if (updateFields[column] === undefined) continue;
+      values.push(updateFields[column]);
       assignments.push(`${column} = $${values.length}`);
+    }
+
+    let newRepetition = Number(existing.repetition || 0);
+    if (shouldRecordListen) {
+      newRepetition += 1;
+      values.push(newRepetition);
+      assignments.push(`repetition = $${values.length}`);
     }
 
     let updated = existing;
@@ -1905,26 +1944,9 @@ app.patch("/api/data/music", authRequired, async (req, res) => {
       updated = updateResult.rows[0];
     }
 
-    const oldRepetition = Number(existing.repetition || 0);
-    const newRepetition = Number(
-      updated.repetition ?? existing.repetition ?? 0,
-    );
-    const repetitionIncreased = newRepetition > oldRepetition;
-
-    const duration = Number(
-      updated.duration_seconds ?? existing.duration_seconds ?? 0,
-    );
-    const oldListenedTill = Number(existing.listened_till || 0);
-    const newListenedTill = Number(
-      updated.listened_till ?? existing.listened_till ?? 0,
-    );
-    const threshold = duration > 0 ? duration * 0.8 : null;
-    const crossedThreshold =
-      threshold !== null &&
-      oldListenedTill < threshold &&
-      newListenedTill >= threshold;
-
-    if (repetitionIncreased || crossedThreshold) {
+    if (shouldRecordListen) {
+      // Use the song's own stored energy_level (the fixed catalog
+      // value assigned at creation/backfill) — never invented here.
       const activity = await recordActivity(client, {
         userId: req.auth.sub,
         activityType: "music",
@@ -1937,9 +1959,12 @@ app.patch("/api/data/music", authRequired, async (req, res) => {
           artist: updated.artist,
           listened_till: updated.listened_till,
           duration_seconds: updated.duration_seconds,
+          repetition: updated.repetition,
         },
       });
-      console.log(`[ACTIVITY] music listening recorded: ${activity.id}`);
+      console.log(
+        `[ACTIVITY] music listen recorded: ${activity.id} (repetition now ${updated.repetition}, energy ${updated.energy_level})`,
+      );
     }
 
     await client.query("COMMIT");
@@ -2180,11 +2205,9 @@ app.patch("/api/data/activity_history", authRequired, async (req, res) => {
       allowedUpdates.activity_type !== undefined &&
       !ACTIVITY_TYPES.includes(allowedUpdates.activity_type)
     ) {
-      return res
-        .status(400)
-        .json({
-          error: `activity_type must be one of: ${ACTIVITY_TYPES.join(", ")}`,
-        });
+      return res.status(400).json({
+        error: `activity_type must be one of: ${ACTIVITY_TYPES.join(", ")}`,
+      });
     }
     if (
       allowedUpdates.energy_level !== undefined &&
@@ -2400,12 +2423,10 @@ app.post("/api/data/:resource", authRequired, async (req, res) => {
     const config = resourceOr404(req, res);
     if (!config) return;
     if (config.readOnly)
-      return res
-        .status(403)
-        .json({
-          error:
-            "This resource is written internally and cannot be created directly",
-        });
+      return res.status(403).json({
+        error:
+          "This resource is written internally and cannot be created directly",
+      });
     const items = Array.isArray(req.body) ? req.body : [req.body];
     const data = [];
     for (const item of items)
@@ -2420,12 +2441,10 @@ app.patch("/api/data/:resource", authRequired, async (req, res) => {
     const config = resourceOr404(req, res);
     if (!config) return;
     if (config.readOnly)
-      return res
-        .status(403)
-        .json({
-          error:
-            "This resource is written internally and cannot be updated directly",
-        });
+      return res.status(403).json({
+        error:
+          "This resource is written internally and cannot be updated directly",
+      });
     const id = req.query.id;
     if (!id)
       return res
@@ -2443,12 +2462,10 @@ app.delete("/api/data/:resource", authRequired, async (req, res) => {
     const config = resourceOr404(req, res);
     if (!config) return;
     if (config.readOnly)
-      return res
-        .status(403)
-        .json({
-          error:
-            "This resource is written internally and cannot be deleted directly",
-        });
+      return res.status(403).json({
+        error:
+          "This resource is written internally and cannot be deleted directly",
+      });
     await deleteResource(config, req.auth.sub, req.query.id);
     res.json({ data: [] });
   } catch (error) {

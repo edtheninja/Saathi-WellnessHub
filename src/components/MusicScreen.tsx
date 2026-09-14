@@ -154,6 +154,58 @@ type MusicRow = {
 /* -------------------------------------------------------------------------- */
 
 const DEFAULT_ENERGY_LEVEL = 50;
+/* -------------------------------------------------------------------------- */
+/*                         Music energy catalog                               */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * These are the exact energy buckets supplied for the local music library.
+ * The database stores one integer energy_level, so each 4-point bucket uses
+ * its midpoint as the song's stored energy value.
+ *
+ * Example: 60-64 -> 62, 64-68 -> 66, 68-72 -> 70.
+ *
+ * FIXED (2 entries): these two keys previously didn't match the actual
+ * song titles, so getMusicEnergyLevel() silently returned null for them
+ * (no energy ever got attached to those two tracks, in the UI OR in the
+ * DB row created for them):
+ *   - "chaand ke parinday" -> "khaabon ke parinday" (60-64 bucket)
+ *   - "badtemeez dil"      -> "badtameez dil"       (96-100 bucket, typo: e -> a)
+ */
+const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
+  "channa mereya": 2,
+  "kun faya kun": 6,
+  "sun saiyaan": 10,
+  hamdard: 14,
+  "jiyein kyun": 18,
+  "tere bina": 22,
+  "kun faya kun (added)": 26,
+  iktara: 30,
+  "tu kisi rail si": 34,
+  "kho gaye hum kahan": 38,
+  shaam: 42,
+  "aao milo chalen": 46,
+  banjara: 50,
+  safarnama: 54,
+  "phir se ud chala": 58,
+  "khaabon ke parinday": 62,
+  "tum se hi": 66,
+  ilahi: 70,
+  "love you zindagi": 74,
+  "matargashti (added)": 78,
+  "sooraj ki baahon mein": 82,
+  "tumhi ho bandhu": 86,
+  "patakha guddi": 90,
+  "gallan goodiyaan": 94,
+  "badtameez dil": 98,
+};
+
+const getMusicEnergyLevel = (title: string): number | null => {
+  const key = String(title || "")
+    .trim()
+    .toLowerCase();
+  return MUSIC_ENERGY_BY_TITLE[key] ?? null;
+};
 
 /*
  * Progress is written approximately every 7 seconds.
@@ -339,10 +391,19 @@ export default function MusicScreen() {
   const lastSavedSecondRef = useRef(-1);
 
   /*
-   * Prevents repetition from incrementing on every
-   * play/pause cycle.
+   * One listening session starts on `play` and is finalized on `pause`,
+   * `ended`, track change, or page hide. The backend increments repetition
+   * and creates exactly one music activity for that session.
    */
-  const playbackCountedTrackIdRef = useRef<string | null>(null);
+  const listeningSessionRef = useRef<{
+    trackId: string;
+    startedAt: number;
+    startPosition: number;
+  } | null>(null);
+
+  const listeningSessionFinalizeInFlightRef = useRef<Promise<void> | null>(
+    null,
+  );
 
   /*
    * Serializes progress updates so two asynchronous
@@ -374,6 +435,7 @@ export default function MusicScreen() {
         title: getTitle(path),
         artist: "Saathi Music",
         src,
+        energyLevel: getMusicEnergyLevel(getTitle(path)),
       }))
       .sort((a, b) => a.title.localeCompare(b.title));
   }, []);
@@ -551,7 +613,16 @@ export default function MusicScreen() {
             repetition: 0,
             is_favorite: false,
 
-            energy_level: null,
+            /*
+             * FIXED: this used to be hardcoded to `null` even though
+             * `track.energyLevel` (from the MUSIC_ENERGY_BY_TITLE
+             * catalog above) was already known at this point. That
+             * meant every newly-created music row started with no
+             * energy value at all, so neither recommendations nor
+             * activity_history ever got a real energy signal for it.
+             * Now we store the catalog's fixed energy value up front.
+             */
+            energy_level: track.energyLevel ?? null,
           }));
 
           try {
@@ -614,6 +685,62 @@ export default function MusicScreen() {
             }
           } catch (error) {
             console.error("Failed to create music metadata:", error);
+          }
+        }
+
+        /*
+         * NEW: backfill energy_level for songs that ALREADY had a DB
+         * row from before this catalog existed (or from before the
+         * two title fixes above), so returning users' existing rows
+         * also end up with the correct fixed energy value — without
+         * this, only brand-new rows (created just above) would ever
+         * get one, and DB rows created before today would be stuck
+         * at energy_level = NULL forever.
+         *
+         * This is a plain data PATCH (no `record_listen` flag), so it
+         * does not create an activity_history row or change any UI —
+         * it only ever writes a value the catalog itself already
+         * assigned to that song title.
+         */
+        const needsEnergyBackfill = merged.filter((track) => {
+          if (!track.dbId) return false;
+          const catalogEnergy = getMusicEnergyLevel(track.title);
+          return (
+            catalogEnergy !== null &&
+            (track.energyLevel === null || track.energyLevel === undefined)
+          );
+        });
+
+        if (needsEnergyBackfill.length > 0) {
+          for (const track of needsEnergyBackfill) {
+            const catalogEnergy = getMusicEnergyLevel(track.title);
+
+            if (catalogEnergy === null || !track.dbId) {
+              continue;
+            }
+
+            try {
+              await apiFetch(
+                `/api/data/music?id=${encodeURIComponent(track.dbId)}`,
+                {
+                  method: "PATCH",
+                  body: JSON.stringify({ energy_level: catalogEnergy }),
+                },
+              );
+
+              const index = merged.findIndex(
+                (item) => item.dbId === track.dbId,
+              );
+
+              if (index !== -1) {
+                merged[index] = {
+                  ...merged[index],
+                  energyLevel: catalogEnergy,
+                };
+              }
+            } catch (error) {
+              console.error("Failed to backfill music energy level:", error);
+            }
           }
         }
 
@@ -843,65 +970,159 @@ export default function MusicScreen() {
   );
 
   /* ------------------------------------------------------------------------ */
-  /*                          Repetition tracking                             */
+  /*                         Listening session tracking                        */
   /* ------------------------------------------------------------------------ */
 
-  const incrementRepetition = useCallback(async (track: Track | undefined) => {
+  const startListeningSession = useCallback((track: Track | undefined) => {
     if (!track?.dbId) {
       return;
     }
 
-    /*
-     * A single play session only increments once.
-     *
-     * Play -> Pause -> Play
-     *
-     * does NOT become two repetitions.
-     */
-    if (playbackCountedTrackIdRef.current === track.id) {
+    const existing = listeningSessionRef.current;
+
+    if (existing?.trackId === track.id) {
       return;
     }
 
-    playbackCountedTrackIdRef.current = track.id;
-
-    const nextRepetition = Math.max(0, Number(track.repetition ?? 0)) + 1;
-
-    const timestamp = new Date().toISOString();
-
-    try {
-      await apiFetch(`/api/data/music?id=${encodeURIComponent(track.dbId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          repetition: nextRepetition,
-
-          last_listened_at: timestamp,
-        }),
-      });
-    } catch (error) {
-      /*
-       * Allow retry if DB update failed.
-       */
-      playbackCountedTrackIdRef.current = null;
-
-      console.error("Failed to save music repetition:", error);
-
-      return;
-    }
-
-    setTracks((previous) =>
-      previous.map((item) =>
-        item.dbId === track.dbId
-          ? {
-              ...item,
-
-              repetition: nextRepetition,
-
-              lastListenedAt: timestamp,
-            }
-          : item,
-      ),
-    );
+    listeningSessionRef.current = {
+      trackId: track.id,
+      startedAt: Date.now(),
+      startPosition: Math.max(0, Number(currentTimeRef.current || 0)),
+    };
   }, []);
+
+  const finalizeListeningSession = useCallback(
+    async (
+      track: Track | undefined,
+      audio: HTMLAudioElement,
+    ): Promise<void> => {
+      const session = listeningSessionRef.current;
+
+      if (!track?.dbId || !session || session.trackId !== track.id) {
+        return;
+      }
+
+      listeningSessionRef.current = null;
+
+      const rawCurrentTime = Number(audio.currentTime);
+      const currentPosition = Number.isFinite(rawCurrentTime)
+        ? Math.max(0, rawCurrentTime)
+        : Math.max(0, Number(currentTimeRef.current || 0));
+
+      const rawDuration = Number(audio.duration);
+      const knownDuration =
+        Number.isFinite(rawDuration) && rawDuration > 0
+          ? rawDuration
+          : Number.isFinite(track.durationSeconds ?? NaN) &&
+              Number(track.durationSeconds ?? 0) > 0
+            ? Number(track.durationSeconds)
+            : 0;
+
+      const listenedTill =
+        knownDuration > 0
+          ? Math.min(currentPosition, knownDuration)
+          : currentPosition;
+
+      const sessionPositionChange = Math.max(
+        0,
+        listenedTill - Math.min(session.startPosition, listenedTill),
+      );
+
+      const wallClockSeconds = Math.max(
+        0,
+        (Date.now() - session.startedAt) / 1000,
+      );
+
+      /*
+       * A play/pause click at exactly 0 seconds is not a meaningful listen.
+       * Anything that actually advances the audio is recorded.
+       */
+      if (sessionPositionChange <= 0 && wallClockSeconds < 1) {
+        return;
+      }
+
+      const trackId = track.dbId;
+      const timestamp = new Date().toISOString();
+
+      const save = async () => {
+        try {
+          await persistTrackProgress(track, audio, true);
+
+          /*
+           * `record_listen: true` is the authoritative signal to the
+           * backend that this is a real, meaningful listen (not a
+           * volume tweak, a seek, or a play/pause click) — the
+           * backend increments `repetition` by exactly 1, server-side,
+           * and logs exactly one activity_history row using this
+           * song's fixed energy_level. See the dedicated
+           * PATCH /api/data/music handler in server.js.
+           */
+          const response = await apiFetch<{ data?: MusicRow[] }>(
+            `/api/data/music?id=${encodeURIComponent(trackId)}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                record_listen: true,
+                last_listened_at: timestamp,
+              }),
+            },
+          );
+
+          const updatedRow = Array.isArray(response?.data)
+            ? response.data[0]
+            : undefined;
+
+          /*
+           * Prefer the server's authoritative repetition count when
+           * available (it's the source of truth) and otherwise fall
+           * back to the previous optimistic +1, so the UI never
+           * regresses if the response shape ever changes.
+           */
+          setTracks((previous) =>
+            previous.map((item) =>
+              item.dbId === trackId
+                ? {
+                    ...item,
+                    repetition:
+                      typeof updatedRow?.repetition === "number"
+                        ? updatedRow.repetition
+                        : Math.max(0, Number(item.repetition ?? 0)) + 1,
+                    listenedTill:
+                      typeof updatedRow?.listened_till === "number"
+                        ? updatedRow.listened_till
+                        : listenedTill,
+                    durationSeconds:
+                      typeof updatedRow?.duration_seconds === "number" &&
+                      updatedRow.duration_seconds > 0
+                        ? updatedRow.duration_seconds
+                        : knownDuration > 0
+                          ? Math.ceil(knownDuration)
+                          : item.durationSeconds,
+                    lastListenedAt: updatedRow?.last_listened_at ?? timestamp,
+                  }
+                : item,
+            ),
+          );
+        } catch (error) {
+          console.error("Failed to save music listening session:", error);
+        }
+      };
+
+      const queued = listeningSessionFinalizeInFlightRef.current
+        ? listeningSessionFinalizeInFlightRef.current
+            .catch(() => undefined)
+            .then(save)
+        : save();
+
+      listeningSessionFinalizeInFlightRef.current = queued.then(
+        () => undefined,
+        () => undefined,
+      );
+
+      await queued;
+    },
+    [persistTrackProgress],
+  );
 
   /* ------------------------------------------------------------------------ */
   /*                          Track switching                                 */
@@ -915,11 +1136,14 @@ export default function MusicScreen() {
     const audio = getAudio();
 
     /*
-     * Pause old track first.
-     *
-     * Its pause event still sees the previous
-     * loadedAudioTrackRef.
+     * Finalize the old listening session before changing the audio source.
+     * The loaded track ref still points at the old track here.
      */
+    const oldTrack = loadedAudioTrackRef.current;
+    if (oldTrack && oldTrack.id !== currentTrack.id) {
+      void finalizeListeningSession(oldTrack, audio);
+    }
+
     audio.pause();
 
     audio.src = currentTrack.src;
@@ -949,8 +1173,6 @@ export default function MusicScreen() {
 
     setDuration(knownDuration);
 
-    playbackCountedTrackIdRef.current = null;
-
     lastSavedSecondRef.current = Math.floor(currentTimeRef.current);
 
     audio.load();
@@ -962,7 +1184,13 @@ export default function MusicScreen() {
         setIsPlaying(false);
       });
     }
-  }, [currentTrack?.id, getAudio, initializeAnalyser, isPlaying]);
+  }, [
+    currentTrack?.id,
+    finalizeListeningSession,
+    getAudio,
+    initializeAnalyser,
+    isPlaying,
+  ]);
 
   /* ------------------------------------------------------------------------ */
   /*                            Audio events                                  */
@@ -1061,7 +1289,7 @@ export default function MusicScreen() {
     };
 
     const handlePlay = () => {
-      void incrementRepetition(loadedAudioTrackRef.current);
+      startListeningSession(loadedAudioTrackRef.current);
     };
 
     const handlePause = () => {
@@ -1080,7 +1308,7 @@ export default function MusicScreen() {
         return;
       }
 
-      void persistTrackProgress(track, audio, true);
+      void finalizeListeningSession(track, audio);
     };
 
     const handleEnded = () => {
@@ -1098,10 +1326,10 @@ export default function MusicScreen() {
       setCurrentTime(currentTimeRef.current);
 
       /*
-       * Save listened_till = duration.
+       * Finalize this listening session with the final position.
        */
       if (track?.dbId) {
-        void persistTrackProgress(track, audio, true);
+        void finalizeListeningSession(track, audio);
       }
 
       /* ------------------------------ Repeat ----------------------------- */
@@ -1110,8 +1338,6 @@ export default function MusicScreen() {
         /*
          * A repeat is a new playback session.
          */
-        playbackCountedTrackIdRef.current = null;
-
         audio.currentTime = 0;
 
         currentTimeRef.current = 0;
@@ -1139,8 +1365,6 @@ export default function MusicScreen() {
           nextIndex = Math.floor(Math.random() * tracks.length);
         }
 
-        playbackCountedTrackIdRef.current = null;
-
         setCurrentTrackIndex(nextIndex);
 
         setIsPlaying(true);
@@ -1152,8 +1376,6 @@ export default function MusicScreen() {
 
       const nextIndex =
         currentTrackIndex + 1 >= tracks.length ? 0 : currentTrackIndex + 1;
-
-      playbackCountedTrackIdRef.current = null;
 
       setCurrentTrackIndex(nextIndex);
 
@@ -1183,8 +1405,9 @@ export default function MusicScreen() {
     };
   }, [
     currentTrackIndex,
+    finalizeListeningSession,
     getAudio,
-    incrementRepetition,
+    startListeningSession,
     isRepeated,
     isShuffled,
     persistTrackProgress,
@@ -1451,7 +1674,8 @@ export default function MusicScreen() {
        * Save current track before changing.
        */
       if (audioRef.current && currentTrackRef.current) {
-        void persistCurrentTrack(true);
+        const oldTrack = loadedAudioTrackRef.current || currentTrackRef.current;
+        void finalizeListeningSession(oldTrack, audioRef.current);
       }
 
       /*
@@ -1475,15 +1699,13 @@ export default function MusicScreen() {
       /*
        * New playback session.
        */
-      playbackCountedTrackIdRef.current = null;
-
       setCurrentTrackIndex(index);
 
       setIsPlaying(true);
 
       initializeAnalyser();
     },
-    [currentTrackIndex, initializeAnalyser, persistCurrentTrack, tracks],
+    [currentTrackIndex, finalizeListeningSession, initializeAnalyser, tracks],
   );
 
   /* ------------------------------------------------------------------------ */
@@ -1495,7 +1717,11 @@ export default function MusicScreen() {
       return;
     }
 
-    void persistCurrentTrack(true);
+    const audio = audioRef.current;
+    const track = loadedAudioTrackRef.current;
+    if (audio && track) {
+      void finalizeListeningSession(track, audio);
+    }
 
     let nextIndex = currentTrackIndex;
 
@@ -1508,12 +1734,10 @@ export default function MusicScreen() {
         currentTrackIndex + 1 >= tracks.length ? 0 : currentTrackIndex + 1;
     }
 
-    playbackCountedTrackIdRef.current = null;
-
     setCurrentTrackIndex(nextIndex);
 
     setIsPlaying(true);
-  }, [currentTrackIndex, isShuffled, persistCurrentTrack, tracks.length]);
+  }, [currentTrackIndex, finalizeListeningSession, isShuffled, tracks.length]);
 
   /* ------------------------------------------------------------------------ */
   /*                            Previous track                                */
@@ -1537,22 +1761,26 @@ export default function MusicScreen() {
 
       setCurrentTime(0);
 
-      void persistCurrentTrack(true);
+      const track = loadedAudioTrackRef.current || currentTrackRef.current;
+      if (track) {
+        void finalizeListeningSession(track, audio);
+      }
 
       return;
     }
 
-    void persistCurrentTrack(true);
+    const track = loadedAudioTrackRef.current || currentTrackRef.current;
+    if (track) {
+      void finalizeListeningSession(track, audio);
+    }
 
     const previousIndex =
       currentTrackIndex - 1 < 0 ? tracks.length - 1 : currentTrackIndex - 1;
 
-    playbackCountedTrackIdRef.current = null;
-
     setCurrentTrackIndex(previousIndex);
 
     setIsPlaying(true);
-  }, [currentTrackIndex, getAudio, persistCurrentTrack, tracks.length]);
+  }, [currentTrackIndex, finalizeListeningSession, getAudio, tracks.length]);
 
   /* ------------------------------------------------------------------------ */
   /*                                  Seek                                    */
@@ -1657,118 +1885,76 @@ export default function MusicScreen() {
   /* ------------------------------------------------------------------------ */
 
   const recommendations = useMemo(() => {
-    /*
-     * If wellness score exists:
-     *
-     *   use final energy
-     *
-     * Otherwise:
-     *
-     *   use default 50
-     */
     const targetEnergy = hasFinalEnergy
-      ? finalEnergyLevel
+      ? Math.max(1, Math.min(100, Math.round(finalEnergyLevel)))
       : DEFAULT_ENERGY_LEVEL;
 
-    return (
-      tracks
+    /*
+     * Recommendation progression: four consecutive 4-point energy ranges
+     * starting from the range containing the user's final wellness score.
+     *
+     * Example: 63 -> 60-64, 64-68, 68-72, 72-76.
+     */
+    const firstRangeStart =
+      targetEnergy < 4 ? 1 : Math.min(96, Math.floor(targetEnergy / 4) * 4);
 
-        /*
-         * Do not recommend currently playing track.
-         */
-        .filter(
-          (track, index) =>
-            index !== currentTrackIndex && track.isAvailable !== false,
-        )
+    const getRangeStart = (slot: number) =>
+      firstRangeStart === 1 && slot > 0
+        ? 4 + (slot - 1) * 4
+        : Math.min(96, firstRangeStart + slot * 4);
 
-        .map((track) => {
-          /*
-           * Songs without energy metadata are neutral.
-           *
-           * They won't require a valid energy value
-           * just to appear in recommendations.
-           */
-          const energy =
-            typeof track.energyLevel === "number" &&
-            Number.isFinite(track.energyLevel)
-              ? track.energyLevel
-              : targetEnergy;
+    const getRangeEnd = (rangeStart: number) =>
+      rangeStart === 1 ? 4 : Math.min(100, rangeStart + 4);
 
-          /*
-           * PRIMARY:
-           *
-           * closest energy level.
-           */
-          const energyDistance = Math.abs(energy - targetEnergy);
-
-          /*
-           * SECONDARY:
-           *
-           * Favorites get a small boost.
-           */
-          const favoriteBonus = track.isFavorite ? 8 : 0;
-
-          /*
-           * Don't endlessly recommend a song
-           * that has already been played many times.
-           */
-          const repetitionPenalty = Math.min(
-            10,
-            Math.max(0, Number(track.repetition ?? 0)),
-          );
-
-          /*
-           * Recently listened songs get
-           * a small penalty.
-           */
-          const lastListenedTime = track.lastListenedAt
-            ? new Date(track.lastListenedAt).getTime()
-            : 0;
-
-          const daysSinceListened =
-            lastListenedTime > 0
-              ? Math.max(
-                  0,
-                  (Date.now() - lastListenedTime) / (24 * 60 * 60 * 1000),
-                )
-              : Infinity;
-
-          const recentPenalty = Number.isFinite(daysSinceListened)
-            ? Math.max(0, 5 - Math.min(5, daysSinceListened))
-            : 0;
-
-          /*
-           * Lower score = better recommendation.
-           */
-          const score =
-            energyDistance * 100 -
-            favoriteBonus +
-            repetitionPenalty +
-            recentPenalty;
-
-          return {
-            track,
-            score,
-            energyDistance,
-          };
-        })
-
-        .sort((a, b) => {
-          if (a.score !== b.score) {
-            return a.score - b.score;
-          }
-
-          if (a.energyDistance !== b.energyDistance) {
-            return a.energyDistance - b.energyDistance;
-          }
-
-          return a.track.title.localeCompare(b.track.title);
-        })
-
-        .slice(0, 4)
-
-        .map(({ track }) => track)
+    const available = tracks.filter(
+      (track, index) =>
+        index !== currentTrackIndex &&
+        track.isAvailable !== false &&
+        typeof track.energyLevel === "number" &&
+        Number.isFinite(track.energyLevel),
     );
+
+    const usedIds = new Set<string>();
+    const selected: Track[] = [];
+
+    for (let slot = 0; slot < 4; slot += 1) {
+      const rangeStart = getRangeStart(slot);
+      const rangeEnd = getRangeEnd(rangeStart);
+
+      const candidates = available
+        .filter((track) => {
+          const energy = Number(track.energyLevel);
+          return (
+            !usedIds.has(track.id) && energy >= rangeStart && energy <= rangeEnd
+          );
+        })
+        .sort((a, b) => {
+          const aRepetition = Math.max(0, Number(a.repetition ?? 0));
+          const bRepetition = Math.max(0, Number(b.repetition ?? 0));
+
+          if (aRepetition !== bRepetition) {
+            return aRepetition - bRepetition;
+          }
+
+          const aFavorite = a.isFavorite ? 1 : 0;
+          const bFavorite = b.isFavorite ? 1 : 0;
+
+          if (aFavorite !== bFavorite) {
+            return bFavorite - aFavorite;
+          }
+
+          return a.title.localeCompare(b.title);
+        });
+
+      const chosen = candidates[0];
+
+      if (chosen) {
+        selected.push(chosen);
+        usedIds.add(chosen.id);
+      }
+    }
+
+    return selected;
   }, [currentTrackIndex, finalEnergyLevel, hasFinalEnergy, tracks]);
 
   /* ------------------------------------------------------------------------ */
@@ -1845,12 +2031,20 @@ export default function MusicScreen() {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") {
-        void persistCurrentTrack(true);
+        const audio = audioRef.current;
+        const track = loadedAudioTrackRef.current || currentTrackRef.current;
+        if (audio && track) {
+          void finalizeListeningSession(track, audio);
+        }
       }
     };
 
     const handlePageHide = () => {
-      void persistCurrentTrack(true);
+      const audio = audioRef.current;
+      const track = loadedAudioTrackRef.current || currentTrackRef.current;
+      if (audio && track) {
+        void finalizeListeningSession(track, audio);
+      }
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
@@ -1863,9 +2057,13 @@ export default function MusicScreen() {
       window.removeEventListener("pagehide", handlePageHide);
 
       /*
-       * Best-effort final save.
+       * Best-effort final listening-session save.
        */
-      void persistCurrentTrack(true);
+      const audio = audioRef.current;
+      const track = loadedAudioTrackRef.current || currentTrackRef.current;
+      if (audio && track) {
+        void finalizeListeningSession(track, audio);
+      }
 
       if (audioRef.current) {
         audioRef.current.pause();
@@ -1883,7 +2081,7 @@ export default function MusicScreen() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [persistCurrentTrack]);
+  }, [finalizeListeningSession]);
 
   /* ------------------------------------------------------------------------ */
   /*                                    UI                                    */
