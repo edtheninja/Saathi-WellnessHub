@@ -31,6 +31,7 @@ const pageAnim = {
     opacity: 0,
     y: 25,
   },
+
   visible: {
     opacity: 1,
     y: 0,
@@ -48,6 +49,7 @@ const sectionAnim = {
     y: 20,
     scale: 0.98,
   },
+
   visible: {
     opacity: 1,
     y: 0,
@@ -77,6 +79,7 @@ const MoodTracker = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
+
   const [weeklyData, setWeeklyData] = useState<number[]>(Array(7).fill(0));
 
   const currentMood = useMemo(() => getMoodFromScore(moodValue), [moodValue]);
@@ -96,6 +99,7 @@ const MoodTracker = () => {
 
       if (userError) {
         console.error("Authentication error:", userError);
+
         return;
       }
 
@@ -152,8 +156,8 @@ const MoodTracker = () => {
        *
        * YYYY-MM-DD → highest mood score
        *
-       * Database already stores energy_level
-       * directly as 1–100.
+       * Database already stores the
+       * mood score directly as 1–100.
        */
 
       const map: Record<string, number> = {};
@@ -169,9 +173,10 @@ const MoodTracker = () => {
          * Use the database value directly.
          *
          * Example:
-         * 25 → 25
-         * 50 → 50
-         * 85 → 85
+         *
+         * 20  → 20
+         * 50  → 50
+         * 75  → 75
          * 100 → 100
          */
 
@@ -219,8 +224,10 @@ const MoodTracker = () => {
    * SAVE MOOD
    * -------------------------------------------
    *
-   * Mood score is stored directly as 1–100.
-   * No conversion to 1–5.
+   * The exact moodValue from 1–100
+   * is stored in the database.
+   *
+   * There is NO conversion to 1–5.
    * -------------------------------------------
    */
 
@@ -246,10 +253,10 @@ const MoodTracker = () => {
       }
 
       /*
-       * Safety validation.
+       * Validate mood score.
        *
-       * The UI is already 1–100, but we
-       * validate before sending to the DB.
+       * Mood must be an integer
+       * between 1 and 100.
        */
 
       if (!Number.isInteger(moodValue) || moodValue < 1 || moodValue > 100) {
@@ -267,7 +274,10 @@ const MoodTracker = () => {
       todayEnd.setHours(23, 59, 59, 999);
 
       /*
-       * Store the exact 1–100 mood score.
+       * IMPORTANT:
+       *
+       * Store the exact 1–100
+       * mood value.
        */
 
       const energyLevel = moodValue;
@@ -287,8 +297,6 @@ const MoodTracker = () => {
         })
         .limit(1);
 
-      const existingMood = existingMoods?.[0] ?? null;
-
       if (findError) {
         console.error("Failed to find today's mood:", findError);
 
@@ -296,6 +304,8 @@ const MoodTracker = () => {
 
         return;
       }
+
+      const existingMood = existingMoods?.[0] ?? null;
 
       /*
        * -------------------------------------------
@@ -308,6 +318,11 @@ const MoodTracker = () => {
           .from("moods")
           .update({
             mood: currentMood.label,
+
+            /*
+             * Store 1–100 directly.
+             */
+
             energy_level: energyLevel,
           })
           .eq("id", existingMood.id)
@@ -329,7 +344,13 @@ const MoodTracker = () => {
        */
         const { error: insertError } = await supabase.from("moods").insert({
           user_id: user.id,
+
           mood: currentMood.label,
+
+          /*
+           * Store 1–100 directly.
+           */
+
           energy_level: energyLevel,
         });
 
@@ -343,7 +364,7 @@ const MoodTracker = () => {
       }
 
       /*
-       * Reload the weekly chart from Supabase.
+       * Reload weekly chart.
        */
 
       await loadWeeklyProgress();
@@ -355,7 +376,7 @@ const MoodTracker = () => {
       setNoteOpen(false);
 
       /*
-       * Give the user confirmation.
+       * Confirmation.
        */
 
       alert(
@@ -379,7 +400,9 @@ const MoodTracker = () => {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user || !note.trim()) return;
+    if (!user || !note.trim()) {
+      return;
+    }
 
     const todayStart = new Date();
 
@@ -409,7 +432,9 @@ const MoodTracker = () => {
 
     const { error } = await supabase
       .from("moods")
-      .update({ note })
+      .update({
+        note,
+      })
       .eq("id", data.id);
 
     if (error) {
@@ -938,10 +963,10 @@ const MoodTracker = () => {
                       date.toDateString() === today.toDateString();
 
                     /*
-                     * Mood value is already 1–100.
+                     * Database value is already
+                     * 1–100.
                      *
-                     * Use it directly to
-                     * calculate chart height.
+                     * Use it directly.
                      */
 
                     const barHeight =
