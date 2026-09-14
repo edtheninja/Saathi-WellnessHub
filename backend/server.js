@@ -119,8 +119,10 @@ const resourceConfig = {
   // helpers below need to know about every real column. It is NOT a
   // green light for normal users to set it, though — see the
   // dedicated activity_history POST/PATCH routes further down, which
-  // run BEFORE the generic ones and strip `process` from any
-  // user-supplied body before it ever reaches insertResource/updateResource.
+  // run BEFORE the generic ones. POST is blocked entirely for normal
+  // users (activity_history is now written automatically by the
+  // feature routes below) and PATCH strips `process` from any
+  // user-supplied body before it ever reaches updateResource.
   activity_history: {
     table: "activity_history",
     columns: ["activity_type", "title", "subtitle", "energy_level", "process", "metadata"],
@@ -301,6 +303,58 @@ async function updateResource(config, userId, id, item) {
 async function deleteResource(config, userId, id) {
   if (id) return pool.query(`DELETE FROM ${config.table} WHERE user_id = $1 AND id = $2`, [userId, id]);
   return pool.query(`DELETE FROM ${config.table} WHERE user_id = $1`, [userId]);
+}
+
+// ---------------------------------------------------------------
+// Unified ML data pipeline helper.
+//
+// EVERY meaningful action across the five wellness features (mood,
+// music, meditation, journal, community) must produce exactly one
+// activity_history row, created by the BACKEND as part of the same
+// operation that writes the feature's own table — never as a second
+// request the frontend has to remember to make.
+//
+// Pass a `client` (a checked-out pg client that already has BEGIN
+// called on it) so the feature write and the activity_history write
+// commit or roll back together. If no client is given, falls back to
+// the pool (fine for callers that don't need transactional safety).
+// ---------------------------------------------------------------
+const ACTIVITY_TYPES = ["mood", "music", "meditation", "journal", "community"];
+
+async function recordActivity(client, { userId, activityType, title, subtitle = null, energyLevel = null, metadata = {} }) {
+  if (!userId) throw new Error("recordActivity requires an authenticated userId");
+  if (!ACTIVITY_TYPES.includes(activityType)) {
+    throw new Error(`Invalid activity_type "${activityType}". Must be one of: ${ACTIVITY_TYPES.join(", ")}`);
+  }
+  if (!title || !String(title).trim()) throw new Error("recordActivity requires a title");
+
+  let normalizedEnergy = null;
+  if (energyLevel !== null && energyLevel !== undefined && energyLevel !== "") {
+    normalizedEnergy = Number(energyLevel);
+    if (!Number.isFinite(normalizedEnergy) || normalizedEnergy < 1 || normalizedEnergy > 100) {
+      throw new Error("energy_level must be a number between 1 and 100");
+    }
+  }
+
+  const runner = client || pool;
+  // `process` is intentionally never set here — the column has no
+  // DEFAULT, so omitting it leaves it NULL (meaning "ML has not
+  // processed this activity yet") until the ML service marks it via
+  // PATCH /api/activity-history/:id/process.
+  const result = await runner.query(
+    `INSERT INTO activity_history (user_id, activity_type, title, subtitle, energy_level, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [
+      userId,
+      activityType,
+      String(title).trim(),
+      subtitle ? String(subtitle).trim() : null,
+      normalizedEnergy,
+      JSON.stringify(metadata ?? {}),
+    ]
+  );
+  return result.rows[0];
 }
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "saathi-wellness-postgresql" }));
@@ -534,6 +588,9 @@ app.get("/api/music/recommendations", authRequired, async (req, res) => {
 // ---------------------------------------------------------------
 // AI chat (Gemini). authOptional — matches the frontend, which only
 // attaches a token if the user is logged in, so guests can chat too.
+// NOTE: chat is intentionally NOT one of the five activity_history
+// types (mood/music/meditation/journal/community) — no activity is
+// recorded here, per spec.
 // ---------------------------------------------------------------
 app.post("/api/ai/chat", authOptional, async (req, res) => {
   try {
@@ -763,6 +820,10 @@ app.get("/api/community/rooms", authRequired, async (_req, res) => {
   res.json({ data: result.rows });
 });
 
+// Room creation is also a "meaningful community action" (the creator
+// is immediately made an admin member of their own room), so it logs
+// one activity_history row in the same transaction as the room +
+// membership inserts.
 app.post("/api/community/rooms", authRequired, async (req, res) => {
   const { name, topic = "", description = "", roomType = "support" } = req.body;
   const cleanName = String(name || "").trim().slice(0, 80);
@@ -776,35 +837,108 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
   const baseId = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "community";
   const roomId = `${baseId}-${crypto.randomUUID().slice(0, 8)}`;
 
+  const client = await pool.connect();
   try {
-    const result = await pool.query(`
+    await client.query("BEGIN");
+    const result = await client.query(`
       INSERT INTO community_rooms (id, owner_id, name, room_type, topic, description)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id, owner_id, name, room_type, topic, description, created_at
     `, [roomId, req.auth.sub, cleanName, roomType, cleanTopic, cleanDescription]);
-    await pool.query(`
+    await client.query(`
       INSERT INTO community_memberships (room_id, user_id, role)
       VALUES ($1, $2, 'admin')
     `, [roomId, req.auth.sub]);
+
+    await recordActivity(client, {
+      userId: req.auth.sub,
+      activityType: "community",
+      title: "Created Community",
+      subtitle: cleanName,
+      energyLevel: null,
+      metadata: { community_id: roomId, action: "created" },
+    });
+
+    await client.query("COMMIT");
     res.status(201).json({ data: { ...result.rows[0], member_count: 1 } });
-  } catch (error) { publicError(res, error); }
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
 });
 
+// Joining is the canonical "meaningful community action" example from
+// the spec. RETURNING lets us detect whether a membership row was
+// actually inserted (vs. an already-a-member no-op from ON CONFLICT
+// DO NOTHING), so re-joining an existing membership never produces a
+// duplicate activity_history row.
 app.post("/api/community/rooms/:roomId/join", authRequired, async (req, res) => {
-  await pool.query(`
-    INSERT INTO community_memberships (room_id, user_id)
-    VALUES ($1, $2)
-    ON CONFLICT (room_id, user_id) DO NOTHING
-  `, [req.params.roomId, req.auth.sub]);
-  res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const insertResult = await client.query(`
+      INSERT INTO community_memberships (room_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (room_id, user_id) DO NOTHING
+      RETURNING room_id
+    `, [req.params.roomId, req.auth.sub]);
+
+    if (insertResult.rowCount > 0) {
+      const room = await client.query("SELECT name FROM community_rooms WHERE id = $1", [req.params.roomId]);
+      await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "community",
+        title: "Joined Community",
+        subtitle: room.rows[0]?.name || null,
+        energyLevel: null,
+        metadata: { community_id: req.params.roomId, action: "joined" },
+      });
+    }
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
 });
 
 app.delete("/api/community/rooms/:roomId/leave", authRequired, async (req, res) => {
-  await pool.query(`
-    DELETE FROM community_memberships
-    WHERE room_id = $1 AND user_id = $2
-  `, [req.params.roomId, req.auth.sub]);
-  res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const deleteResult = await client.query(`
+      DELETE FROM community_memberships
+      WHERE room_id = $1 AND user_id = $2
+      RETURNING room_id
+    `, [req.params.roomId, req.auth.sub]);
+
+    // Only log if the user was actually a member (avoids a spurious
+    // activity_history row for a leave call on a non-membership).
+    if (deleteResult.rowCount > 0) {
+      const room = await client.query("SELECT name FROM community_rooms WHERE id = $1", [req.params.roomId]);
+      await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "community",
+        title: "Left Community",
+        subtitle: room.rows[0]?.name || null,
+        energyLevel: null,
+        metadata: { community_id: req.params.roomId, action: "left" },
+      });
+    }
+
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
 });
 
 app.get("/api/community/rooms/:roomId/membership", authRequired, async (req, res) => {
@@ -829,6 +963,10 @@ app.get("/api/community/rooms/:roomId/messages", authRequired, async (req, res) 
   res.json({ data: result.rows });
 });
 
+// NOTE: individual chat messages are intentionally NOT logged to
+// activity_history — the spec explicitly excludes "every message
+// character" / per-message noise from the community signal. Joining,
+// creating, and leaving a community are the meaningful signals.
 app.post("/api/community/rooms/:roomId/messages", authRequired, async (req, res) => {
   const { content, messageType = "text", replyToId = null, support = null } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: "Message content is required" });
@@ -972,54 +1110,251 @@ app.post("/api/anonymous-posts/:postId/like", authRequired, async (req, res) => 
 });
 
 // =================================================================
+// MOOD — dedicated create route (registered BEFORE the generic
+// /api/data/:resource block, same reason as journals/activity_history
+// below: Express matches routes in registration order). Saves to
+// `moods` AND records activity_history in the SAME transaction, so
+// the frontend only ever calls this one endpoint.
+// =================================================================
+app.post("/api/data/moods", authRequired, async (req, res) => {
+  const { mood, energy_level, note } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const insertResult = await client.query(
+      `INSERT INTO moods (user_id, mood, energy_level, note) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.auth.sub, mood ?? null, energy_level !== undefined && energy_level !== null && energy_level !== "" ? Number(energy_level) : null, note ?? null]
+    );
+    const moodRow = insertResult.rows[0];
+
+    await recordActivity(client, {
+      userId: req.auth.sub,
+      activityType: "mood",
+      title: moodRow.mood ? String(moodRow.mood) : "Mood Logged",
+      subtitle: null,
+      energyLevel: moodRow.energy_level,
+      metadata: { mood_id: moodRow.id },
+    });
+
+    await client.query("COMMIT");
+    res.status(201).json({ data: [moodRow] });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+// =================================================================
+// MUSIC — dedicated update route. Creating a music row (adding a
+// song to the library) is not itself a "listening" event, so POST
+// still falls through to the generic /api/data/:resource handler
+// below with no activity_history side effect.
+//
+// A MEANINGFUL listening event is detected here on PATCH, using two
+// signals so we never log on trivial UI noise (volume, seeking,
+// play/pause clicks):
+//   1. `repetition` increased — the existing music-tracking logic
+//      already increments this on a completed/near-complete listen.
+//   2. `listened_till` just CROSSED the 80%-of-duration mark for the
+//      first time (compared old vs new value, not just "is above").
+// =================================================================
+app.patch("/api/data/music", authRequired, async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "An id query parameter is required" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existingResult = await client.query(
+      `SELECT * FROM music WHERE user_id = $1 AND id = $2 FOR UPDATE`,
+      [req.auth.sub, id]
+    );
+    const existing = existingResult.rows[0];
+    if (!existing) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Record not found" });
+    }
+
+    const assignments = [];
+    const values = [req.auth.sub, id];
+    for (const column of resourceConfig.music.columns) {
+      if (req.body[column] === undefined) continue;
+      values.push(req.body[column]);
+      assignments.push(`${column} = $${values.length}`);
+    }
+
+    let updated = existing;
+    if (assignments.length) {
+      const updateResult = await client.query(
+        `UPDATE music SET ${assignments.join(", ")} WHERE user_id = $1 AND id = $2 RETURNING *`,
+        values
+      );
+      updated = updateResult.rows[0];
+    }
+
+    const oldRepetition = Number(existing.repetition || 0);
+    const newRepetition = Number(updated.repetition ?? existing.repetition ?? 0);
+    const repetitionIncreased = newRepetition > oldRepetition;
+
+    const duration = Number(updated.duration_seconds ?? existing.duration_seconds ?? 0);
+    const oldListenedTill = Number(existing.listened_till || 0);
+    const newListenedTill = Number(updated.listened_till ?? existing.listened_till ?? 0);
+    const threshold = duration > 0 ? duration * 0.8 : null;
+    const crossedThreshold = threshold !== null && oldListenedTill < threshold && newListenedTill >= threshold;
+
+    if (repetitionIncreased || crossedThreshold) {
+      await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "music",
+        title: updated.song_name || "Music",
+        subtitle: updated.artist || null,
+        energyLevel: updated.energy_level,
+        metadata: {
+          music_id: updated.id,
+          song_name: updated.song_name,
+          artist: updated.artist,
+          listened_till: updated.listened_till,
+          duration_seconds: updated.duration_seconds,
+        },
+      });
+    }
+
+    await client.query("COMMIT");
+    res.json({ data: [updated] });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+// =================================================================
+// MEDITATION — dedicated create + update routes. A completed session
+// (created with completed=true, or created without a value — most
+// clients only POST once the session finishes — or PATCHed from
+// false to true) logs exactly one activity_history row.
+// =================================================================
+app.post("/api/data/meditation_sessions", authRequired, async (req, res) => {
+  const { duration, completed, energy_level } = req.body;
+  const isCompleted = completed === undefined ? true : Boolean(completed);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const insertResult = await client.query(
+      `INSERT INTO meditation_sessions (user_id, duration, completed, energy_level)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.auth.sub, duration ?? null, isCompleted, energy_level !== undefined && energy_level !== null && energy_level !== "" ? Number(energy_level) : null]
+    );
+    const session = insertResult.rows[0];
+
+    if (isCompleted) {
+      await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "meditation",
+        title: "Meditation Session",
+        subtitle: null,
+        energyLevel: session.energy_level,
+        metadata: { session_id: session.id, duration_seconds: session.duration },
+      });
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json({ data: [session] });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+app.patch("/api/data/meditation_sessions", authRequired, async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "An id query parameter is required" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existingResult = await client.query(
+      `SELECT * FROM meditation_sessions WHERE user_id = $1 AND id = $2 FOR UPDATE`,
+      [req.auth.sub, id]
+    );
+    const existing = existingResult.rows[0];
+    if (!existing) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Record not found" });
+    }
+
+    const assignments = [];
+    const values = [req.auth.sub, id];
+    for (const column of resourceConfig.meditation_sessions.columns) {
+      if (req.body[column] === undefined) continue;
+      values.push(req.body[column]);
+      assignments.push(`${column} = $${values.length}`);
+    }
+
+    let updated = existing;
+    if (assignments.length) {
+      const updateResult = await client.query(
+        `UPDATE meditation_sessions SET ${assignments.join(", ")} WHERE user_id = $1 AND id = $2 RETURNING *`,
+        values
+      );
+      updated = updateResult.rows[0];
+    }
+
+    // Only log the false -> true transition, so re-saving an already
+    // completed session never produces a second activity_history row.
+    const justCompleted = !existing.completed && updated.completed;
+    if (justCompleted) {
+      await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "meditation",
+        title: "Meditation Session",
+        subtitle: null,
+        energyLevel: updated.energy_level,
+        metadata: { session_id: updated.id, duration_seconds: updated.duration },
+      });
+    }
+
+    await client.query("COMMIT");
+    res.json({ data: [updated] });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
+// =================================================================
 // ACTIVITY HISTORY — pipeline into the separate ML backend.
 //
-// Two ordinary user-facing routes below (registered BEFORE the
-// generic /api/data/:resource block, same reason as the journals
-// upload route: Express matches in registration order) exist ONLY
-// to guarantee `process` can never be set by a normal authenticated
-// user, even though it's one of resourceConfig.activity_history's
-// columns. GET still falls through to the generic handler — reading
-// your own activity_history (including filtering by ?activity_type=)
-// has no spoofing risk.
+// POST is now BLOCKED for normal users: activity_history rows are
+// created automatically, inside the same transaction, by the mood/
+// music/meditation/journal/community routes above. Letting the
+// frontend also POST directly here would (a) risk duplicate rows for
+// one real action and (b) let a user fabricate an activity_type
+// outside the five allowed values, which breaks the ML contract.
+//
+// PATCH still exists (e.g. for correcting a title) but — same as
+// before — strips `process` so a normal user can never mark their
+// own activity "processed", and now also validates `activity_type`
+// stays within the five allowed values if it's included in the body.
 //
 // Two ML-only routes further below use mlServiceRequired (a shared
 // secret header, not a user JWT) since a service has no per-user
 // session and this class of endpoint is intentionally cross-user.
 // =================================================================
 
-app.post("/api/data/activity_history", authRequired, async (req, res) => {
-  try {
-    const { activity_type, title, subtitle, energy_level, metadata } = req.body;
-
-    if (!activity_type || !String(activity_type).trim()) {
-      return res.status(400).json({ error: "activity_type is required" });
-    }
-    if (!title || !String(title).trim()) {
-      return res.status(400).json({ error: "title is required" });
-    }
-
-    const result = await pool.query(
-      `INSERT INTO activity_history (user_id, activity_type, title, subtitle, energy_level, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [
-        req.auth.sub,
-        String(activity_type).trim(),
-        String(title).trim(),
-        subtitle ? String(subtitle).trim() : null,
-        energy_level !== undefined && energy_level !== null && energy_level !== "" ? Number(energy_level) : null,
-        JSON.stringify(metadata ?? {}),
-      ]
-    );
-
-    // `process` is intentionally never set here — the column has no
-    // DEFAULT clause, so omitting it leaves it NULL until the ML
-    // service marks it processed via the dedicated route below.
-    res.status(201).json({ data: result.rows[0] });
-  } catch (error) {
-    publicError(res, error);
-  }
+app.post("/api/data/activity_history", authRequired, (_req, res) => {
+  res.status(403).json({
+    error:
+      "activity_history records are created automatically by the wellness features (mood, music, meditation, journal, community) and cannot be created directly.",
+  });
 });
 
 app.patch("/api/data/activity_history", authRequired, async (req, res) => {
@@ -1031,6 +1366,16 @@ app.patch("/api/data/activity_history", authRequired, async (req, res) => {
     // helper — a normal user's PATCH must never be able to mark their
     // own activity "processed".
     const { process: _ignoredProcess, ...allowedUpdates } = req.body || {};
+
+    if (allowedUpdates.activity_type !== undefined && !ACTIVITY_TYPES.includes(allowedUpdates.activity_type)) {
+      return res.status(400).json({ error: `activity_type must be one of: ${ACTIVITY_TYPES.join(", ")}` });
+    }
+    if (allowedUpdates.energy_level !== undefined && allowedUpdates.energy_level !== null) {
+      const numericEnergy = Number(allowedUpdates.energy_level);
+      if (!Number.isFinite(numericEnergy) || numericEnergy < 1 || numericEnergy > 100) {
+        return res.status(400).json({ error: "energy_level must be a number between 1 and 100" });
+      }
+    }
 
     const updated = await updateResource(resourceConfig.activity_history, req.auth.sub, id, allowedUpdates);
     if (!updated) return res.status(404).json({ error: "Record not found" });
@@ -1108,11 +1453,22 @@ app.patch("/api/activity-history/:id/process", mlServiceRequired, async (req, re
 // Express matches routes in registration order, so if the generic
 // `:resource` route came first it would swallow every POST to
 // /api/data/journals and this handler would never run.
+//
+// Now wrapped in a transaction so the journal row and its
+// activity_history row commit or roll back together.
+//
+// PRIVACY: activity_history.metadata only stores journal_id — never
+// the journal title/content/images — since the ML backend only needs
+// enough signal to know a journal was written, not its contents.
 // ---------------------------------------------------------------
 app.post("/api/data/journals", authRequired, upload.array("images", 10), async (req, res) => {
+  const client = await pool.connect();
   try {
     const { title = "", content = "", mood, energy_level } = req.body;
-    if (!String(content).trim()) return res.status(400).json({ error: "Journal content is required" });
+    if (!String(content).trim()) {
+      client.release();
+      return res.status(400).json({ error: "Journal content is required" });
+    }
 
     const files = req.files || [];
     const mediaUrls = files.map((file) => `/uploads/journals/${file.filename}`);
@@ -1121,11 +1477,13 @@ app.post("/api/data/journals", authRequired, upload.array("images", 10), async (
       files: files.map((file) => ({ original_name: file.originalname, filename: file.filename, mimetype: file.mimetype, size: file.size })),
     };
 
+    await client.query("BEGIN");
+
     // media_url is a single TEXT column in schema.sql (not an array),
     // so we store the first image there and the full list in
     // media_metadata (JSONB) — this was previously passing a JS array
     // straight into a TEXT column, which Postgres would reject.
-    const result = await pool.query(
+    const result = await client.query(
       `INSERT INTO journals (user_id, title, content, mood, energy_level, media_type, media_url, media_metadata)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
@@ -1140,19 +1498,38 @@ app.post("/api/data/journals", authRequired, upload.array("images", 10), async (
         JSON.stringify(mediaMetadata),
       ]
     );
+    const journal = result.rows[0];
 
-    res.status(201).json({ data: result.rows[0] });
+    await recordActivity(client, {
+      userId: req.auth.sub,
+      activityType: "journal",
+      title: "Journal Entry",
+      subtitle: null,
+      // Only use an energy value if the journal system already
+      // computed one — never invent one.
+      energyLevel: journal.energy_level,
+      metadata: { journal_id: journal.id },
+    });
+
+    await client.query("COMMIT");
+    res.status(201).json({ data: journal });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("Create journal error:", error);
     res.status(400).json({ error: error?.message || "Failed to create journal" });
+  } finally {
+    client.release();
   }
 });
 
 // ---------------------------------------------------------------
 // Generic per-user data endpoints, now backed by real tables.
-// (journals' and activity_history's POST/PATCH are handled above;
-// GET for both — and DELETE for journals — still fall through to
-// these generic handlers, which is fine.)
+// (journals', moods', music's, meditation_sessions', and
+// activity_history's POST/PATCH are handled by the dedicated routes
+// above where relevant; anything not overridden there — including
+// GET for every resource, and DELETE for journals/moods/etc. — still
+// falls through to these generic handlers, which is fine since those
+// operations don't need an activity_history side effect.)
 // ---------------------------------------------------------------
 app.get("/api/data/:resource", authRequired, async (req, res) => {
   try {
