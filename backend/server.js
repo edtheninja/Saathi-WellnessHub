@@ -362,8 +362,37 @@ async function recordActivity(client, { userId, activityType, title, subtitle = 
   );
   return result.rows[0];
 }
+app.get("/api/debug/activity-history-db", authRequired, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        column_name,
+        data_type,
+        is_nullable,
+        column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'activity_history'
+      ORDER BY ordinal_position
+    `);
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "saathi-wellness-postgresql" }));
+    res.json({
+      table: "activity_history",
+      columns: result.rows,
+    });
+  } catch (error) {
+    console.error("Activity history DB debug error:", error);
+    res.status(500).json({
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/health", (_req, res) =>
+  res.json({ ok: true, service: "saathi-wellness-postgresql" })
+);
+
+
 
 app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
