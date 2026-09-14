@@ -788,64 +788,64 @@ app.put("/api/settings/:key", authRequired, async (req, res) => {
 // ML-only: store a final_energy_level result computed by the
 // separate ML backend. This is the ONLY place final_energy_level is
 // ever written from — Express performs no averaging or derivation.
-app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
-  try {
-    const { user_id, final_energy_level, breakdown = {} } = req.body || {};
-    if (!user_id) return res.status(400).json({ error: "user_id is required" });
+// app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
+//   try {
+//     const { user_id, final_energy_level, breakdown = {} } = req.body || {};
+//     if (!user_id) return res.status(400).json({ error: "user_id is required" });
 
-    const numericEnergy = Number(final_energy_level);
-    if (
-      !Number.isFinite(numericEnergy) ||
-      numericEnergy < 1 ||
-      numericEnergy > 100
-    ) {
-      return res
-        .status(400)
-        .json({
-          error: "final_energy_level must be a number between 1 and 100",
-        });
-    }
+//     const numericEnergy = Number(final_energy_level);
+//     if (
+//       !Number.isFinite(numericEnergy) ||
+//       numericEnergy < 1 ||
+//       numericEnergy > 100
+//     ) {
+//       return res
+//         .status(400)
+//         .json({
+//           error: "final_energy_level must be a number between 1 and 100",
+//         });
+//     }
 
-    const inserted = await pool.query(
-      "INSERT INTO wellness_scores (user_id, final_energy_level, breakdown) VALUES ($1, $2, $3) RETURNING *",
-      [user_id, Math.round(numericEnergy), JSON.stringify(breakdown ?? {})],
-    );
-    console.log(
-      `[ML] final_energy_level stored for user ${user_id}: ${inserted.rows[0].final_energy_level}`,
-    );
-    res.status(201).json({ data: inserted.rows[0] });
-  } catch (error) {
-    console.error("Wellness score store error:", error.message);
-    publicError(res, error);
-  }
-});
+//     const inserted = await pool.query(
+//       "INSERT INTO wellness_scores (user_id, final_energy_level, breakdown) VALUES ($1, $2, $3) RETURNING *",
+//       [user_id, Math.round(numericEnergy), JSON.stringify(breakdown ?? {})],
+//     );
+//     console.log(
+//       `[ML] final_energy_level stored for user ${user_id}: ${inserted.rows[0].final_energy_level}`,
+//     );
+//     res.status(201).json({ data: inserted.rows[0] });
+//   } catch (error) {
+//     console.error("Wellness score store error:", error.message);
+//     publicError(res, error);
+//   }
+// });
 
-// Kept for frontend backward-compatibility (previously computed
-// energy locally). It now performs NO calculation — it simply
-// returns whatever the ML backend has most recently stored, so a
-// fresh score only ever comes from POST /api/wellness-score above.
-app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1",
-      [req.auth.sub],
-    );
-    res.status(200).json({
-      data: result.rows[0] || null,
-      note: "final_energy_level is computed by the separate ML backend from activity_history; this endpoint no longer performs local calculation.",
-    });
-  } catch (error) {
-    publicError(res, error);
-  }
-});
+// // Kept for frontend backward-compatibility (previously computed
+// // energy locally). It now performs NO calculation — it simply
+// // returns whatever the ML backend has most recently stored, so a
+// // fresh score only ever comes from POST /api/wellness-score above.
+// app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
+//   try {
+//     const result = await pool.query(
+//       "SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1",
+//       [req.auth.sub],
+//     );
+//     res.status(200).json({
+//       data: result.rows[0] || null,
+//       note: "final_energy_level is computed by the separate ML backend from activity_history; this endpoint no longer performs local calculation.",
+//     });
+//   } catch (error) {
+//     publicError(res, error);
+//   }
+// });
 
-app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
-  const result = await pool.query(
-    "SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1",
-    [req.auth.sub],
-  );
-  res.json({ data: result.rows[0] || null });
-});
+// app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
+//   const result = await pool.query(
+//     "SELECT * FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1",
+//     [req.auth.sub],
+//   );
+//   res.json({ data: result.rows[0] || null });
+// });
 
 // ---------------------------------------------------------------
 // Music recommendations — pick tracks whose energy_level is closest

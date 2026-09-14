@@ -306,6 +306,10 @@ CREATE INDEX IF NOT EXISTS activity_history_user_idx ON activity_history(user_id
 -- over time as well as read "the latest" score per user.
 -- ---------------------------------------------------------
 
+-- ============================================
+-- WELLNESS SCORES TABLE
+-- ============================================
+
 CREATE TABLE IF NOT EXISTS wellness_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -313,21 +317,73 @@ CREATE TABLE IF NOT EXISTS wellness_scores (
     REFERENCES saathi_users(id)
     ON DELETE CASCADE,
 
+  -- NULL initially.
+  -- ML will fill this after processing activities.
   final_energy_level INTEGER
     CHECK (final_energy_level BETWEEN 1 AND 100),
 
+  -- NULL initially.
+  -- ML can store the breakdown later.
   breakdown JSONB,
 
+  -- NULL initially.
+  -- Set when ML calculates the score.
   computed_at TIMESTAMPTZ,
 
+  -- When this wellness-score row was created.
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+
+-- ============================================
+-- ONE ROW PER USER
+-- ============================================
 
 CREATE UNIQUE INDEX IF NOT EXISTS wellness_scores_user_unique
 ON wellness_scores(user_id);
 
+
+-- ============================================
+-- USER LOOKUP INDEX
+-- ============================================
+
 CREATE INDEX IF NOT EXISTS wellness_scores_user_idx
 ON wellness_scores(user_id, computed_at DESC);
+
+
+-- ============================================
+-- FIX EXISTING TABLE
+-- ============================================
+-- These are needed if wellness_scores already
+-- existed with NOT NULL constraints.
+
+ALTER TABLE wellness_scores
+ALTER COLUMN final_energy_level DROP NOT NULL;
+
+ALTER TABLE wellness_scores
+ALTER COLUMN breakdown DROP NOT NULL;
+
+ALTER TABLE wellness_scores
+ALTER COLUMN computed_at DROP NOT NULL;
+
+
+-- ============================================
+-- CREATE WELLNESS ROW FOR ALL EXISTING USERS
+-- ============================================
+
+INSERT INTO wellness_scores (
+  user_id,
+  final_energy_level,
+  breakdown,
+  computed_at
+)
+SELECT
+  id,
+  NULL,
+  NULL,
+  NULL
+FROM saathi_users
+ON CONFLICT (user_id) DO NOTHING;
 -- ---------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------
