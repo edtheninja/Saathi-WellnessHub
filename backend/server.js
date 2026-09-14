@@ -115,9 +115,15 @@ const resourceConfig = {
     table: "notifications",
     columns: ["notification_type", "title", "body", "read_at"],
   },
+  // NOTE: `process` stays in this list because the generic GET/PATCH
+  // helpers below need to know about every real column. It is NOT a
+  // green light for normal users to set it, though — see the
+  // dedicated activity_history POST/PATCH routes further down, which
+  // run BEFORE the generic ones and strip `process` from any
+  // user-supplied body before it ever reaches insertResource/updateResource.
   activity_history: {
     table: "activity_history",
-    columns: ["activity_type", "title", "subtitle", "energy_type", "energy_level", "process", "metadata"],
+    columns: ["activity_type", "title", "subtitle", "energy_level", "process", "metadata"],
     jsonColumns: ["metadata"],
   },
   // Written internally (Fitbit sync / score recompute) — exposed read-only here.
@@ -158,6 +164,22 @@ function authOptional(req, _res, next) {
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (token) {
     try { req.auth = jwt.verify(token, jwtSecret); } catch { /* Treat expired guest tokens as anonymous. */ }
+  }
+  next();
+}
+// Machine-to-machine auth for the separate ML backend. Deliberately
+// NOT JWT-based — a service has no per-user session, and this
+// endpoint class is explicitly allowed to be cross-user (see the
+// /api/activity-history/unprocessed route below). Requires
+// ML_SERVICE_SECRET to be set; the route refuses to work at all
+// without it rather than silently allowing unauthenticated access.
+function mlServiceRequired(req, res, next) {
+  if (!process.env.ML_SERVICE_SECRET) {
+    return res.status(503).json({ error: "ML service integration is not configured" });
+  }
+  const provided = req.headers["x-ml-service-secret"];
+  if (!provided || provided !== process.env.ML_SERVICE_SECRET) {
+    return res.status(401).json({ error: "Invalid service credentials" });
   }
   next();
 }
@@ -358,6 +380,17 @@ app.put("/api/settings/:key", authRequired, async (req, res) => {
 // ---------------------------------------------------------------
 // Wellness score — computed from recent activity across every
 // energy-tracking table, then stored in the `wellness_scores` table.
+//
+// ARCHITECTURE CONFLICT (flagged, not removed — see PR notes):
+// This averages activity_history.energy_level (and moods/journals/
+// music/meditation_sessions) into final_energy_level itself. Once
+// the separate ML backend is live, IT should own final_energy_level
+// entirely — this in-process averaging duplicates that
+// responsibility and will disagree with the ML result. It's left
+// running for now because /api/music/recommendations still reads
+// from wellness_scores. When the ML pipeline is ready, replace the
+// body of this recompute step with "accept final_energy_level from
+// the ML backend and store it," rather than computing it here.
 // ---------------------------------------------------------------
 const energySourceTables = ["moods", "journals", "music", "meditation_sessions", "activity_history"];
 app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
@@ -393,8 +426,8 @@ app.get("/api/music/recommendations", authRequired, async (req, res) => {
   const latest = await pool.query("SELECT final_energy_level FROM wellness_scores WHERE user_id = $1 ORDER BY computed_at DESC LIMIT 1", [req.auth.sub]);
   const targetEnergy = latest.rows[0]?.final_energy_level ?? 50;
   const result = await pool.query(
-    `SELECT * FROM music WHERE is_available = TRUE ORDER BY ABS(COALESCE(energy_level, $1) - $1) ASC, created_at DESC LIMIT 20`,
-    [targetEnergy]
+    `SELECT * FROM music WHERE user_id = $1 AND is_available = TRUE ORDER BY ABS(COALESCE(energy_level, $2) - $2) ASC, created_at DESC LIMIT 20`,
+    [req.auth.sub, targetEnergy]
   );
   res.json({ data: result.rows, targetEnergy });
 });
@@ -824,6 +857,137 @@ app.post("/api/anonymous-posts/:postId/like", authRequired, async (req, res) => 
   res.json({ liked: removed.rowCount === 0, likesCount: Number(updated.rows[0].likes_count) });
 });
 
+// =================================================================
+// ACTIVITY HISTORY — pipeline into the separate ML backend.
+//
+// Two ordinary user-facing routes below (registered BEFORE the
+// generic /api/data/:resource block, same reason as the journals
+// upload route: Express matches in registration order) exist ONLY
+// to guarantee `process` can never be set by a normal authenticated
+// user, even though it's one of resourceConfig.activity_history's
+// columns. GET still falls through to the generic handler — reading
+// your own activity_history (including filtering by ?activity_type=)
+// has no spoofing risk.
+//
+// Two ML-only routes further below use mlServiceRequired (a shared
+// secret header, not a user JWT) since a service has no per-user
+// session and this class of endpoint is intentionally cross-user.
+// =================================================================
+
+app.post("/api/data/activity_history", authRequired, async (req, res) => {
+  try {
+    const { activity_type, title, subtitle, energy_level, metadata } = req.body;
+
+    if (!activity_type || !String(activity_type).trim()) {
+      return res.status(400).json({ error: "activity_type is required" });
+    }
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: "title is required" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO activity_history (user_id, activity_type, title, subtitle, energy_level, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [
+        req.auth.sub,
+        String(activity_type).trim(),
+        String(title).trim(),
+        subtitle ? String(subtitle).trim() : null,
+        energy_level !== undefined && energy_level !== null && energy_level !== "" ? Number(energy_level) : null,
+        JSON.stringify(metadata ?? {}),
+      ]
+    );
+
+    // `process` is intentionally never set here — the column has no
+    // DEFAULT clause, so omitting it leaves it NULL until the ML
+    // service marks it processed via the dedicated route below.
+    res.status(201).json({ data: result.rows[0] });
+  } catch (error) {
+    publicError(res, error);
+  }
+});
+
+app.patch("/api/data/activity_history", authRequired, async (req, res) => {
+  try {
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "An id query parameter is required" });
+
+    // Strip `process` before it ever reaches the generic updateResource
+    // helper — a normal user's PATCH must never be able to mark their
+    // own activity "processed".
+    const { process: _ignoredProcess, ...allowedUpdates } = req.body || {};
+
+    const updated = await updateResource(resourceConfig.activity_history, req.auth.sub, id, allowedUpdates);
+    if (!updated) return res.status(404).json({ error: "Record not found" });
+    res.json({ data: [updated] });
+  } catch (error) {
+    publicError(res, error);
+  }
+});
+
+// ML-only: fetch unprocessed activities. Cross-user by design (the ML
+// backend processes everyone's backlog) — gated by ML_SERVICE_SECRET,
+// not a user JWT. Optional ?user_id= and ?activity_type= narrow the
+// batch; ?limit= caps page size (default 200, max 1000).
+app.get("/api/activity-history/unprocessed", mlServiceRequired, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+    const conditions = ["process IS NULL"];
+    const values = [];
+
+    if (req.query.user_id) {
+      values.push(req.query.user_id);
+      conditions.push(`user_id = $${values.length}`);
+    }
+    if (req.query.activity_type) {
+      values.push(req.query.activity_type);
+      conditions.push(`activity_type = $${values.length}`);
+    }
+
+    values.push(limit);
+
+    const result = await pool.query(
+      `SELECT id, user_id, activity_type, title, subtitle, energy_level, metadata, created_at
+       FROM activity_history
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY created_at ASC
+       LIMIT $${values.length}`,
+      values
+    );
+
+    res.json({ data: result.rows });
+  } catch (error) {
+    console.error("Unprocessed activity fetch error:", error.message);
+    res.status(500).json({ error: "Failed to fetch unprocessed activities" });
+  }
+});
+
+// ML-only: mark an activity processed. `process` defaults to the
+// string "processed" if the ML service doesn't specify one — this is
+// a CONTRACT VALUE, keep it synchronized with whatever the ML
+// teammate's service actually sends.
+app.patch("/api/activity-history/:id/process", mlServiceRequired, async (req, res) => {
+  try {
+    const processValue =
+      typeof req.body?.process === "string" && req.body.process.trim()
+        ? req.body.process.trim()
+        : "processed";
+
+    const result = await pool.query(
+      "UPDATE activity_history SET process = $1 WHERE id = $2 RETURNING id, process",
+      [processValue, req.params.id]
+    );
+
+    if (!result.rows[0]) return res.status(404).json({ error: "Activity not found" });
+
+    res.json({ data: result.rows[0] });
+  } catch (error) {
+    console.error("Activity process update error:", error.message);
+    res.status(500).json({ error: "Failed to update activity" });
+  }
+});
+
 // ---------------------------------------------------------------
 // Journal creation WITH image uploads. This must be registered
 // BEFORE the generic `/api/data/:resource` POST route below —
@@ -872,8 +1036,9 @@ app.post("/api/data/journals", authRequired, upload.array("images", 10), async (
 
 // ---------------------------------------------------------------
 // Generic per-user data endpoints, now backed by real tables.
-// (journals' POST is handled above; GET/PATCH/DELETE for journals
-// still fall through to these generic handlers, which is fine.)
+// (journals' and activity_history's POST/PATCH are handled above;
+// GET for both — and DELETE for journals — still fall through to
+// these generic handlers, which is fine.)
 // ---------------------------------------------------------------
 app.get("/api/data/:resource", authRequired, async (req, res) => {
   try {

@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS community_rooms (
 );
 ALTER TABLE community_rooms ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES saathi_users(id) ON DELETE SET NULL;
 ALTER TABLE community_rooms ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE community_rooms ADD energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100);
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS community_room_id TEXT REFERENCES community_rooms(id) ON DELETE SET NULL;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
@@ -287,8 +288,8 @@ CREATE TABLE IF NOT EXISTS activity_history (
   activity_type TEXT NOT NULL,
   title TEXT NOT NULL,
   subtitle TEXT,
-  energy_type TEXT,
-  activity_energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
+
+  energy_level INTEGER CHECK (energy_level BETWEEN 1 AND 100),
   process TEXT,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -306,7 +307,7 @@ CREATE INDEX IF NOT EXISTS activity_history_user_idx ON activity_history(user_id
 CREATE TABLE IF NOT EXISTS wellness_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES saathi_users(id) ON DELETE CASCADE,
-  energy_level INTEGER NOT NULL CHECK (final_energy_level BETWEEN 1 AND 100),
+  final_energy_level INTEGER NOT NULL CHECK (final_energy_level BETWEEN 1 AND 100),
   breakdown JSONB NOT NULL DEFAULT '{}'::jsonb, -- e.g. {"journal":62,"music":70,"meditation":55,"mood":40,"goals":58}
   computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
