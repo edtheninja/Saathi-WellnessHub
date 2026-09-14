@@ -39,7 +39,7 @@ const apiBase = import.meta.env.VITE_API_URL || "/api";
 async function fetchProfileAndStats(): Promise<ProfileResponse> {
   const token = localStorage.getItem("saathi_access_token");
 
-  const response = await fetch(`${apiBase}/profile/me`, {
+  const response = await fetch(`${apiBase}/profile`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
