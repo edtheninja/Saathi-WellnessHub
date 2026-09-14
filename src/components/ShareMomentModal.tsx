@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { toPng } from "html-to-image";
 
 import { shareToSocial } from "@/utils/shareToSocial";
 
