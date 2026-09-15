@@ -3438,24 +3438,166 @@ app.patch(
     }
   },
 );
+async function analyzeJournalEnergy(journalText) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Gemini API is not configured");
+  }
 
+  const text = String(journalText || "").trim();
+
+  if (!text) {
+    throw new Error("Journal content is required for energy analysis");
+  }
+
+  const prompt = `
+You are Saathi's wellness analysis system.
+
+Analyze the user's journal entry and estimate the user's CURRENT ENERGY LEVEL.
+
+Energy scale:
+
+1-20:
+Extremely low energy.
+Severely drained, exhausted, no motivation, mentally or emotionally depleted.
+
+21-40:
+Low energy.
+Tired, mentally drained, withdrawn, struggling to engage.
+
+41-60:
+Moderate energy.
+Stable, average, balanced, or mixed energy.
+
+61-80:
+Good energy.
+Motivated, engaged, active, hopeful, reasonably energetic.
+
+81-100:
+Very high energy.
+Highly motivated, excited, enthusiastic, energized, strongly engaged.
+
+Important rules:
+
+- Predict CURRENT ENERGY, not simple positive/negative sentiment.
+- Do NOT assume a happy person has high energy.
+- Do NOT assume a sad person has low energy.
+- Consider fatigue, motivation, focus, activity, engagement, confidence,
+  mental drive, and overall sense of energy.
+- Use evidence from the journal itself.
+- Do not diagnose any medical or psychiatric condition.
+- Do not provide medical advice.
+- Return ONLY JSON matching the requested schema.
+
+Journal entry:
+
+${text}
+`;
+
+  const response = await gemini.models.generateContent({
+    model: "gemini-3.8-flash",
+
+    contents: prompt,
+
+    config: {
+      responseMimeType: "application/json",
+
+      responseSchema: {
+        type: "object",
+
+        properties: {
+          energy_level: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            description: "Current energy level from 1 to 100",
+          },
+
+          confidence: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+            description: "Confidence in the prediction from 0 to 1",
+          },
+
+          reason: {
+            type: "string",
+            description:
+              "Short explanation of why this energy level was selected",
+          },
+        },
+
+        required: ["energy_level", "confidence", "reason"],
+      },
+    },
+  });
+
+  const raw = response.text?.trim();
+
+  if (!raw) {
+    throw new Error("Gemini returned an empty journal analysis");
+  }
+
+  let analysis;
+
+  try {
+    analysis = JSON.parse(raw);
+  } catch {
+    throw new Error("Gemini returned invalid journal analysis JSON");
+  }
+
+  const energy = Number(analysis.energy_level);
+  const confidence = Number(analysis.confidence);
+
+  if (!Number.isInteger(energy) || energy < 1 || energy > 100) {
+    throw new Error("Gemini returned an invalid journal energy level");
+  }
+
+  return {
+    energy_level: energy,
+
+    confidence: Number.isFinite(confidence)
+      ? Math.max(0, Math.min(1, confidence))
+      : 0,
+
+    reason: String(analysis.reason || "").trim(),
+  };
+}
 app.post(
   "/api/data/journals",
   authRequired,
   upload.array("images", 10),
+
   async (req, res) => {
     const client = await pool.connect();
 
     try {
-      const { title = "", content = "", mood, energy_level } = req.body;
+      const { title = "", content = "", mood } = req.body;
 
-      if (!String(content).trim()) {
-        client.release();
+      // ------------------------------------------
+      // 1. Validate journal text
+      // ------------------------------------------
 
+      const cleanContent = String(content || "").trim();
+
+      if (!cleanContent) {
         return res.status(400).json({
           error: "Journal content is required",
         });
       }
+
+      // ------------------------------------------
+      // 2. Make sure Gemini is configured
+      // ------------------------------------------
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({
+          error: "Journal energy analysis is not configured",
+        });
+      }
+
+      // ------------------------------------------
+      // 3. Get uploaded images
+      // ------------------------------------------
 
       const files = req.files || [];
 
@@ -3477,42 +3619,68 @@ app.post(
         })),
       };
 
+      // ------------------------------------------
+      // 4. Gemini analyzes journal energy
+      // ------------------------------------------
+
+      const aiAnalysis = await analyzeJournalEnergy(cleanContent);
+
+      const parsedEnergyLevel = aiAnalysis.energy_level;
+
+      console.log("[JOURNAL AI] Energy analysis:", {
+        energy_level: parsedEnergyLevel,
+
+        confidence: aiAnalysis.confidence,
+
+        reason: aiAnalysis.reason,
+      });
+
+      // ------------------------------------------
+      // 5. Start database transaction
+      // ------------------------------------------
+
       await client.query("BEGIN");
+
+      // ------------------------------------------
+      // 6. Save journal
+      // ------------------------------------------
 
       const result = await client.query(
         `INSERT INTO journals
-           (
-             user_id,
-             title,
-             content,
-             mood,
-             energy_level,
-             media_type,
-             media_url,
-             media_metadata
-           )
-           VALUES
-           (
-             $1,
-             $2,
-             $3,
-             $4,
-             $5,
-             $6,
-             $7,
-             $8
-           )
-           RETURNING *`,
+         (
+           user_id,
+           title,
+           content,
+           mood,
+           energy_level,
+           media_type,
+           media_url,
+           media_metadata
+         )
+         VALUES
+         (
+           $1,
+           $2,
+           $3,
+           $4,
+           $5,
+           $6,
+           $7,
+           $8
+         )
+         RETURNING *`,
+
         [
           req.auth.sub,
 
           String(title).trim(),
 
-          String(content),
+          cleanContent,
 
           mood || null,
 
-          energy_level ? Number(energy_level) : null,
+          // Gemini-generated energy
+          parsedEnergyLevel,
 
           files.length ? "image" : null,
 
@@ -3523,6 +3691,10 @@ app.post(
       );
 
       const journal = result.rows[0];
+
+      // ------------------------------------------
+      // 7. Save activity history
+      // ------------------------------------------
 
       const activity = await recordActivity(client, {
         userId: req.auth.sub,
@@ -3537,22 +3709,52 @@ app.post(
 
         metadata: {
           journal_id: journal.id,
+
+          journal_energy_level: journal.energy_level,
+
+          ai_confidence: aiAnalysis.confidence,
+
+          ai_reason: aiAnalysis.reason,
         },
       });
 
-      console.log(`[ACTIVITY] journal created: ${activity.id}`);
+      console.log(
+        `[ACTIVITY] journal created: ${activity.id} with Gemini energy ${journal.energy_level}`,
+      );
+
+      // ------------------------------------------
+      // 8. Commit
+      // ------------------------------------------
 
       await client.query("COMMIT");
 
-      res.status(201).json({
+      // ------------------------------------------
+      // 9. Response
+      // ------------------------------------------
+
+      return res.status(201).json({
         data: journal,
+
+        analysis: {
+          energy_level: journal.energy_level,
+
+          confidence: aiAnalysis.confidence,
+
+          reason: aiAnalysis.reason,
+        },
       });
     } catch (error) {
-      await client.query("ROLLBACK");
+      // ------------------------------------------
+      // Rollback safely
+      // ------------------------------------------
+
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
 
       console.error("Create journal error:", error);
 
-      res.status(400).json({
+      return res.status(400).json({
         error: error?.message || "Failed to create journal",
       });
     } finally {
@@ -3560,7 +3762,6 @@ app.post(
     }
   },
 );
-
 app.get("/api/data/:resource", authRequired, async (req, res) => {
   try {
     const config = resourceOr404(req, res);
