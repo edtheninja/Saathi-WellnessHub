@@ -306,6 +306,10 @@ CREATE INDEX IF NOT EXISTS activity_history_user_idx ON activity_history(user_id
 -- over time as well as read "the latest" score per user.
 -- ---------------------------------------------------------
 
+-- ============================================
+-- WELLNESS SCORES TABLE
+-- ============================================
+
 CREATE TABLE IF NOT EXISTS wellness_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -313,21 +317,85 @@ CREATE TABLE IF NOT EXISTS wellness_scores (
     REFERENCES saathi_users(id)
     ON DELETE CASCADE,
 
-  final_energy_level INTEGER
-    CHECK (final_energy_level BETWEEN 1 AND 100),
+  -- 0 = not calculated by ML yet
+  -- ML will update this to a value from 1-100
+  final_energy_level INTEGER NOT NULL DEFAULT 0
+    CHECK (final_energy_level BETWEEN 0 AND 100),
 
+  -- ML can store the individual activity breakdown
   breakdown JSONB,
 
+  -- NULL until ML calculates the wellness score
   computed_at TIMESTAMPTZ,
 
+  -- When this row was created
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+
+-- ============================================
+-- ONE WELLNESS SCORE ROW PER USER
+-- ============================================
 
 CREATE UNIQUE INDEX IF NOT EXISTS wellness_scores_user_unique
 ON wellness_scores(user_id);
 
+
+-- ============================================
+-- USER LOOKUP INDEX
+-- ============================================
+
 CREATE INDEX IF NOT EXISTS wellness_scores_user_idx
 ON wellness_scores(user_id, computed_at DESC);
+
+
+-- ============================================
+-- FIX EXISTING TABLE
+-- ============================================
+-- If the table already existed with NULL values,
+-- convert existing NULL energy values to 0.
+
+UPDATE wellness_scores
+SET final_energy_level = 0
+WHERE final_energy_level IS NULL;
+
+
+-- Make sure final_energy_level cannot be NULL
+ALTER TABLE wellness_scores
+ALTER COLUMN final_energy_level SET NOT NULL;
+
+
+-- Make sure the default is 0
+ALTER TABLE wellness_scores
+ALTER COLUMN final_energy_level SET DEFAULT 0;
+
+
+-- Make sure 0-100 is allowed
+ALTER TABLE wellness_scores
+DROP CONSTRAINT IF EXISTS wellness_scores_final_energy_level_check;
+
+ALTER TABLE wellness_scores
+ADD CONSTRAINT wellness_scores_final_energy_level_check
+CHECK (final_energy_level BETWEEN 0 AND 100);
+
+
+-- ============================================
+-- CREATE WELLNESS ROW FOR ALL EXISTING USERS
+-- ============================================
+
+INSERT INTO wellness_scores (
+  user_id,
+  final_energy_level,
+  breakdown,
+  computed_at
+)
+SELECT
+  id,
+  0,
+  NULL,
+  NULL
+FROM saathi_users
+ON CONFLICT (user_id) DO NOTHING;
 -- ---------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------

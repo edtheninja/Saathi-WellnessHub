@@ -24,11 +24,7 @@ import MoodNoteModal from "@/components/mood/MoodNoteModal";
 import { supabase } from "@/supabaseClient";
 import { motion, AnimatePresence } from "motion/react";
 
-import {
-  getEnergyLevel,
-  getMoodFromScore,
-  moodCheckpoints,
-} from "@/components/mood/moodScale";
+import { getMoodFromScore, moodCheckpoints } from "@/components/mood/moodScale";
 
 const pageAnim = {
   hidden: {
@@ -67,26 +63,19 @@ const sectionAnim = {
 const MoodTracker = () => {
   const location = useLocation();
 
-  const dashboardMood =
-    (location.state as { moodValue?: number } | null)?.moodValue;
+  const dashboardMood = (location.state as { moodValue?: number } | null)
+    ?.moodValue;
 
   const [moodValue, setMoodValue] = useState(
-    typeof dashboardMood === "number"
-      ? dashboardMood
-      : 50
+    typeof dashboardMood === "number" ? dashboardMood : 50,
   );
 
   const [isDragging, setIsDragging] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
-  const [weeklyData, setWeeklyData] = useState<number[]>(
-    Array(7).fill(0)
-  );
+  const [weeklyData, setWeeklyData] = useState<number[]>(Array(7).fill(0));
 
-  const currentMood = useMemo(
-    () => getMoodFromScore(moodValue),
-    [moodValue]
-  );
+  const currentMood = useMemo(() => getMoodFromScore(moodValue), [moodValue]);
 
   /*
    * -------------------------------------------
@@ -101,10 +90,7 @@ const MoodTracker = () => {
       } = await supabase.auth.getUser();
 
       if (userError) {
-        console.error(
-          "Authentication error:",
-          userError
-        );
+        console.error("Authentication error:", userError);
         return;
       }
 
@@ -119,14 +105,9 @@ const MoodTracker = () => {
 
       const day = monday.getDay();
 
-      const diff =
-        day === 0
-          ? -6
-          : 1 - day;
+      const diff = day === 0 ? -6 : 1 - day;
 
-      monday.setDate(
-        monday.getDate() + diff
-      );
+      monday.setDate(monday.getDate() + diff);
 
       monday.setHours(0, 0, 0, 0);
 
@@ -135,46 +116,25 @@ const MoodTracker = () => {
        */
       const sunday = new Date(monday);
 
-      sunday.setDate(
-        monday.getDate() + 6
-      );
+      sunday.setDate(monday.getDate() + 6);
 
-      sunday.setHours(
-        23,
-        59,
-        59,
-        999
-      );
+      sunday.setHours(23, 59, 59, 999);
 
       /*
        * Fetch this week's moods.
        */
-      const {
-        data,
-        error,
-      } = await supabase
+      const { data, error } = await supabase
         .from("moods")
-        .select(
-          "id, energy_level, mood, created_at"
-        )
+        .select("id, energy_level, mood, created_at")
         .eq("user_id", user.id)
-        .gte(
-          "created_at",
-          monday.toISOString()
-        )
-        .lte(
-          "created_at",
-          sunday.toISOString()
-        )
+        .gte("created_at", monday.toISOString())
+        .lte("created_at", sunday.toISOString())
         .order("created_at", {
           ascending: true,
         });
 
       if (error) {
-        console.error(
-          "Progress fetch error:",
-          error
-        );
+        console.error("Progress fetch error:", error);
 
         return;
       }
@@ -187,37 +147,18 @@ const MoodTracker = () => {
       const map: Record<string, number> = {};
 
       data?.forEach((row) => {
-        if (
-          typeof row.energy_level !==
-          "number"
-        ) {
+        if (typeof row.energy_level !== "number") {
           return;
         }
 
-        const dateKey =
-          new Date(
-            row.created_at
-          ).toLocaleDateString(
-            "en-CA"
-          );
+        const dateKey = new Date(row.created_at).toLocaleDateString("en-CA");
 
         /*
-         * Existing DB stores 1–5.
-         *
-         * Convert:
-         * 1 → 20
-         * 2 → 40
-         * 3 → 60
-         * 4 → 80
-         * 5 → 100
+         * Database stores the mood score directly as 1–100.
          */
-        const score =
-          row.energy_level * 20;
+        const score = row.energy_level;
 
-        map[dateKey] = Math.max(
-          map[dateKey] || 0,
-          score
-        );
+        map[dateKey] = Math.max(map[dateKey] || 0, score);
       });
 
       /*
@@ -228,31 +169,18 @@ const MoodTracker = () => {
       for (let i = 0; i < 7; i++) {
         const date = new Date(monday);
 
-        date.setDate(
-          monday.getDate() + i
-        );
+        date.setDate(monday.getDate() + i);
 
-        const dateKey =
-          date.toLocaleDateString(
-            "en-CA"
-          );
+        const dateKey = date.toLocaleDateString("en-CA");
 
-        weekly.push(
-          map[dateKey] || 0
-        );
+        weekly.push(map[dateKey] || 0);
       }
 
-      console.log(
-        "Weekly mood data:",
-        weekly
-      );
+      console.log("Weekly mood data:", weekly);
 
       setWeeklyData(weekly);
     } catch (error) {
-      console.error(
-        "Unexpected progress error:",
-        error
-      );
+      console.error("Unexpected progress error:", error);
     }
   };
   /*
@@ -269,10 +197,8 @@ const MoodTracker = () => {
    * SAVE MOOD
    * -------------------------------------------
    *
-   * The exact 0–100 value drives the UI.
-   *
-   * For now, Supabase remains compatible with
-   * the existing energy_level 1–5 column.
+   * The exact 1–100 value drives the UI and
+   * is stored directly in the moods table.
    * -------------------------------------------
    */
   const handleSaveMood = async () => {
@@ -283,10 +209,7 @@ const MoodTracker = () => {
       } = await supabase.auth.getUser();
 
       if (userError) {
-        console.error(
-          "Authentication error:",
-          userError
-        );
+        console.error("Authentication error:", userError);
         alert("Unable to verify your account.");
         return;
       }
@@ -303,29 +226,19 @@ const MoodTracker = () => {
       todayEnd.setHours(23, 59, 59, 999);
 
       /*
-       * Convert the new 0–100 mood score
-       * into the existing 1–5 energy level.
+       * Store the exact mood score as 1–100.
        */
-      const energyLevel = getEnergyLevel(moodValue);
+      const energyLevel = moodValue;
 
       /*
        * Find today's mood entry.
        */
-      const {
-        data: existingMoods,
-        error: findError,
-      } = await supabase
+      const { data: existingMoods, error: findError } = await supabase
         .from("moods")
         .select("id")
         .eq("user_id", user.id)
-        .gte(
-          "created_at",
-          todayStart.toISOString()
-        )
-        .lte(
-          "created_at",
-          todayEnd.toISOString()
-        )
+        .gte("created_at", todayStart.toISOString())
+        .lte("created_at", todayEnd.toISOString())
         .order("created_at", {
           ascending: false,
         })
@@ -334,14 +247,9 @@ const MoodTracker = () => {
       const existingMood = existingMoods?.[0] ?? null;
 
       if (findError) {
-        console.error(
-          "Failed to find today's mood:",
-          findError
-        );
+        console.error("Failed to find today's mood:", findError);
 
-        alert(
-          `Could not load today's mood: ${findError.message}`
-        );
+        alert(`Could not load today's mood: ${findError.message}`);
 
         return;
       }
@@ -350,9 +258,7 @@ const MoodTracker = () => {
        * UPDATE existing mood
        */
       if (existingMood) {
-        const {
-          error: updateError,
-        } = await supabase
+        const { error: updateError } = await supabase
           .from("moods")
           .update({
             mood: currentMood.label,
@@ -362,42 +268,27 @@ const MoodTracker = () => {
           .eq("user_id", user.id);
 
         if (updateError) {
-          console.error(
-            "Mood update error:",
-            updateError
-          );
+          console.error("Mood update error:", updateError);
 
-          alert(
-            `Failed to update mood: ${updateError.message}`
-          );
+          alert(`Failed to update mood: ${updateError.message}`);
 
           return;
         }
-      }
+      } else {
 
       /*
        * INSERT new mood
        */
-      else {
-        const {
-          error: insertError,
-        } = await supabase
-          .from("moods")
-          .insert({
-            user_id: user.id,
-            mood: currentMood.label,
-            energy_level: energyLevel,
-          });
+        const { error: insertError } = await supabase.from("moods").insert({
+          user_id: user.id,
+          mood: currentMood.label,
+          energy_level: energyLevel,
+        });
 
         if (insertError) {
-          console.error(
-            "Mood insert error:",
-            insertError
-          );
+          console.error("Mood insert error:", insertError);
 
-          alert(
-            `Failed to save mood: ${insertError.message}`
-          );
+          alert(`Failed to save mood: ${insertError.message}`);
 
           return;
         }
@@ -417,17 +308,12 @@ const MoodTracker = () => {
        * Give the user confirmation.
        */
       alert(
-        `Mood saved successfully ✨\n${currentMood.expression} ${currentMood.label} · ${moodValue}/100`
+        `Mood saved successfully ✨\n${currentMood.expression} ${currentMood.label} · ${moodValue}/100`,
       );
     } catch (error) {
-      console.error(
-        "Unexpected mood save error:",
-        error
-      );
+      console.error("Unexpected mood save error:", error);
 
-      alert(
-        "Something went wrong while saving your mood."
-      );
+      alert("Something went wrong while saving your mood.");
     }
   };
 
@@ -449,24 +335,17 @@ const MoodTracker = () => {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const { data, error: fetchError } =
-      await supabase
-        .from("moods")
-        .select("id")
-        .eq("user_id", user.id)
-        .gte(
-          "created_at",
-          todayStart.toISOString()
-        )
-        .lte(
-          "created_at",
-          todayEnd.toISOString()
-        )
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1)
-        .single();
+    const { data, error: fetchError } = await supabase
+      .from("moods")
+      .select("id")
+      .eq("user_id", user.id)
+      .gte("created_at", todayStart.toISOString())
+      .lte("created_at", todayEnd.toISOString())
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(1)
+      .single();
 
     if (fetchError || !data) {
       alert("No mood found for today");
@@ -520,7 +399,6 @@ const MoodTracker = () => {
         className="min-h-screen bg-background p-4 md:p-6 pb-32 overflow-y-auto"
       >
         <div className="max-w-5xl mx-auto space-y-6">
-
           {/* -------------------------------- */}
           {/* HEADER */}
           {/* -------------------------------- */}
@@ -545,15 +423,12 @@ const MoodTracker = () => {
                 <Calendar className="w-5 h-5 text-primary" />
 
                 <span className="font-medium">
-                  {new Date().toLocaleDateString(
-                    "en-US",
-                    {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    }
-                  )}
+                  {new Date().toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
                 </span>
               </CardContent>
             </Card>
@@ -565,7 +440,6 @@ const MoodTracker = () => {
 
           <motion.div variants={sectionAnim}>
             <Card className="relative overflow-hidden border-0 shadow-elevated rounded-[32px]">
-
               {/* soft background decoration */}
 
               <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
@@ -573,13 +447,11 @@ const MoodTracker = () => {
               <div className="absolute -bottom-24 -right-24 w-64 h-64 rounded-full bg-secondary/10 blur-3xl pointer-events-none" />
 
               <CardContent className="relative p-6 md:p-10">
-
                 {/* Title */}
 
                 <div className="text-center space-y-2">
                   <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-primary font-medium">
                     <Sparkles className="w-4 h-4" />
-
                     Your mood right now
                   </div>
                 </div>
@@ -589,7 +461,6 @@ const MoodTracker = () => {
                 {/* -------------------------------- */}
 
                 <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-14 mt-8">
-
                   {/* FOX */}
 
                   <motion.div
@@ -612,7 +483,6 @@ const MoodTracker = () => {
                     className="relative"
                   >
                     <div className="w-36 h-36 md:w-44 md:h-44 rounded-full bg-primary/10 flex items-center justify-center shadow-soft">
-
                       <motion.span
                         key={currentMood.expression}
                         initial={{
@@ -634,7 +504,6 @@ const MoodTracker = () => {
                       >
                         {currentMood.expression}
                       </motion.span>
-
                     </div>
                   </motion.div>
 
@@ -670,7 +539,6 @@ const MoodTracker = () => {
                       </p>
                     </motion.div>
                   </AnimatePresence>
-
                 </div>
 
                 {/* -------------------------------- */}
@@ -709,9 +577,7 @@ const MoodTracker = () => {
                 {/* -------------------------------- */}
 
                 <div className="mt-10">
-
                   <div className="relative px-2">
-
                     {/* gradient track */}
 
                     <div
@@ -728,15 +594,12 @@ const MoodTracker = () => {
                       className="absolute top-1/2 z-20 pointer-events-none transition-[left] duration-75 ease-out"
                       style={{
                         left: `${moodValue}%`,
-                        transform:
-                          "translate(-50%, -50%)",
+                        transform: "translate(-50%, -50%)",
                       }}
                     >
                       <motion.div
                         animate={{
-                          scale: isDragging
-                            ? 1.15
-                            : 1,
+                          scale: isDragging ? 1.15 : 1,
                         }}
                         className="relative"
                       >
@@ -770,33 +633,21 @@ const MoodTracker = () => {
 
                     <input
                       type="range"
-                      min="0"
+                      min="1"
                       max="100"
                       step="1"
                       value={moodValue}
                       onChange={(event) =>
-                        setMoodValue(
-                          Number(event.target.value)
-                        )
+                        setMoodValue(Number(event.target.value))
                       }
-                      onMouseDown={() =>
-                        setIsDragging(true)
-                      }
-                      onMouseUp={() =>
-                        setIsDragging(false)
-                      }
-                      onTouchStart={() =>
-                        setIsDragging(true)
-                      }
-                      onTouchEnd={() =>
-                        setIsDragging(false)
-                      }
-                      onBlur={() =>
-                        setIsDragging(false)
-                      }
+                      onMouseDown={() => setIsDragging(true)}
+                      onMouseUp={() => setIsDragging(false)}
+                      onTouchStart={() => setIsDragging(true)}
+                      onTouchEnd={() => setIsDragging(false)}
+                      onBlur={() => setIsDragging(false)}
                       className="relative z-10 w-full h-3 appearance-none bg-transparent cursor-pointer mood-slider"
                       aria-label="Current mood"
-                      aria-valuemin={0}
+                      aria-valuemin={1}
                       aria-valuemax={100}
                       aria-valuenow={moodValue}
                     />
@@ -804,23 +655,19 @@ const MoodTracker = () => {
                     {/* CHECKPOINT TICKS */}
 
                     <div className="absolute left-2 right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                      {moodCheckpoints.map(
-                        (checkpoint) => (
-                          <div
-                            key={checkpoint.value}
-                            className="absolute"
-                            style={{
-                              left: `${checkpoint.value}%`,
-                              transform:
-                                "translateX(-50%)",
-                            }}
-                          >
-                            <div className="h-5 w-0.5 rounded-full bg-foreground/30" />
-                          </div>
-                        )
-                      )}
+                      {moodCheckpoints.map((checkpoint) => (
+                        <div
+                          key={checkpoint.value}
+                          className="absolute"
+                          style={{
+                            left: `${checkpoint.value}%`,
+                            transform: "translateX(-50%)",
+                          }}
+                        >
+                          <div className="h-5 w-0.5 rounded-full bg-foreground/30" />
+                        </div>
+                      ))}
                     </div>
-
                   </div>
 
                   {/* CHECKPOINT LABELS */}
@@ -836,11 +683,7 @@ const MoodTracker = () => {
                       <button
                         key={checkpoint.value}
                         type="button"
-                        onClick={() =>
-                          setMoodValue(
-                            checkpoint.value
-                          )
-                        }
+                        onClick={() => setMoodValue(checkpoint.value)}
                         className="flex flex-col items-center gap-1 group"
                       >
                         <span className="text-2xl transition-transform group-hover:scale-125">
@@ -853,7 +696,6 @@ const MoodTracker = () => {
                       </button>
                     ))}
                   </div>
-
                 </div>
 
                 {/* -------------------------------- */}
@@ -862,13 +704,10 @@ const MoodTracker = () => {
 
                 <div className="mt-8 rounded-full bg-primary/5 px-5 py-3 text-center">
                   <p className="text-sm text-muted-foreground">
-                    <span className="font-semibold text-primary">
-                      ✨ Tip:
-                    </span>{" "}
+                    <span className="font-semibold text-primary">✨ Tip:</span>{" "}
                     {currentMood.tip}
                   </p>
                 </div>
-
               </CardContent>
             </Card>
           </motion.div>
@@ -879,12 +718,10 @@ const MoodTracker = () => {
 
           <motion.div variants={sectionAnim}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
               {/* MUSIC */}
 
               <Card className="border-0 shadow-soft bg-primary/5">
                 <CardContent className="p-5">
-
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center">
                       <Headphones className="w-5 h-5 text-primary" />
@@ -895,9 +732,7 @@ const MoodTracker = () => {
                         Music for your mood
                       </p>
 
-                      <p className="font-semibold">
-                        {currentMood.music}
-                      </p>
+                      <p className="font-semibold">{currentMood.music}</p>
                     </div>
                   </div>
 
@@ -908,7 +743,6 @@ const MoodTracker = () => {
                     Listen now
                     <ChevronRight className="w-4 h-4" />
                   </Button>
-
                 </CardContent>
               </Card>
 
@@ -916,7 +750,6 @@ const MoodTracker = () => {
 
               <Card className="border-0 shadow-soft bg-secondary/5">
                 <CardContent className="p-5">
-
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-full bg-secondary/15 flex items-center justify-center">
                       <Sparkles className="w-5 h-5 text-secondary-foreground" />
@@ -927,9 +760,7 @@ const MoodTracker = () => {
                         Try this
                       </p>
 
-                      <p className="font-semibold">
-                        {currentMood.meditation}
-                      </p>
+                      <p className="font-semibold">{currentMood.meditation}</p>
                     </div>
                   </div>
 
@@ -940,7 +771,6 @@ const MoodTracker = () => {
                     Start
                     <ChevronRight className="w-4 h-4" />
                   </Button>
-
                 </CardContent>
               </Card>
 
@@ -948,7 +778,6 @@ const MoodTracker = () => {
 
               <Card className="border-0 shadow-soft bg-accent/5">
                 <CardContent className="p-5">
-
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-full bg-accent/15 flex items-center justify-center">
                       <PenLine className="w-5 h-5" />
@@ -959,9 +788,7 @@ const MoodTracker = () => {
                         Reflect
                       </p>
 
-                      <p className="font-semibold">
-                        Journal Prompt
-                      </p>
+                      <p className="font-semibold">Journal Prompt</p>
                     </div>
                   </div>
 
@@ -972,17 +799,13 @@ const MoodTracker = () => {
                   <Button
                     variant="ghost"
                     className="w-full mt-2 justify-between"
-                    onClick={() =>
-                      setNoteOpen(true)
-                    }
+                    onClick={() => setNoteOpen(true)}
                   >
                     Reflect
                     <ChevronRight className="w-4 h-4" />
                   </Button>
-
                 </CardContent>
               </Card>
-
             </div>
           </motion.div>
 
@@ -992,16 +815,13 @@ const MoodTracker = () => {
 
           <motion.div variants={sectionAnim}>
             <div className="flex justify-center">
-
               <Button
                 onClick={handleSaveMood}
                 className="rounded-full px-8 py-6 text-base font-semibold shadow-elevated"
               >
                 <Sparkles className="w-5 h-5 mr-2" />
-
                 Save Mood · {moodValue}/100
               </Button>
-
             </div>
           </motion.div>
 
@@ -1016,9 +836,7 @@ const MoodTracker = () => {
                 <div className="flex items-center space-x-2">
                   <TrendingUp className="w-5 h-5 text-primary" />
 
-                  <CardTitle className="text-lg">
-                    Your Progress
-                  </CardTitle>
+                  <CardTitle className="text-lg">Your Progress</CardTitle>
                 </div>
 
                 <CardDescription>
@@ -1038,14 +856,9 @@ const MoodTracker = () => {
                     const monday = new Date(today);
                     const day = monday.getDay();
 
-                    const diff =
-                      day === 0
-                        ? -6
-                        : 1 - day;
+                    const diff = day === 0 ? -6 : 1 - day;
 
-                    monday.setDate(
-                      monday.getDate() + diff
-                    );
+                    monday.setDate(monday.getDate() + diff);
 
                     monday.setHours(0, 0, 0, 0);
 
@@ -1054,25 +867,17 @@ const MoodTracker = () => {
                      */
                     const date = new Date(monday);
 
-                    date.setDate(
-                      monday.getDate() + index
-                    );
+                    date.setDate(monday.getDate() + index);
 
                     const isToday =
-                      date.toDateString() ===
-                      today.toDateString();
+                      date.toDateString() === today.toDateString();
 
                     /*
                      * Convert 0–100 mood score
                      * into chart height.
                      */
                     const barHeight =
-                      value > 0
-                        ? Math.max(
-                          8,
-                          (value / 100) * 150
-                        )
-                        : 8;
+                      value > 0 ? Math.max(8, (value / 100) * 150) : 8;
 
                     return (
                       <div
@@ -1095,33 +900,28 @@ const MoodTracker = () => {
                               delay: index * 0.05,
                               ease: "easeOut",
                             }}
-                            className={`w-7 max-w-full rounded-t-xl ${value > 0
-                              ? "bg-gradient-calm"
-                              : "bg-muted"
-                              }`}
+                            className={`w-7 max-w-full rounded-t-xl ${
+                              value > 0 ? "bg-gradient-calm" : "bg-muted"
+                            }`}
                             title={
-                              value > 0
-                                ? `${value}/100 mood`
-                                : "No mood logged"
+                              value > 0 ? `${value}/100 mood` : "No mood logged"
                             }
                           />
                         </div>
 
                         {/* Day label */}
                         <span
-                          className={`mt-4 text-xs sm:text-sm text-center whitespace-nowrap ${isToday
-                            ? "text-primary font-semibold"
-                            : "text-muted-foreground"
-                            }`}
+                          className={`mt-4 text-xs sm:text-sm text-center whitespace-nowrap ${
+                            isToday
+                              ? "text-primary font-semibold"
+                              : "text-muted-foreground"
+                          }`}
                         >
                           {isToday
                             ? "Today"
-                            : date.toLocaleDateString(
-                              "en-US",
-                              {
+                            : date.toLocaleDateString("en-US", {
                                 weekday: "short",
-                              }
-                            )}
+                              })}
                         </span>
                       </div>
                     );
@@ -1130,7 +930,6 @@ const MoodTracker = () => {
               </CardContent>
             </Card>
           </motion.div>
-
         </div>
       </motion.div>
 
@@ -1140,9 +939,7 @@ const MoodTracker = () => {
 
       <MoodNoteModal
         open={noteOpen}
-        onClose={() =>
-          setNoteOpen(false)
-        }
+        onClose={() => setNoteOpen(false)}
         mood={currentMood.label}
         note={note}
         setNote={setNote}
