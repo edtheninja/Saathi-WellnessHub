@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Mail, Save, User } from "lucide-react";
 
@@ -36,7 +36,7 @@ const ProfileSettings = () => {
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name")
-        .eq("id", user.id)
+        .eq("user_id", user.id)
         .single();
 
       if (profile) {
@@ -58,7 +58,7 @@ const ProfileSettings = () => {
     const { error } = await supabase
       .from("profiles")
       .update({ full_name: userName.trim() })
-      .eq("id", userId);
+      .eq("user_id", userId);
 
     if (!error) {
       setSaved(true);
@@ -219,3 +219,4 @@ const ProfileSettings = () => {
 };
 
 export default ProfileSettings;
+

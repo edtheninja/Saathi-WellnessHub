@@ -18,10 +18,16 @@ async function communityRequest<T>(path: string, options: RequestInit = {}): Pro
 export type CreatedCommunity = {
   id: string;
   name: string;
-  room_type: "discussion" | "circle" | "support" | "event" | "announcement";
+  room_type:
+  | "discussion"
+  | "circle"
+  | "support"
+  | "event"
+  | "announcement";
   topic: string;
   description: string;
   member_count: number;
+  energy_level: number;
 };
 
 export function createCommunity(input: {
@@ -29,11 +35,15 @@ export function createCommunity(input: {
   topic: string;
   description: string;
   roomType: CreatedCommunity["room_type"];
+  energyLevel: number;
 }) {
-  return communityRequest<{ data: CreatedCommunity }>("/community/rooms", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return communityRequest<{ data: CreatedCommunity }>(
+    "/community/rooms",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function getCommunity(id: string) {

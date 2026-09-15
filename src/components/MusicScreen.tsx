@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 
 import meditationGirl from "@/assets/meditation-girl-scene.png";
-
+import { supabase } from "@/supabaseClient";
 /* -------------------------------------------------------------------------- */
 /*                                Local music                                 */
 /* -------------------------------------------------------------------------- */
@@ -37,57 +37,8 @@ const musicModules = import.meta.glob(
 ) as Record<string, string>;
 
 /* -------------------------------------------------------------------------- */
-/*                              Backend API                                   */
+/*                              Supabase data                                  */
 /* -------------------------------------------------------------------------- */
-
-/*
- * VITE_API_URL should normally be your backend origin:
- *
- * VITE_API_URL=https://your-backend-domain.com
- *
- * If someone accidentally sets:
- *
- * VITE_API_URL=https://your-backend-domain.com/api
- *
- * we remove the trailing /api so the calls below still become:
- *
- * https://your-backend-domain.com/api/...
- */
-const API_BASE = (import.meta.env.VITE_API_URL || "")
-  .replace(/\/$/, "")
-  .replace(/\/api$/, "");
-
-const getAuthToken = () => {
-  return localStorage.getItem("saathi_access_token");
-};
-
-const apiFetch = async <T = unknown,>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> => {
-  const token = getAuthToken();
-
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {}),
-      ...(options.headers || {}),
-    },
-  });
-
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(payload?.error || `Request failed (${response.status})`);
-  }
-
-  return payload as T;
-};
 
 /* -------------------------------------------------------------------------- */
 /*                                    Types                                   */
@@ -378,6 +329,7 @@ export default function MusicScreen() {
    * currentTrackRef is the track React considers current.
    */
   const currentTrackRef = useRef<Track | undefined>(undefined);
+  const currentUserIdRef = useRef<string | null>(null);
 
   /*
    * loadedAudioTrackRef is the track actually attached
@@ -464,51 +416,33 @@ export default function MusicScreen() {
           return;
         }
 
-        /*
-         * Music files are local frontend assets.
-         * Metadata is stored per authenticated user
-         * in PostgreSQL through Express.
-         */
-        let authenticated = false;
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-        try {
-          const authPayload = await apiFetch<{
-            user?: unknown;
-          }>("/api/auth/me");
-
-          authenticated = Boolean(authPayload?.user);
-        } catch (error) {
-          console.warn("Music authentication lookup failed:", error);
-        }
+        currentUserIdRef.current = user?.id ?? null;
 
         /*
-         * If there is no authenticated user,
-         * music still works locally.
+         * Audio files are local frontend assets.
+         * Per-user music metadata is loaded directly from Supabase.
          */
-        if (!authenticated) {
+        if (!user) {
           setTracks(localTracks);
           setCurrentTrackIndex(0);
           return;
         }
 
-        /*
-         * Backend automatically scopes this query
-         * to req.auth.sub.
-         */
-        const musicPayload = await apiFetch<{
-          data?: MusicRow[];
-        }>("/api/data/music");
+        const { data: rowsData, error: rowsError } = await supabase
+          .from("music")
+          .select("*")
+          .eq("user_id", user.id);
 
-        const rows = Array.isArray(musicPayload?.data) ? musicPayload.data : [];
+        if (rowsError) {
+          throw rowsError;
+        }
 
-        /*
-         * Find DB row for local track.
-         *
-         * First use audio_url.
-         *
-         * If the Vite-generated URL changed, fallback
-         * to song_name + artist.
-         */
+        const rows = Array.isArray(rowsData) ? (rowsData as MusicRow[]) : [];
+
         const findRow = (track: Track): MusicRow | undefined => {
           const exact = rows.find((row) => row.audio_url === track.src);
 
@@ -551,21 +485,13 @@ export default function MusicScreen() {
 
           return {
             ...track,
-
             dbId: row.id,
-
             album: row.album ?? "",
-
             playlistName: row.playlist_name ?? "",
-
             category: row.category ?? "wellness",
-
             genre: row.genre ?? null,
-
             coverUrl: row.cover_url ?? undefined,
-
             isAvailable: row.is_available !== false,
-
             durationSeconds:
               typeof row.duration_seconds === "number" &&
               Number.isFinite(row.duration_seconds) &&
@@ -578,51 +504,26 @@ export default function MusicScreen() {
             energyLevel: databaseEnergy ?? catalogEnergy,
 
             listenedTill: Math.max(0, Number(row.listened_till ?? 0)),
-
             repetition: Math.max(0, Number(row.repetition ?? 0)),
-
             isFavorite: row.is_favorite === true,
-
             lastListenedAt: row.last_listened_at ?? null,
           };
         });
 
-        /*
-         * Create metadata rows for songs that don't
-         * exist for this authenticated user.
-         */
         const missing = merged.filter((track) => !track.dbId);
 
         if (missing.length > 0) {
           const rowsToInsert = missing.map((track) => ({
+            user_id: user.id,
             song_name: track.title,
             artist: track.artist,
-
             album: "",
             playlist_name: "",
-
             category: "wellness",
             genre: null,
-
-            /*
-             * The actual audio remains in frontend.
-             * This only stores its Vite-generated URL.
-             */
             audio_url: track.src,
-
             cover_url: null,
-
             is_available: true,
-
-            /*
-             * Do NOT insert duration_seconds = 0.
-             *
-             * Your database constraint requires
-             * duration_seconds to be NULL or > 0.
-             *
-             * Actual duration is saved after
-             * loadedmetadata fires.
-             */
             listened_till: 0,
             repetition: 0,
             is_favorite: false,
@@ -631,21 +532,22 @@ export default function MusicScreen() {
             energy_level: getMusicEnergyLevel(track.title),
           }));
 
-          try {
-            const insertPayload = await apiFetch<{
-              data?: MusicRow[];
-            }>("/api/data/music", {
-              method: "POST",
-              body: JSON.stringify(rowsToInsert),
-            });
+          const { data: created, error: insertError } = await supabase
+            .from("music")
+            .insert(rowsToInsert)
+            .select("*");
 
-            const created = Array.isArray(insertPayload?.data)
-              ? insertPayload.data
-              : [];
-
-            for (const row of created) {
+          if (insertError) {
+            console.error("Failed to create music metadata:", insertError);
+          } else {
+            for (const row of (created ?? []) as MusicRow[]) {
               const index = merged.findIndex(
-                (track) => track.src === row.audio_url,
+                (track) =>
+                  track.src === row.audio_url ||
+                  (track.title.trim().toLowerCase() ===
+                    row.song_name.trim().toLowerCase() &&
+                    track.artist.trim().toLowerCase() ===
+                      (row.artist || "Saathi Music").trim().toLowerCase()),
               );
 
               if (index === -1) {
@@ -654,27 +556,18 @@ export default function MusicScreen() {
 
               merged[index] = {
                 ...merged[index],
-
                 dbId: row.id,
-
                 album: row.album ?? "",
-
                 playlistName: row.playlist_name ?? "",
-
                 category: row.category ?? "wellness",
-
                 genre: row.genre ?? null,
-
                 coverUrl: row.cover_url ?? undefined,
-
                 isAvailable: row.is_available !== false,
-
                 durationSeconds:
                   typeof row.duration_seconds === "number" &&
                   row.duration_seconds > 0
                     ? row.duration_seconds
                     : undefined,
-
                 energyLevel:
                   typeof row.energy_level === "number" &&
                   Number.isFinite(row.energy_level)
@@ -682,26 +575,19 @@ export default function MusicScreen() {
                     : getMusicEnergyLevel(row.song_name ?? merged[index].title),
 
                 listenedTill: Math.max(0, Number(row.listened_till ?? 0)),
-
                 repetition: Math.max(0, Number(row.repetition ?? 0)),
-
                 isFavorite: row.is_favorite === true,
-
                 lastListenedAt: row.last_listened_at ?? null,
               };
             }
-          } catch (error) {
-            console.error("Failed to create music metadata:", error);
           }
         }
 
         /*
-         * Backfill energy_level for existing music rows that were created
-         * before the energy catalog was added.
-         *
-         * This does not create an activity because record_listen is not sent.
+         * Backfill energy_level for existing rows created before the
+         * local music energy catalog was added.
          */
-        if (authenticated && !cancelled) {
+        if (!cancelled) {
           const rowsNeedingEnergy = merged.filter(
             (track) =>
               Boolean(track.dbId) &&
@@ -722,15 +608,15 @@ export default function MusicScreen() {
               }
 
               try {
-                await apiFetch(
-                  `/api/data/music?id=${encodeURIComponent(track.dbId!)}`,
-                  {
-                    method: "PATCH",
-                    body: JSON.stringify({
-                      energy_level: track.energyLevel,
-                    }),
-                  },
-                );
+                const { error } = await supabase
+                  .from("music")
+                  .update({ energy_level: track.energyLevel })
+                  .eq("id", track.dbId!)
+                  .eq("user_id", user.id);
+
+                if (error) {
+                  throw error;
+                }
               } catch (error) {
                 console.warn(
                   `Failed to backfill energy for "${track.title}":`,
@@ -900,10 +786,21 @@ export default function MusicScreen() {
         }
 
         try {
-          await apiFetch(`/api/data/music?id=${encodeURIComponent(trackId)}`, {
-            method: "PATCH",
-            body: JSON.stringify(payload),
-          });
+          const userId = currentUserIdRef.current;
+
+          if (!userId) {
+            return;
+          }
+
+          const { error } = await supabase
+            .from("music")
+            .update(payload)
+            .eq("id", trackId)
+            .eq("user_id", userId);
+
+          if (error) {
+            throw error;
+          }
         } catch (error) {
           console.error("Failed to save listening progress:", error);
 
@@ -1030,10 +927,6 @@ export default function MusicScreen() {
         (Date.now() - session.startedAt) / 1000,
       );
 
-      /*
-       * A play/pause click at exactly 0 seconds is not a meaningful listen.
-       * Anything that actually advances the audio is recorded.
-       */
       if (sessionPositionChange <= 0 && wallClockSeconds < 1) {
         return;
       }
@@ -1045,21 +938,35 @@ export default function MusicScreen() {
         try {
           await persistTrackProgress(track, audio, true);
 
-          await apiFetch(`/api/data/music?id=${encodeURIComponent(trackId)}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              record_listen: true,
+          const userId = currentUserIdRef.current;
+
+          if (!userId) {
+            return;
+          }
+
+          const nextRepetition =
+            Math.max(0, Number(track.repetition ?? 0)) + 1;
+
+          const { error } = await supabase
+            .from("music")
+            .update({
+              repetition: nextRepetition,
               last_listened_at: timestamp,
-            }),
-          });
+            })
+            .eq("id", trackId)
+            .eq("user_id", userId);
+
+          if (error) {
+            throw error;
+          }
 
           setTracks((previous) =>
             previous.map((item) =>
               item.dbId === trackId
                 ? {
                     ...item,
-                    repetition: Math.max(0, Number(item.repetition ?? 0)) + 1,
-                    listenedTill: listenedTill,
+                    repetition: nextRepetition,
+                    listenedTill,
                     durationSeconds:
                       knownDuration > 0
                         ? Math.ceil(knownDuration)
@@ -1179,32 +1086,39 @@ export default function MusicScreen() {
       const track = loadedAudioTrackRef.current;
 
       /*
-       * Store actual duration in DB.
+       * Store actual duration in Supabase.
        */
       if (track?.dbId) {
         const durationSeconds = Math.max(1, Math.ceil(actualDuration));
 
-        void apiFetch(`/api/data/music?id=${encodeURIComponent(track.dbId)}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            duration_seconds: durationSeconds,
-          }),
-        })
-          .then(() => {
-            setTracks((previous) =>
-              previous.map((item) =>
-                item.dbId === track.dbId
-                  ? {
-                      ...item,
-                      durationSeconds: durationSeconds,
-                    }
-                  : item,
-              ),
-            );
-          })
-          .catch((error) => {
-            console.error("Failed to save song duration:", error);
-          });
+        const userId = currentUserIdRef.current;
+
+        if (userId) {
+          void supabase
+            .from("music")
+            .update({ duration_seconds: durationSeconds })
+            .eq("id", track.dbId)
+            .eq("user_id", userId)
+            .then(({ error }) => {
+              if (error) {
+                throw error;
+              }
+
+              setTracks((previous) =>
+                previous.map((item) =>
+                  item.dbId === track.dbId
+                    ? {
+                        ...item,
+                        durationSeconds,
+                      }
+                    : item,
+                ),
+              );
+            })
+            .catch((error) => {
+              console.error("Failed to save song duration:", error);
+            });
+        }
       }
 
       /*
@@ -1804,18 +1718,31 @@ export default function MusicScreen() {
 
     const loadFinalEnergy = async () => {
       try {
-        /*
-         * Use the dedicated backend endpoint.
-         *
-         * Backend scopes this to the authenticated user.
-         */
-        const payload = await apiFetch<{
-          data?: {
-            final_energy_level?: number;
-          } | null;
-        }>("/api/wellness-score/latest");
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-        const value = Number(payload?.data?.final_energy_level);
+        if (!user) {
+          if (!cancelled) {
+            setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
+            setHasFinalEnergy(false);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("wellness_scores")
+          .select("final_energy_level")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        const value = Number(data?.final_energy_level);
 
         if (Number.isFinite(value) && value >= 0 && value <= 100) {
           if (!cancelled) {
@@ -1827,7 +1754,6 @@ export default function MusicScreen() {
           }
         } else if (!cancelled) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
-
           setHasFinalEnergy(false);
         }
       } catch (error) {
@@ -1835,7 +1761,6 @@ export default function MusicScreen() {
 
         if (!cancelled) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
-
           setHasFinalEnergy(false);
         }
       }
@@ -1965,12 +1890,21 @@ export default function MusicScreen() {
     );
 
     try {
-      await apiFetch(`/api/data/music?id=${encodeURIComponent(track.dbId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          is_favorite: nextValue,
-        }),
-      });
+      const userId = currentUserIdRef.current;
+
+      if (!userId) {
+        throw new Error("No authenticated user");
+      }
+
+      const { error } = await supabase
+        .from("music")
+        .update({ is_favorite: nextValue })
+        .eq("id", track.dbId)
+        .eq("user_id", userId);
+
+      if (error) {
+        throw error;
+      }
     } catch (error) {
       console.error("Failed to save favourite:", error);
 

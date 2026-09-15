@@ -1869,7 +1869,13 @@ app.get("/api/community/rooms", authRequired, async (_req, res) => {
 });
 
 app.post("/api/community/rooms", authRequired, async (req, res) => {
-  const { name, topic = "", description = "", roomType = "support" } = req.body;
+  const {
+    name,
+    topic = "",
+    description = "",
+    roomType = "support",
+    energyLevel = 50,
+  } = req.body;
 
   const cleanName = String(name || "")
     .trim()
@@ -1882,6 +1888,8 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
   const cleanDescription = String(description || "")
     .trim()
     .slice(0, 500);
+
+  const parsedEnergyLevel = Number(energyLevel);
 
   const validTypes = new Set([
     "discussion",
@@ -1900,6 +1908,16 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
   if (!validTypes.has(roomType)) {
     return res.status(400).json({
       error: "Invalid community type",
+    });
+  }
+
+  if (
+    !Number.isInteger(parsedEnergyLevel) ||
+    parsedEnergyLevel < 0 ||
+    parsedEnergyLevel > 100
+  ) {
+    return res.status(400).json({
+      error: "Energy level must be an integer between 0 and 100",
     });
   }
 
@@ -1926,7 +1944,8 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
             name,
             room_type,
             topic,
-            description
+            description,
+            energy_level
           )
           VALUES
           (
@@ -1935,7 +1954,8 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
             $3,
             $4,
             $5,
-            $6
+            $6,
+            $7
           )
           RETURNING
             id,
@@ -1944,9 +1964,18 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
             room_type,
             topic,
             description,
+            energy_level,
             created_at
           `,
-      [roomId, req.auth.sub, cleanName, roomType, cleanTopic, cleanDescription],
+      [
+        roomId,
+        req.auth.sub,
+        cleanName,
+        roomType,
+        cleanTopic,
+        cleanDescription,
+        parsedEnergyLevel,
+      ],
     );
 
     await client.query(
