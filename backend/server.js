@@ -3446,121 +3446,194 @@ async function analyzeJournalEnergy(journalText) {
   const text = String(journalText || "").trim();
 
   if (!text) {
-    throw new Error("Journal content is required for energy analysis");
+    throw new Error("Journal content is required");
   }
 
   const prompt = `
 You are Saathi's wellness analysis system.
 
-Analyze the user's journal entry and estimate the user's CURRENT ENERGY LEVEL.
+Analyze the user's journal entry and estimate their CURRENT ENERGY LEVEL.
 
-Energy scale:
+Use this scale:
 
 1-20:
 Extremely low energy.
-Severely drained, exhausted, no motivation, mentally or emotionally depleted.
+Very drained, exhausted, depleted, or almost no motivation.
 
 21-40:
 Low energy.
-Tired, mentally drained, withdrawn, struggling to engage.
+Tired, mentally drained, withdrawn, or struggling to engage.
 
 41-60:
 Moderate energy.
-Stable, average, balanced, or mixed energy.
+Stable, neutral, average, balanced, or mixed energy.
 
 61-80:
 Good energy.
-Motivated, engaged, active, hopeful, reasonably energetic.
+Motivated, engaged, active, hopeful, and reasonably energetic.
 
 81-100:
 Very high energy.
-Highly motivated, excited, enthusiastic, energized, strongly engaged.
+Highly motivated, excited, enthusiastic, energized, and strongly engaged.
 
-Important rules:
+Important:
+- Predict current ENERGY, not simple positive/negative sentiment.
+- Do not assume happiness means high energy.
+- Do not assume sadness means low energy.
+- Consider fatigue, motivation, focus, activity, engagement, and mental drive.
+- Base the score only on evidence in the journal.
+- Do not diagnose medical or psychiatric conditions.
+- Return only JSON.
 
-- Predict CURRENT ENERGY, not simple positive/negative sentiment.
-- Do NOT assume a happy person has high energy.
-- Do NOT assume a sad person has low energy.
-- Consider fatigue, motivation, focus, activity, engagement, confidence,
-  mental drive, and overall sense of energy.
-- Use evidence from the journal itself.
-- Do not diagnose any medical or psychiatric condition.
-- Do not provide medical advice.
-- Return ONLY JSON matching the requested schema.
-
-Journal entry:
-
+Journal:
 ${text}
 `;
 
-  const response = await gemini.models.generateContent({
-    model: "gemini-3.8-flash",
+  const models = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+  ];
 
-    contents: prompt,
+  let lastError = null;
 
-    config: {
-      responseMimeType: "application/json",
+  for (const model of models) {
+    try {
+      console.log(`[JOURNAL AI] Trying model: ${model}`);
 
-      responseSchema: {
-        type: "object",
+      const response = await gemini.models.generateContent({
+        model,
+        contents: prompt,
 
-        properties: {
-          energy_level: {
-            type: "integer",
-            minimum: 1,
-            maximum: 100,
-            description: "Current energy level from 1 to 100",
-          },
+        config: {
+          responseMimeType: "application/json",
 
-          confidence: {
-            type: "number",
-            minimum: 0,
-            maximum: 1,
-            description: "Confidence in the prediction from 0 to 1",
-          },
+          responseSchema: {
+            type: "object",
 
-          reason: {
-            type: "string",
-            description:
-              "Short explanation of why this energy level was selected",
+            properties: {
+              energy_level: {
+                type: "integer",
+                description: "Current energy level from 1 to 100",
+              },
+
+              confidence: {
+                type: "number",
+                description: "Confidence from 0 to 1",
+              },
+
+              reason: {
+                type: "string",
+                description: "Short reason for the energy prediction",
+              },
+            },
+
+            required: [
+              "energy_level",
+              "confidence",
+              "reason",
+            ],
           },
         },
+      });
 
-        required: ["energy_level", "confidence", "reason"],
-      },
-    },
-  });
+      const raw = response.text?.trim();
 
-  const raw = response.text?.trim();
+      if (!raw) {
+        throw new Error(
+          `Gemini model ${model} returned an empty response`,
+        );
+      }
 
-  if (!raw) {
-    throw new Error("Gemini returned an empty journal analysis");
+      let result;
+
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        throw new Error(
+          `Gemini model ${model} returned invalid JSON`,
+        );
+      }
+
+      const energy = Number(result.energy_level);
+      const confidence = Number(result.confidence);
+
+      if (
+        !Number.isInteger(energy) ||
+        energy < 1 ||
+        energy > 100
+      ) {
+        throw new Error(
+          `Gemini model ${model} returned invalid energy_level`,
+        );
+      }
+
+      console.log(
+        `[JOURNAL AI] ${model} succeeded: energy=${energy}`,
+      );
+
+      return {
+        energy_level: energy,
+
+        confidence: Number.isFinite(confidence)
+          ? Math.max(0, Math.min(1, confidence))
+          : 0,
+
+        reason: String(result.reason || "").trim(),
+      };
+    } catch (error) {
+      lastError = error;
+
+      const status = error?.status;
+      const message = error?.message || "Unknown Gemini error";
+
+      console.error(
+        `[JOURNAL AI] ${model} failed`,
+        {
+          status,
+          message,
+        },
+      );
+
+      /*
+       * Try the next model when Gemini says:
+       * - model unavailable / high demand
+       * - temporary server error
+       * - rate limit
+       *
+       * Don't silently continue on authentication errors.
+       */
+      if (status === 401 || status === 403) {
+        throw error;
+      }
+
+      if (
+        status === 429 ||
+        status === 500 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
+        message.toLowerCase().includes("unavailable") ||
+        message.toLowerCase().includes("high demand")
+      ) {
+        continue;
+      }
+
+      /*
+       * For other errors, fail immediately because
+       * they are probably configuration/code problems.
+       */
+      throw error;
+    }
   }
 
-  let analysis;
-
-  try {
-    analysis = JSON.parse(raw);
-  } catch {
-    throw new Error("Gemini returned invalid journal analysis JSON");
-  }
-
-  const energy = Number(analysis.energy_level);
-  const confidence = Number(analysis.confidence);
-
-  if (!Number.isInteger(energy) || energy < 1 || energy > 100) {
-    throw new Error("Gemini returned an invalid journal energy level");
-  }
-
-  return {
-    energy_level: energy,
-
-    confidence: Number.isFinite(confidence)
-      ? Math.max(0, Math.min(1, confidence))
-      : 0,
-
-    reason: String(analysis.reason || "").trim(),
-  };
+  throw new Error(
+    `Gemini journal analysis is temporarily unavailable. Last error: ${
+      lastError?.message || "Unknown error"
+    }`,
+  );
 }
 app.post(
   "/api/data/journals",
