@@ -540,11 +540,9 @@ async function listResource(config, userId, query) {
 
     if (key.startsWith("gte_")) {
       column = key.slice(4);
-
       operator = ">=";
     } else if (key.startsWith("lte_")) {
       column = key.slice(4);
-
       operator = "<=";
     }
 
@@ -646,9 +644,9 @@ async function updateResource(config, userId, id, item) {
   if (!assignments.length) {
     const existing = await pool.query(
       `SELECT *
-         FROM ${config.table}
-         WHERE user_id = $1
-           AND id = $2`,
+       FROM ${config.table}
+       WHERE user_id = $1
+         AND id = $2`,
       [userId, id],
     );
 
@@ -815,16 +813,16 @@ async function recordActivity(
 app.get("/api/debug/activity-history-db", authRequired, async (req, res) => {
   try {
     const result = await pool.query(`
-          SELECT
-            column_name,
-            data_type,
-            is_nullable,
-            column_default
-          FROM information_schema.columns
-          WHERE table_schema = 'public'
-            AND table_name = 'activity_history'
-          ORDER BY ordinal_position
-        `);
+      SELECT
+        column_name,
+        data_type,
+        is_nullable,
+        column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'activity_history'
+      ORDER BY ordinal_position
+    `);
 
     res.json({
       table: "activity_history",
@@ -1017,9 +1015,9 @@ app.patch("/api/profile", authRequired, async (req, res) => {
 
   const result = await pool.query(
     `UPDATE profiles
-         SET ${assignments.join(", ")}
-         WHERE user_id = $1
-         RETURNING *`,
+       SET ${assignments.join(", ")}
+       WHERE user_id = $1
+       RETURNING *`,
     values,
   );
 
@@ -1042,23 +1040,23 @@ app.get("/api/settings", authRequired, async (req, res) => {
 app.put("/api/settings/:key", authRequired, async (req, res) => {
   const result = await pool.query(
     `INSERT INTO wellness_settings
-         (
-           user_id,
-           setting_key,
-           value,
-           updated_at
-         )
-         VALUES
-         ($1, $2, $3, NOW())
-         ON CONFLICT
-         (user_id, setting_key)
-         DO UPDATE SET
-           value = EXCLUDED.value,
-           updated_at = NOW()
-         RETURNING
-           setting_key,
-           value,
-           updated_at`,
+       (
+         user_id,
+         setting_key,
+         value,
+         updated_at
+       )
+       VALUES
+       ($1, $2, $3, NOW())
+       ON CONFLICT
+       (user_id, setting_key)
+       DO UPDATE SET
+         value = EXCLUDED.value,
+         updated_at = NOW()
+       RETURNING
+         setting_key,
+         value,
+         updated_at`,
     [req.auth.sub, req.params.key, JSON.stringify(req.body.value ?? {})],
   );
 
@@ -1557,12 +1555,9 @@ app.post("/api/auth/oauth/apple/callback", async (req, res) => {
 
     const verified = await jwtVerify(
       tokenData.id_token,
-
       createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys")),
-
       {
         issuer: "https://appleid.apple.com",
-
         audience: process.env.APPLE_CLIENT_ID,
       },
     );
@@ -1630,7 +1625,6 @@ app.get("/api/integrations/fitbit/callback", async (req, res) => {
 
       headers: {
         Authorization: `Basic ${basic}`,
-
         "Content-Type": "application/x-www-form-urlencoded",
       },
 
@@ -1851,17 +1845,21 @@ app.delete("/api/integrations/fitbit", authRequired, async (req, res) => {
   });
 });
 
+/* =========================================================
+   COMMUNITY
+   ========================================================= */
+
 app.get("/api/community/rooms", authRequired, async (_req, res) => {
   const result = await pool.query(`
-        SELECT
-          r.*,
-          COUNT(m.user_id)::int AS member_count
-        FROM community_rooms r
-        LEFT JOIN community_memberships m
-          ON m.room_id = r.id
-        GROUP BY r.id
-        ORDER BY r.created_at
-      `);
+    SELECT
+      r.*,
+      COUNT(m.user_id)::int AS member_count
+    FROM community_rooms r
+    LEFT JOIN community_memberships m
+      ON m.room_id = r.id
+    GROUP BY r.id
+    ORDER BY r.created_at
+  `);
 
   res.json({
     data: result.rows,
@@ -1937,36 +1935,36 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
 
     const result = await client.query(
       `
-          INSERT INTO community_rooms
-          (
-            id,
-            owner_id,
-            name,
-            room_type,
-            topic,
-            description,
-            energy_level
-          )
-          VALUES
-          (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7
-          )
-          RETURNING
-            id,
-            owner_id,
-            name,
-            room_type,
-            topic,
-            description,
-            energy_level,
-            created_at
-          `,
+        INSERT INTO community_rooms
+        (
+          id,
+          owner_id,
+          name,
+          room_type,
+          topic,
+          description,
+          energy_level
+        )
+        VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7
+        )
+        RETURNING
+          id,
+          owner_id,
+          name,
+          room_type,
+          topic,
+          description,
+          energy_level,
+          created_at
+      `,
       [
         roomId,
         req.auth.sub,
@@ -1992,25 +1990,23 @@ app.post("/api/community/rooms", authRequired, async (req, res) => {
           $2,
           'admin'
         )
-        `,
+      `,
       [roomId, req.auth.sub],
     );
 
+    /* FIX:
+       Store the CREATED ROOM energy in activity_history.energy_level
+    */
     const activity = await recordActivity(client, {
       userId: req.auth.sub,
-
       activityType: "community",
-
       title: "Created Community",
-
       subtitle: cleanName,
-
-      energyLevel: null,
-
+      energyLevel: parsedEnergyLevel,
       metadata: {
         community_id: roomId,
-
         action: "created",
+        room_energy_level: parsedEnergyLevel,
       },
     });
 
@@ -2044,6 +2040,32 @@ app.post(
     try {
       await client.query("BEGIN");
 
+      /* FIX:
+         Read the room's energy level before creating the activity.
+      */
+      const roomResult = await client.query(
+        `
+          SELECT
+            id,
+            name,
+            energy_level
+          FROM community_rooms
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [req.params.roomId],
+      );
+
+      const room = roomResult.rows[0];
+
+      if (!room) {
+        await client.query("ROLLBACK");
+
+        return res.status(404).json({
+          error: "Community room not found",
+        });
+      }
+
       const insertResult = await client.query(
         `
           INSERT INTO community_memberships
@@ -2057,42 +2079,33 @@ app.post(
             $2
           )
           ON CONFLICT
-          (
-            room_id,
-            user_id
-          )
+          (room_id, user_id)
           DO NOTHING
           RETURNING room_id
-          `,
+        `,
         [req.params.roomId, req.auth.sub],
       );
 
+      /* Only create JOIN activity if membership was actually created. */
       if (insertResult.rowCount > 0) {
-        const room = await client.query(
-          "SELECT name FROM community_rooms WHERE id = $1",
-          [req.params.roomId],
-        );
-
         const activity = await recordActivity(client, {
           userId: req.auth.sub,
-
           activityType: "community",
-
           title: "Joined Community",
+          subtitle: room.name || null,
 
-          subtitle: room.rows[0]?.name || null,
-
-          energyLevel: null,
+          /* FIX: use the room's energy */
+          energyLevel: room.energy_level,
 
           metadata: {
             community_id: req.params.roomId,
-
             action: "joined",
+            room_energy_level: room.energy_level,
           },
         });
 
         console.log(
-          `[ACTIVITY] community activity recorded: ${activity.id} (joined ${req.params.roomId})`,
+          `[ACTIVITY] community activity recorded: ${activity.id} (joined ${req.params.roomId}, energy ${room.energy_level})`,
         );
       }
 
@@ -2120,42 +2133,62 @@ app.delete(
     try {
       await client.query("BEGIN");
 
+      /* FIX:
+         Get room energy before deleting membership.
+      */
+      const roomResult = await client.query(
+        `
+          SELECT
+            id,
+            name,
+            energy_level
+          FROM community_rooms
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [req.params.roomId],
+      );
+
+      const room = roomResult.rows[0];
+
+      if (!room) {
+        await client.query("ROLLBACK");
+
+        return res.status(404).json({
+          error: "Community room not found",
+        });
+      }
+
       const deleteResult = await client.query(
         `
           DELETE FROM community_memberships
           WHERE room_id = $1
             AND user_id = $2
           RETURNING room_id
-          `,
+        `,
         [req.params.roomId, req.auth.sub],
       );
 
+      /* Only create LEAVE activity if membership actually existed. */
       if (deleteResult.rowCount > 0) {
-        const room = await client.query(
-          "SELECT name FROM community_rooms WHERE id = $1",
-          [req.params.roomId],
-        );
-
         const activity = await recordActivity(client, {
           userId: req.auth.sub,
-
           activityType: "community",
-
           title: "Left Community",
+          subtitle: room.name || null,
 
-          subtitle: room.rows[0]?.name || null,
-
-          energyLevel: null,
+          /* FIX: use the room's energy */
+          energyLevel: room.energy_level,
 
           metadata: {
             community_id: req.params.roomId,
-
             action: "left",
+            room_energy_level: room.energy_level,
           },
         });
 
         console.log(
-          `[ACTIVITY] community activity recorded: ${activity.id} (left ${req.params.roomId})`,
+          `[ACTIVITY] community activity recorded: ${activity.id} (left ${req.params.roomId}, energy ${room.energy_level})`,
         );
       }
 
@@ -2180,11 +2213,12 @@ app.get(
   async (req, res) => {
     const result = await pool.query(
       `
-        SELECT role
+        SELECT
+          role
         FROM community_memberships
         WHERE room_id = $1
           AND user_id = $2
-        `,
+      `,
       [req.params.roomId, req.auth.sub],
     );
 
@@ -2233,7 +2267,7 @@ app.get(
         ORDER BY
           m.created_at ASC
         LIMIT 200
-        `,
+      `,
       [req.params.roomId],
     );
 
@@ -2290,7 +2324,7 @@ app.post(
           $7
         )
         RETURNING *
-        `,
+      `,
       [
         req.params.roomId,
         req.auth.sub,
@@ -2335,7 +2369,7 @@ app.post(
           AND user_id = $2
           AND emoji = $3
         RETURNING message_id
-        `,
+      `,
       [req.params.messageId, req.auth.sub, emoji],
     );
 
@@ -2347,22 +2381,22 @@ app.post(
 
       await pool.query(
         `
-        INSERT INTO community_message_reactions
-        (
-          message_id,
-          user_id,
-          user_name,
-          emoji
-        )
-        VALUES
-        (
-          $1,
-          $2,
-          $3,
-          $4
-        )
-        ON CONFLICT
-        DO NOTHING
+          INSERT INTO community_message_reactions
+          (
+            message_id,
+            user_id,
+            user_name,
+            emoji
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4
+          )
+          ON CONFLICT
+          DO NOTHING
         `,
         [
           req.params.messageId,
@@ -2383,18 +2417,18 @@ app.post(
 
 app.get("/api/community/feed", authRequired, async (req, res) => {
   const result = await pool.query(`
-        SELECT
-          p.*,
-          u.full_name AS author_name
-        FROM community_posts p
-        JOIN saathi_users u
-          ON u.id = p.author_id
-        WHERE
-          p.visibility = 'community'
-        ORDER BY
-          p.created_at DESC
-        LIMIT 50
-      `);
+    SELECT
+      p.*,
+      u.full_name AS author_name
+    FROM community_posts p
+    JOIN saathi_users u
+      ON u.id = p.author_id
+    WHERE
+      p.visibility = 'community'
+    ORDER BY
+      p.created_at DESC
+    LIMIT 50
+  `);
 
   res.json({
     data: result.rows,
@@ -2413,28 +2447,28 @@ app.post("/api/community/feed", authRequired, async (req, res) => {
 
   const result = await pool.query(
     `
-        INSERT INTO community_posts
-        (
-          author_id,
-          title,
-          body,
-          mood,
-          post_type,
-          visibility,
-          stats
-        )
-        VALUES
-        (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7
-        )
-        RETURNING *
-        `,
+      INSERT INTO community_posts
+      (
+        author_id,
+        title,
+        body,
+        mood,
+        post_type,
+        visibility,
+        stats
+      )
+      VALUES
+      (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7
+      )
+      RETURNING *
+    `,
     [
       req.auth.sub,
       title,
@@ -2465,7 +2499,7 @@ app.get(
           ON u.id = c.author_id
         WHERE c.post_id = $1
         ORDER BY c.created_at ASC
-        `,
+      `,
       [req.params.postId],
     );
 
@@ -2502,7 +2536,7 @@ app.post(
           $3
         )
         RETURNING *
-        `,
+      `,
       [req.params.postId, req.auth.sub, body.trim()],
     );
 
@@ -2544,27 +2578,26 @@ function validateAnonymousThought(thought) {
 app.get("/api/anonymous-posts", authRequired, async (req, res) => {
   const result = await pool.query(
     `
-        SELECT
-          p.id,
-          p.thought,
-          p.photo_data,
-          p.likes_count,
-          p.created_at,
-          EXISTS(
-            SELECT 1
-            FROM anonymous_post_likes l
-            WHERE
-              l.post_id = p.id
-              AND l.user_id = $1
-          ) AS liked_by_me
-        FROM anonymous_posts p
-        WHERE
-          p.moderation_status =
-            'approved'
-        ORDER BY
-          p.created_at DESC
-        LIMIT 50
-        `,
+      SELECT
+        p.id,
+        p.thought,
+        p.photo_data,
+        p.likes_count,
+        p.created_at,
+        EXISTS(
+          SELECT 1
+          FROM anonymous_post_likes l
+          WHERE
+            l.post_id = p.id
+            AND l.user_id = $1
+        ) AS liked_by_me
+      FROM anonymous_posts p
+      WHERE
+        p.moderation_status = 'approved'
+      ORDER BY
+        p.created_at DESC
+      LIMIT 50
+    `,
     [req.auth.sub],
   );
 
@@ -2596,15 +2629,15 @@ app.post("/api/anonymous-posts", authRequired, async (req, res) => {
 
   const recent = await pool.query(
     `
-        SELECT
-          COUNT(*)::int AS count
-        FROM anonymous_posts
-        WHERE
-          author_id = $1
-          AND created_at >
-            NOW() -
-            INTERVAL '10 minutes'
-        `,
+      SELECT
+        COUNT(*)::int AS count
+      FROM anonymous_posts
+      WHERE
+        author_id = $1
+        AND created_at >
+          NOW() -
+          INTERVAL '10 minutes'
+    `,
     [req.auth.sub],
   );
 
@@ -2616,25 +2649,25 @@ app.post("/api/anonymous-posts", authRequired, async (req, res) => {
 
   const result = await pool.query(
     `
-        INSERT INTO anonymous_posts
-        (
-          author_id,
-          thought,
-          photo_data
-        )
-        VALUES
-        (
-          $1,
-          $2,
-          $3
-        )
-        RETURNING
-          id,
-          thought,
-          photo_data,
-          likes_count,
-          created_at
-        `,
+      INSERT INTO anonymous_posts
+      (
+        author_id,
+        thought,
+        photo_data
+      )
+      VALUES
+      (
+        $1,
+        $2,
+        $3
+      )
+      RETURNING
+        id,
+        thought,
+        photo_data,
+        likes_count,
+        created_at
+    `,
     [req.auth.sub, String(thought).trim(), photoData],
   );
 
@@ -2657,25 +2690,25 @@ app.post(
           post_id = $1
           AND user_id = $2
         RETURNING post_id
-        `,
+      `,
       [req.params.postId, req.auth.sub],
     );
 
     if (removed.rowCount === 0) {
       await pool.query(
         `
-        INSERT INTO anonymous_post_likes
-        (
-          post_id,
-          user_id
-        )
-        VALUES
-        (
-          $1,
-          $2
-        )
-        ON CONFLICT
-        DO NOTHING
+          INSERT INTO anonymous_post_likes
+          (
+            post_id,
+            user_id
+          )
+          VALUES
+          (
+            $1,
+            $2
+          )
+          ON CONFLICT
+          DO NOTHING
         `,
         [req.params.postId, req.auth.sub],
       );
@@ -2687,9 +2720,8 @@ app.post(
         FROM anonymous_posts
         WHERE
           id = $1
-          AND moderation_status =
-            'approved'
-        `,
+          AND moderation_status = 'approved'
+      `,
       [req.params.postId],
     );
 
@@ -2710,7 +2742,7 @@ app.post(
           )
         WHERE id = $1
         RETURNING likes_count
-        `,
+      `,
       [req.params.postId],
     );
 
@@ -2738,11 +2770,11 @@ app.patch("/api/data/moods", authRequired, async (req, res) => {
 
     const existingResult = await client.query(
       `SELECT *
-           FROM moods
-           WHERE
-             user_id = $1
-             AND id = $2
-           FOR UPDATE`,
+         FROM moods
+         WHERE
+           user_id = $1
+           AND id = $2
+         FOR UPDATE`,
       [req.auth.sub, id],
     );
 
@@ -3092,7 +3124,6 @@ app.post("/api/data/meditation_sessions", authRequired, async (req, res) => {
         req.auth.sub,
         duration ?? null,
         isCompleted,
-
         energy_level !== undefined &&
         energy_level !== null &&
         energy_level !== ""
@@ -3407,24 +3438,239 @@ app.patch(
     }
   },
 );
+async function analyzeJournalEnergy(journalText) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Gemini API is not configured");
+  }
 
+  const text = String(journalText || "").trim();
+
+  if (!text) {
+    throw new Error("Journal content is required");
+  }
+
+  const prompt = `
+You are Saathi's wellness analysis system.
+
+Analyze the user's journal entry and estimate their CURRENT ENERGY LEVEL.
+
+Use this scale:
+
+1-20:
+Extremely low energy.
+Very drained, exhausted, depleted, or almost no motivation.
+
+21-40:
+Low energy.
+Tired, mentally drained, withdrawn, or struggling to engage.
+
+41-60:
+Moderate energy.
+Stable, neutral, average, balanced, or mixed energy.
+
+61-80:
+Good energy.
+Motivated, engaged, active, hopeful, and reasonably energetic.
+
+81-100:
+Very high energy.
+Highly motivated, excited, enthusiastic, energized, and strongly engaged.
+
+Important:
+- Predict current ENERGY, not simple positive/negative sentiment.
+- Do not assume happiness means high energy.
+- Do not assume sadness means low energy.
+- Consider fatigue, motivation, focus, activity, engagement, and mental drive.
+- Base the score only on evidence in the journal.
+- Do not diagnose medical or psychiatric conditions.
+- Return only JSON.
+
+Journal:
+${text}
+`;
+
+  const models = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+  ];
+
+  let lastError = null;
+
+  for (const model of models) {
+    try {
+      console.log(`[JOURNAL AI] Trying model: ${model}`);
+
+      const response = await gemini.models.generateContent({
+        model,
+        contents: prompt,
+
+        config: {
+          responseMimeType: "application/json",
+
+          responseSchema: {
+            type: "object",
+
+            properties: {
+              energy_level: {
+                type: "integer",
+                description: "Current energy level from 1 to 100",
+              },
+
+              confidence: {
+                type: "number",
+                description: "Confidence from 0 to 1",
+              },
+
+              reason: {
+                type: "string",
+                description: "Short reason for the energy prediction",
+              },
+            },
+
+            required: [
+              "energy_level",
+              "confidence",
+              "reason",
+            ],
+          },
+        },
+      });
+
+      const raw = response.text?.trim();
+
+      if (!raw) {
+        throw new Error(
+          `Gemini model ${model} returned an empty response`,
+        );
+      }
+
+      let result;
+
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        throw new Error(
+          `Gemini model ${model} returned invalid JSON`,
+        );
+      }
+
+      const energy = Number(result.energy_level);
+      const confidence = Number(result.confidence);
+
+      if (
+        !Number.isInteger(energy) ||
+        energy < 1 ||
+        energy > 100
+      ) {
+        throw new Error(
+          `Gemini model ${model} returned invalid energy_level`,
+        );
+      }
+
+      console.log(
+        `[JOURNAL AI] ${model} succeeded: energy=${energy}`,
+      );
+
+      return {
+        energy_level: energy,
+
+        confidence: Number.isFinite(confidence)
+          ? Math.max(0, Math.min(1, confidence))
+          : 0,
+
+        reason: String(result.reason || "").trim(),
+      };
+    } catch (error) {
+      lastError = error;
+
+      const status = error?.status;
+      const message = error?.message || "Unknown Gemini error";
+
+      console.error(
+        `[JOURNAL AI] ${model} failed`,
+        {
+          status,
+          message,
+        },
+      );
+
+      /*
+       * Try the next model when Gemini says:
+       * - model unavailable / high demand
+       * - temporary server error
+       * - rate limit
+       *
+       * Don't silently continue on authentication errors.
+       */
+      if (status === 401 || status === 403) {
+        throw error;
+      }
+
+      if (
+        status === 429 ||
+        status === 500 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
+        message.toLowerCase().includes("unavailable") ||
+        message.toLowerCase().includes("high demand")
+      ) {
+        continue;
+      }
+
+      /*
+       * For other errors, fail immediately because
+       * they are probably configuration/code problems.
+       */
+      throw error;
+    }
+  }
+
+  throw new Error(
+    `Gemini journal analysis is temporarily unavailable. Last error: ${
+      lastError?.message || "Unknown error"
+    }`,
+  );
+}
 app.post(
   "/api/data/journals",
   authRequired,
   upload.array("images", 10),
+
   async (req, res) => {
     const client = await pool.connect();
 
     try {
-      const { title = "", content = "", mood, energy_level } = req.body;
+      const { title = "", content = "", mood } = req.body;
 
-      if (!String(content).trim()) {
-        client.release();
+      // ------------------------------------------
+      // 1. Validate journal text
+      // ------------------------------------------
 
+      const cleanContent = String(content || "").trim();
+
+      if (!cleanContent) {
         return res.status(400).json({
           error: "Journal content is required",
         });
       }
+
+      // ------------------------------------------
+      // 2. Make sure Gemini is configured
+      // ------------------------------------------
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({
+          error: "Journal energy analysis is not configured",
+        });
+      }
+
+      // ------------------------------------------
+      // 3. Get uploaded images
+      // ------------------------------------------
 
       const files = req.files || [];
 
@@ -3446,42 +3692,68 @@ app.post(
         })),
       };
 
+      // ------------------------------------------
+      // 4. Gemini analyzes journal energy
+      // ------------------------------------------
+
+      const aiAnalysis = await analyzeJournalEnergy(cleanContent);
+
+      const parsedEnergyLevel = aiAnalysis.energy_level;
+
+      console.log("[JOURNAL AI] Energy analysis:", {
+        energy_level: parsedEnergyLevel,
+
+        confidence: aiAnalysis.confidence,
+
+        reason: aiAnalysis.reason,
+      });
+
+      // ------------------------------------------
+      // 5. Start database transaction
+      // ------------------------------------------
+
       await client.query("BEGIN");
+
+      // ------------------------------------------
+      // 6. Save journal
+      // ------------------------------------------
 
       const result = await client.query(
         `INSERT INTO journals
-           (
-             user_id,
-             title,
-             content,
-             mood,
-             energy_level,
-             media_type,
-             media_url,
-             media_metadata
-           )
-           VALUES
-           (
-             $1,
-             $2,
-             $3,
-             $4,
-             $5,
-             $6,
-             $7,
-             $8
-           )
-           RETURNING *`,
+         (
+           user_id,
+           title,
+           content,
+           mood,
+           energy_level,
+           media_type,
+           media_url,
+           media_metadata
+         )
+         VALUES
+         (
+           $1,
+           $2,
+           $3,
+           $4,
+           $5,
+           $6,
+           $7,
+           $8
+         )
+         RETURNING *`,
+
         [
           req.auth.sub,
 
           String(title).trim(),
 
-          String(content),
+          cleanContent,
 
           mood || null,
 
-          energy_level ? Number(energy_level) : null,
+          // Gemini-generated energy
+          parsedEnergyLevel,
 
           files.length ? "image" : null,
 
@@ -3492,6 +3764,10 @@ app.post(
       );
 
       const journal = result.rows[0];
+
+      // ------------------------------------------
+      // 7. Save activity history
+      // ------------------------------------------
 
       const activity = await recordActivity(client, {
         userId: req.auth.sub,
@@ -3506,22 +3782,52 @@ app.post(
 
         metadata: {
           journal_id: journal.id,
+
+          journal_energy_level: journal.energy_level,
+
+          ai_confidence: aiAnalysis.confidence,
+
+          ai_reason: aiAnalysis.reason,
         },
       });
 
-      console.log(`[ACTIVITY] journal created: ${activity.id}`);
+      console.log(
+        `[ACTIVITY] journal created: ${activity.id} with Gemini energy ${journal.energy_level}`,
+      );
+
+      // ------------------------------------------
+      // 8. Commit
+      // ------------------------------------------
 
       await client.query("COMMIT");
 
-      res.status(201).json({
+      // ------------------------------------------
+      // 9. Response
+      // ------------------------------------------
+
+      return res.status(201).json({
         data: journal,
+
+        analysis: {
+          energy_level: journal.energy_level,
+
+          confidence: aiAnalysis.confidence,
+
+          reason: aiAnalysis.reason,
+        },
       });
     } catch (error) {
-      await client.query("ROLLBACK");
+      // ------------------------------------------
+      // Rollback safely
+      // ------------------------------------------
+
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
 
       console.error("Create journal error:", error);
 
-      res.status(400).json({
+      return res.status(400).json({
         error: error?.message || "Failed to create journal",
       });
     } finally {
@@ -3529,7 +3835,6 @@ app.post(
     }
   },
 );
-
 app.get("/api/data/:resource", authRequired, async (req, res) => {
   try {
     const config = resourceOr404(req, res);
@@ -3591,7 +3896,7 @@ app.post("/api/data/:resource", authRequired, async (req, res) => {
             Number(insertItem.energy_level) > 100
           ) {
             return res.status(400).json({
-              error: "music energy_level must be a number between 1 and 100",
+              error: "music energy_level must be between 1 and 100",
             });
           }
         }
@@ -3759,19 +4064,19 @@ io.on("connection", (socket) => {
 
       await pool.query(
         `
-            INSERT INTO community_memberships
-            (
-              room_id,
-              user_id
-            )
-            VALUES
-            (
-              $1,
-              $2
-            )
-            ON CONFLICT
-            DO NOTHING
-            `,
+          INSERT INTO community_memberships
+          (
+            room_id,
+            user_id
+          )
+          VALUES
+          (
+            $1,
+            $2
+          )
+          ON CONFLICT
+          DO NOTHING
+        `,
         [message.roomId, userId],
       );
 
@@ -3785,28 +4090,28 @@ io.on("connection", (socket) => {
 
       const result = await pool.query(
         `
-              INSERT INTO community_messages
-              (
-                id,
-                room_id,
-                sender_id,
-                sender_name,
-                message_type,
-                content,
-                support
-              )
-              VALUES
-              (
-                $1,
-                $2,
-                $3,
-                $4,
-                $5,
-                $6,
-                $7
-              )
-              RETURNING *
-              `,
+          INSERT INTO community_messages
+          (
+            id,
+            room_id,
+            sender_id,
+            sender_name,
+            message_type,
+            content,
+            support
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7
+          )
+          RETURNING *
+        `,
         [
           message.id || crypto.randomUUID(),
 
@@ -3862,23 +4167,23 @@ io.on("connection", (socket) => {
 
       await pool.query(
         `
-            INSERT INTO community_message_reactions
-            (
-              message_id,
-              user_id,
-              user_name,
-              emoji
-            )
-            VALUES
-            (
-              $1,
-              $2,
-              $3,
-              $4
-            )
-            ON CONFLICT
-            DO NOTHING
-            `,
+          INSERT INTO community_message_reactions
+          (
+            message_id,
+            user_id,
+            user_name,
+            emoji
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4
+          )
+          ON CONFLICT
+          DO NOTHING
+        `,
         [messageId, userId, user.rows[0]?.full_name || "", selected.emoji],
       );
     }

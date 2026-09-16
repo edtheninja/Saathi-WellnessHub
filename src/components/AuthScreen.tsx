@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,13 +50,18 @@ const AuthScreen = () => {
 
         // create profile safely (only once)
         if (data.user) {
-          await supabase.from('profiles').insert({
-            id: data.user.id,
-            name: fullName,
-          });
+          await supabase.from('profiles').upsert(
+            {
+              user_id: data.user.id,
+              full_name: fullName,
+            },
+            {
+              onConflict: 'user_id',
+            },
+          );
         }
 
-        alert('Verification email sent🎉. Please verify before login.✅');
+        alert('Verification email sentðŸŽ‰. Please verify before login.âœ…');
         return;
       }
 
@@ -69,10 +74,10 @@ const AuthScreen = () => {
 
         if (error) throw error;
 
-        // 🚨 BLOCK UNVERIFIED USERS
+        // ðŸš¨ BLOCK UNVERIFIED USERS
         if (!data.user?.email_confirmed_at) {
           await supabase.auth.signOut();
-          alert('Please verify your email before logging in.❌');
+          alert('Please verify your email before logging in.âŒ');
           return;
         }
 
@@ -374,19 +379,19 @@ const AuthScreen = () => {
             FLOATING HEARTS / SPARKLES
         ======================================================= */}
         <div className="absolute left-[10%] top-[30%] text-2xl text-[#9b8ce4]/55">
-          ✦
+          âœ¦
         </div>
 
         <div className="absolute right-[12%] top-[38%] text-xl text-[#7dbda0]/60">
-          ✦
+          âœ¦
         </div>
 
         <div className="absolute left-[16%] bottom-[24%] text-2xl text-[#a78de9]/45">
-          ♥
+          â™¥
         </div>
 
         <div className="absolute right-[18%] bottom-[28%] text-xl text-[#8cc9ad]/55">
-          ♥
+          â™¥
         </div>
 
         {/* =======================================================
@@ -398,7 +403,7 @@ const AuthScreen = () => {
           Days
           <br />
           Ahead
-          <span className="block mt-1 text-sm">♥</span>
+          <span className="block mt-1 text-sm">â™¥</span>
         </div>
 
         <div className="absolute right-[3%] top-[28%] rotate-[7deg] text-center font-serif text-lg leading-tight text-[#68a88c]/60 sm:right-[7%] sm:text-xl">
@@ -409,7 +414,7 @@ const AuthScreen = () => {
           Big
           <br />
           Changes
-          <span className="block mt-1 text-sm">♥</span>
+          <span className="block mt-1 text-sm">â™¥</span>
         </div>
 
         <div className="absolute bottom-[8%] left-[5%] rotate-[-5deg] text-center font-serif text-lg leading-tight text-[#756bd0]/50 sm:left-[9%] sm:text-xl">
@@ -418,7 +423,7 @@ const AuthScreen = () => {
           Are
           <br />
           Enough
-          <span className="block mt-1 text-sm">♥</span>
+          <span className="block mt-1 text-sm">â™¥</span>
         </div>
 
         {/* subtle grain */}
@@ -739,7 +744,7 @@ const AuthScreen = () => {
                   onClick={() => void handleOAuth('apple')}
                   className="h-12 rounded-xl border-[#d9e2ef] bg-white/70 text-sm font-medium text-[#4d5c74] shadow-none transition-all hover:-translate-y-0.5 hover:border-[#c5b9f1] hover:bg-white hover:shadow-md"
                 >
-                  <span className="mr-2 text-lg"></span>
+                  <span className="mr-2 text-lg">ï£¿</span>
                   Apple
                 </Button>
 
@@ -762,7 +767,7 @@ const AuthScreen = () => {
               {/* tiny brand detail */}
               <div className="mt-7 flex items-center justify-center gap-3 opacity-50">
                 <div className="h-px w-12 bg-[#9b8de2]" />
-                <span className="text-sm text-[#8b7de5]">✦</span>
+                <span className="text-sm text-[#8b7de5]">âœ¦</span>
                 <div className="h-px w-12 bg-[#9b8de2]" />
               </div>
 
@@ -771,7 +776,7 @@ const AuthScreen = () => {
 
           {/* Bottom reassurance */}
           <p className="mt-5 text-center text-xs font-medium tracking-wide text-[#66758f]/75">
-            A little step toward feeling better 🌿
+            A little step toward feeling better ðŸŒ¿
           </p>
 
         </div>
@@ -781,3 +786,4 @@ const AuthScreen = () => {
 };
 
 export default AuthScreen;
+

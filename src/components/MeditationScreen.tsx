@@ -1,25 +1,45 @@
 import { useState, useEffect, useRef } from "react";
-import {
-  Play,
-  Pause,
-  RotateCcw,
-  Check,
-  MoreVertical,
-  Volume2,
-  VolumeX,
-  Music2,
-} from "lucide-react";
-import { supabase } from "@/supabaseClient";
+import { Play, Pause, RotateCcw, Check, MoreVertical } from "lucide-react";
+
+const API_BASE = (import.meta.env.VITE_API_URL || "")
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
+
+const apiUrl = (path: string) => `${API_BASE}${path}`;
+
+const getAccessToken = () => localStorage.getItem("saathi_access_token");
+
+const apiFetch = async (path: string, options: RequestInit = {}) => {
+  const token = getAccessToken();
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(apiUrl(path), { ...options, headers });
+  const raw = await response.text();
+  let payload: any = null;
+  try {
+    payload = raw ? JSON.parse(raw) : null;
+  } catch {
+    payload = raw;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.error ||
+        payload?.message ||
+        (typeof payload === "string" ? payload : null) ||
+        `Request failed with status ${response.status}`,
+    );
+  }
+
+  return payload;
+};
 
 /* =========================================================
    TYPES
 ========================================================= */
-
-type Music = {
-  id: string;
-  title: string;
-  audio_url: string;
-};
 
 /* =========================================================
    COMPONENT
@@ -33,14 +53,10 @@ const MeditationScreen = () => {
   const [isActive, setIsActive] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300);
   const [selectedDuration, setSelectedDuration] = useState(5);
-
-  const meditationIdRef = useRef<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const isFinalizedRef = useRef(false);
-
-  const sessionInsertPromiseRef = useRef<Promise<string | null> | null>(null);
-
-  const sessionVersionRef = useRef(0);
 
   /*
     Total real elapsed meditation time in milliseconds.
@@ -60,40 +76,6 @@ const MeditationScreen = () => {
   const timerFrameRef = useRef<number | null>(null);
 
   const lastDisplayedSecondRef = useRef(300);
-
-  /* =========================================================
-     MUSIC
-  ========================================================= */
-
-  const [musicList, setMusicList] = useState<Music[]>([]);
-
-  const [selectedMusic, setSelectedMusic] = useState<Music | null>(null);
-
-  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
-
-  const [isMuted, setIsMuted] = useState(false);
-
-  const [musicLoading, setMusicLoading] = useState(false);
-
-  /* =========================================================
-     WAVEFORM
-  ========================================================= */
-
-  const [waveform, setWaveform] = useState<number[]>(Array(96).fill(0.12));
-
-  /* =========================================================
-     AUDIO REFS
-  ========================================================= */
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const audioContextRef = useRef<AudioContext | null>(null);
-
-  const analyserRef = useRef<AnalyserNode | null>(null);
-
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-
-  const audioFrameRef = useRef<number | null>(null);
 
   /* =========================================================
      DURATIONS
@@ -128,91 +110,105 @@ const MeditationScreen = () => {
   ];
 
   /* =========================================================
-     FETCH MUSIC
+     ENERGY CALCULATION
   ========================================================= */
 
-  useEffect(() => {
-    fetchMusic();
-  }, []);
+  const calculateEnergyLevel = (
+    actualElapsedMs: number,
+    targetDurationMinutes: number,
+  ) => {
+    const targetMs = targetDurationMinutes * 60 * 1000;
 
-  const fetchMusic = async () => {
-    setMusicLoading(true);
-
-    const { data, error } = await supabase
-      .from("music")
-      .select("id, title, audio_url")
-      .order("title", {
-        ascending: true,
-      });
-
-    if (error) {
-      console.error("Failed to fetch music:", error);
-
-      setMusicLoading(false);
-      return;
+    if (targetMs <= 0 || actualElapsedMs <= 0) {
+      return 1;
     }
 
-    setMusicList(data ?? []);
-
-    if (data && data.length > 0) {
-      setSelectedMusic(data[0]);
+    if (actualElapsedMs >= targetMs) {
+      return 100;
     }
 
-    setMusicLoading(false);
+    /*
+      Linear energy based on the percentage of the selected
+      meditation that was actually completed.
+
+      15 / 15 = 100
+      12 / 15 = 80
+       7 / 15 = 46
+       5 / 10 = 50
+    */
+    return Math.min(
+      99,
+      Math.max(1, Math.floor((actualElapsedMs / targetMs) * 100)),
+    );
   };
 
   /* =========================================================
-     START MEDITATION
+     SAVE MEDITATION
   ========================================================= */
 
-  const startMeditation = async (
-    sessionVersion: number,
-  ): Promise<string | null> => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const saveInProgressRef = useRef(false);
 
-    if (!user) {
-      console.error("No authenticated user found.");
-
-      return null;
+  const saveMeditation = async (
+    actualElapsedMs: number,
+    targetDurationMinutes: number,
+  ) => {
+    if (saveInProgressRef.current || actualElapsedMs <= 0) {
+      return;
     }
 
-    console.log("Meditation started", {
-      selectedDuration,
-      sessionVersion,
-    });
+    saveInProgressRef.current = true;
+    setIsSaving(true);
+    setSaveMessage(null);
 
-    const { data, error } = await supabase
-      .from("meditation_sessions")
-      .insert({
-        user_id: user.id,
-        /*
-          The DB requires duration > 0 (meditation_sessions_duration_check),
-          so we cannot insert 0 here. Store the selected preset as a
-          valid temporary value; finalizeSession() overwrites it with
-          the actual elapsed duration once the session ends.
-        */
-        duration: selectedDuration,
-        completed: false,
-      })
-      .select("id")
-      .single();
+    const targetMs = targetDurationMinutes * 60 * 1000;
+    const boundedElapsedMs = Math.min(Math.max(0, actualElapsedMs), targetMs);
 
-    if (error) {
-      console.error("Insert failed:", error);
+    /* duration is stored in minutes because the current DB column is INTEGER. */
+    const actualDurationMinutes = Math.max(
+      1,
+      Math.floor(boundedElapsedMs / 60000),
+    );
 
-      return null;
+    const completed = boundedElapsedMs >= targetMs;
+    const energyLevel = calculateEnergyLevel(
+      boundedElapsedMs,
+      targetDurationMinutes,
+    );
+
+    try {
+      /*
+        One POST = one meditation session + one activity_history row
+        through the dedicated backend meditation route.
+      */
+      await apiFetch("/api/data/meditation_sessions", {
+        method: "POST",
+        body: JSON.stringify({
+          duration: actualDurationMinutes,
+          completed,
+          energy_level: energyLevel,
+        }),
+      });
+
+      setSaveMessage(`Meditation saved · ${energyLevel}/100 energy`);
+
+      console.log("[MEDITATION] saved", {
+        selectedDuration: targetDurationMinutes,
+        actualDurationMinutes,
+        actualElapsedSeconds: Math.floor(boundedElapsedMs / 1000),
+        completed,
+        energyLevel,
+      });
+    } catch (error) {
+      console.error("Failed to save meditation:", error);
+      setSaveMessage(
+        error instanceof Error
+          ? `Could not save meditation: ${error.message}`
+          : "Could not save meditation.",
+      );
+    } finally {
+      saveInProgressRef.current = false;
+      setIsSaving(false);
     }
-
-    /* Do not attach an old in-flight row to a newer session. */
-    if (sessionVersion !== sessionVersionRef.current) {
-      return data.id;
-    }
-
-    meditationIdRef.current = data.id;
-
-    return data.id;
   };
 
   /* =========================================================
@@ -220,16 +216,13 @@ const MeditationScreen = () => {
   ========================================================= */
 
   const finalizeSession = async () => {
-    if (isFinalizedRef.current) {
+    if (isFinalizedRef.current || saveInProgressRef.current) {
       return;
     }
 
     isFinalizedRef.current = true;
 
-    /*
-      If the timer is currently running, capture the exact
-      remaining milliseconds before stopping it.
-    */
+    /* Capture the exact active segment before stopping the timer. */
     if (endTimeRef.current !== null) {
       const remainingMs = Math.max(0, endTimeRef.current - Date.now());
 
@@ -242,30 +235,16 @@ const MeditationScreen = () => {
     }
 
     const durationMs = selectedDuration * 60 * 1000;
-
-    /* Never allow elapsed time to exceed the selected duration. */
     const actualElapsedMs = Math.min(elapsedMsRef.current, durationMs);
 
-    /*
-      duration is stored in minutes, matching the existing presets.
-      The DB requires duration > 0, so sessions under a minute are
-      still stored as 1 minute (never 0) instead of being rejected.
-    */
-    const actualDuration = Math.max(1, Math.floor(actualElapsedMs / 60000));
-
-    /*
-      completed reflects whether the user actually ran out the clock,
-      not whether they pressed the checkmark.
-    */
     const completed = actualElapsedMs >= durationMs;
+    const energyLevel = calculateEnergyLevel(actualElapsedMs, selectedDuration);
 
-    console.log("Finalizing meditation", {
+    console.log("[MEDITATION] finalizing", {
       selectedDuration,
-      elapsedMs: elapsedMsRef.current,
-      actualElapsedMs,
-      actualDuration,
+      elapsedMs: actualElapsedMs,
       completed,
-      meditationId: meditationIdRef.current,
+      energyLevel,
     });
 
     setTimeLeft(
@@ -275,50 +254,24 @@ const MeditationScreen = () => {
     );
 
     setIsActive(false);
-
     endTimeRef.current = null;
-
     segmentStartRemainingMsRef.current = 0;
-
     pausedRemainingMsRef.current = null;
 
     if (timerFrameRef.current) {
       cancelAnimationFrame(timerFrameRef.current);
-
       timerFrameRef.current = null;
     }
 
-    stopMusic();
-
-    /*
-      startMeditation() runs in parallel with the UI timer.
-      Wait for it here so a very fast checkmark click still
-      updates the newly-created row instead of racing ahead
-      of the INSERT (this is what previously caused
-      PATCH ...?id=null).
-    */
-    if (!meditationIdRef.current && sessionInsertPromiseRef.current) {
-      await sessionInsertPromiseRef.current;
-    }
-
-    const meditationId = meditationIdRef.current;
-
-    if (!meditationId) {
-      console.error("Cannot finalize meditation: session id is missing.");
-
+    if (actualElapsedMs <= 0) {
+      setSaveMessage("Start the meditation before saving.");
       return;
     }
 
-    const { error } = await supabase
-      .from("meditation_sessions")
-      .update({
-        duration: actualDuration,
-        completed,
-      })
-      .eq("id", meditationId);
+    await saveMeditation(actualElapsedMs, selectedDuration);
 
-    if (error) {
-      console.error("Meditation session update failed:", error);
+    if (completed) {
+      setTimeLeft(0);
     }
   };
 
@@ -406,269 +359,30 @@ const MeditationScreen = () => {
   };
 
   /* =========================================================
-     AUDIO ANALYSER
-  ========================================================= */
-
-  const createAudioAnalyser = () => {
-    if (!audioRef.current) {
-      return;
-    }
-
-    /*
-        Do not create the same
-        MediaElementSource twice.
-      */
-    if (audioContextRef.current && analyserRef.current && sourceRef.current) {
-      return;
-    }
-
-    const AudioContextClass =
-      window.AudioContext ||
-      (
-        window as typeof window & {
-          webkitAudioContext?: typeof AudioContext;
-        }
-      ).webkitAudioContext;
-
-    if (!AudioContextClass) {
-      console.error("Web Audio API is not supported.");
-
-      return;
-    }
-
-    const context = new AudioContextClass();
-
-    const analyser = context.createAnalyser();
-
-    analyser.fftSize = 256;
-
-    analyser.smoothingTimeConstant = 0.8;
-
-    const source = context.createMediaElementSource(audioRef.current);
-
-    source.connect(analyser);
-    analyser.connect(context.destination);
-
-    audioContextRef.current = context;
-
-    analyserRef.current = analyser;
-
-    sourceRef.current = source;
-  };
-
-  /* =========================================================
-     AUDIO WAVEFORM
-  ========================================================= */
-
-  const updateWaveform = () => {
-    const analyser = analyserRef.current;
-
-    if (!analyser || !isMusicPlaying) {
-      return;
-    }
-
-    const bufferLength = analyser.frequencyBinCount;
-
-    const dataArray = new Uint8Array(bufferLength);
-
-    analyser.getByteFrequencyData(dataArray);
-
-    const barCount = 96;
-
-    const nextWaveform: number[] = [];
-
-    for (let i = 0; i < barCount; i++) {
-      const start = Math.floor((i / barCount) * bufferLength);
-
-      const end = Math.floor(((i + 1) / barCount) * bufferLength);
-
-      let sum = 0;
-      let count = 0;
-
-      for (let j = start; j < end; j++) {
-        sum += dataArray[j];
-        count++;
-      }
-
-      const average = count > 0 ? sum / count / 255 : 0;
-
-      nextWaveform.push(0.08 + Math.min(1, average) * 0.92);
-    }
-
-    setWaveform(nextWaveform);
-
-    audioFrameRef.current = requestAnimationFrame(updateWaveform);
-  };
-
-  useEffect(() => {
-    if (!isMusicPlaying) {
-      if (audioFrameRef.current) {
-        cancelAnimationFrame(audioFrameRef.current);
-
-        audioFrameRef.current = null;
-      }
-
-      setWaveform(Array(96).fill(0.12));
-
-      return;
-    }
-
-    updateWaveform();
-
-    return () => {
-      if (audioFrameRef.current) {
-        cancelAnimationFrame(audioFrameRef.current);
-
-        audioFrameRef.current = null;
-      }
-    };
-  }, [isMusicPlaying]);
-
-  /* =========================================================
-     LOAD SELECTED MUSIC
-  ========================================================= */
-
-  useEffect(() => {
-    if (!selectedMusic) {
-      return;
-    }
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-    }
-
-    const audio = new Audio(selectedMusic.audio_url);
-
-    audio.preload = "auto";
-    audio.loop = true;
-    audio.muted = isMuted;
-
-    audio.addEventListener("error", (event) => {
-      console.error("Audio loading failed:", event);
-    });
-
-    audioRef.current = audio;
-
-    setIsMusicPlaying(false);
-
-    setWaveform(Array(96).fill(0.12));
-
-    return () => {
-      audio.pause();
-      audio.src = "";
-    };
-  }, [selectedMusic]);
-
-  /* =========================================================
-     MUSIC
-  ========================================================= */
-
-  const startMusic = async () => {
-    if (!audioRef.current) {
-      return;
-    }
-
-    createAudioAnalyser();
-
-    if (audioContextRef.current?.state === "suspended") {
-      await audioContextRef.current.resume();
-    }
-
-    try {
-      await audioRef.current.play();
-      setIsMusicPlaying(true);
-    } catch (error) {
-      console.error("Music playback failed:", error);
-    }
-  };
-
-  const toggleMusic = async () => {
-    if (!audioRef.current) {
-      return;
-    }
-
-    if (audioRef.current.paused) {
-      await startMusic();
-    } else {
-      audioRef.current.pause();
-      setIsMusicPlaying(false);
-    }
-  };
-
-  const stopMusic = () => {
-    if (!audioRef.current) {
-      return;
-    }
-
-    audioRef.current.pause();
-
-    setIsMusicPlaying(false);
-  };
-
-  const toggleMute = () => {
-    if (!audioRef.current) {
-      return;
-    }
-
-    const nextMuted = !audioRef.current.muted;
-
-    audioRef.current.muted = nextMuted;
-
-    setIsMuted(nextMuted);
-  };
-
-  /* =========================================================
-     SELECT MUSIC
-  ========================================================= */
-
-  const handleMusicSelect = (music: Music) => {
-    if (selectedMusic?.id === music.id) {
-      return;
-    }
-
-    stopMusic();
-
-    setSelectedMusic(music);
-  };
-
-  /* =========================================================
      DURATION
   ========================================================= */
 
   const handleDurationSelect = (duration: (typeof durations)[number]) => {
-    setIsActive(false);
+    if (isActive || isSaving) {
+      return;
+    }
 
     if (timerFrameRef.current) {
       cancelAnimationFrame(timerFrameRef.current);
-
       timerFrameRef.current = null;
     }
 
-    /* Invalidate any previous/in-flight session. */
-    sessionVersionRef.current += 1;
-
     setSelectedDuration(duration.value);
-
     setTimeLeft(duration.seconds);
 
-    meditationIdRef.current = null;
-
-    sessionInsertPromiseRef.current = null;
-
-    isFinalizedRef.current = false;
-
     elapsedMsRef.current = 0;
-
     segmentStartRemainingMsRef.current = 0;
-
     pausedRemainingMsRef.current = null;
-
     endTimeRef.current = null;
 
+    isFinalizedRef.current = false;
     lastDisplayedSecondRef.current = duration.seconds;
-
-    stopMusic();
+    setSaveMessage(null);
   };
 
   /* =========================================================
@@ -682,73 +396,41 @@ const MeditationScreen = () => {
       if (endTimeRef.current !== null) {
         const remainingMs = Math.max(0, endTimeRef.current - Date.now());
 
-        /* Capture the exact active time before pausing. */
         const activeSegmentMs = Math.max(
           0,
           segmentStartRemainingMsRef.current - remainingMs,
         );
 
         elapsedMsRef.current += activeSegmentMs;
-
         pausedRemainingMsRef.current = remainingMs;
 
         const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
 
         setTimeLeft(remainingSeconds);
-
         lastDisplayedSecondRef.current = remainingSeconds;
       }
 
       endTimeRef.current = null;
-
       segmentStartRemainingMsRef.current = 0;
-
       setIsActive(false);
-
-      stopMusic();
-
       return;
     }
 
     /* ---------------- START / RESUME ---------------- */
 
-    if (timeLeft <= 0) {
+    if (timeLeft <= 0 || isSaving) {
       return;
     }
 
     isFinalizedRef.current = false;
+    setSaveMessage(null);
 
-    /*
-      A null meditation id means this is a brand-new session.
-      Create its database row without blocking the timer.
-    */
-    if (!meditationIdRef.current && !sessionInsertPromiseRef.current) {
-      sessionVersionRef.current += 1;
-
-      elapsedMsRef.current = 0;
-
-      const version = sessionVersionRef.current;
-
-      const insertPromise = startMeditation(version);
-
-      sessionInsertPromiseRef.current = insertPromise;
-
-      insertPromise.then(() => {
-        if (sessionVersionRef.current === version) {
-          sessionInsertPromiseRef.current = null;
-        }
-      });
+    if (pausedRemainingMsRef.current === null && elapsedMsRef.current === 0) {
+      setTimeLeft(selectedDuration * 60);
+      lastDisplayedSecondRef.current = selectedDuration * 60;
     }
 
-    /*
-      UI timer starts immediately.
-      Database work does not block the timer.
-    */
     setIsActive(true);
-
-    if (audioRef.current) {
-      startMusic();
-    }
   };
 
   /* =========================================================
@@ -756,11 +438,14 @@ const MeditationScreen = () => {
   ========================================================= */
 
   const resetTimer = () => {
+    if (isSaving) {
+      return;
+    }
+
     setIsActive(false);
 
     if (timerFrameRef.current) {
       cancelAnimationFrame(timerFrameRef.current);
-
       timerFrameRef.current = null;
     }
 
@@ -768,32 +453,16 @@ const MeditationScreen = () => {
 
     const resetSeconds = duration?.seconds ?? 300;
 
-    /* Invalidate the current session and any pending insert. */
-    sessionVersionRef.current += 1;
-
     setTimeLeft(resetSeconds);
 
-    meditationIdRef.current = null;
-
-    sessionInsertPromiseRef.current = null;
-
-    isFinalizedRef.current = false;
-
     elapsedMsRef.current = 0;
-
     segmentStartRemainingMsRef.current = 0;
-
     pausedRemainingMsRef.current = null;
-
     endTimeRef.current = null;
 
+    isFinalizedRef.current = false;
     lastDisplayedSecondRef.current = resetSeconds;
-
-    stopMusic();
-
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-    }
+    setSaveMessage(null);
   };
 
   /* =========================================================
@@ -804,18 +473,6 @@ const MeditationScreen = () => {
     return () => {
       if (timerFrameRef.current) {
         cancelAnimationFrame(timerFrameRef.current);
-      }
-
-      if (audioFrameRef.current) {
-        cancelAnimationFrame(audioFrameRef.current);
-      }
-
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
       }
     };
   }, []);
@@ -1290,111 +947,6 @@ const MeditationScreen = () => {
             </div>
 
             {/* =================================================
-                AUDIO WAVEFORM
-            ================================================= */}
-
-            <div
-              className="
-                w-full
-                max-w-[480px]
-                h-20
-                mt-[-8px]
-                relative
-                overflow-hidden
-              "
-            >
-              {/* Ambient glow */}
-
-              <div
-                className="
-                  absolute
-                  inset-0
-                  blur-2xl
-                  transition-opacity
-                  duration-500
-                "
-                style={{
-                  backgroundColor:
-                    "color-mix(in srgb, hsl(var(--primary)) 8%, transparent)",
-
-                  opacity: isMusicPlaying ? 1 : 0.4,
-                }}
-              />
-
-              {/* Center line */}
-
-              <div
-                className="
-                  absolute
-                  inset-x-0
-                  top-1/2
-                  h-px
-                "
-                style={{
-                  background: `linear-gradient(
-                      to right,
-                      transparent,
-                      hsl(var(--primary)),
-                      transparent
-                    )`,
-
-                  boxShadow: "0 0 15px hsl(var(--primary))",
-                }}
-              />
-
-              {/* Bars */}
-
-              <div
-                className="
-                  absolute
-                  inset-0
-                  flex
-                  items-center
-                  justify-center
-                  gap-[2px]
-                  px-2
-                "
-              >
-                {waveform.map((height, index) => {
-                  const centerDistance =
-                    Math.abs(index - waveform.length / 2) /
-                    (waveform.length / 2);
-
-                  const scale = 1 - centerDistance * 0.2;
-
-                  const finalHeight = Math.max(4, height * 54 * scale);
-
-                  return (
-                    <div
-                      key={index}
-                      className="
-                          flex-1
-                          max-w-[4px]
-                          rounded-full
-                        "
-                      style={{
-                        height: `${finalHeight}px`,
-
-                        opacity: isMusicPlaying ? 0.95 : 0.3,
-
-                        background: `linear-gradient(
-                              to top,
-                              hsl(var(--primary)),
-                              hsl(var(--accent))
-                            )`,
-
-                        boxShadow:
-                          "0 0 8px color-mix(in srgb, hsl(var(--primary)) 65%, transparent)",
-
-                        transition: "height 60ms linear",
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* =================================================
                 CONTROLS
             ================================================= */}
 
@@ -1480,6 +1032,9 @@ const MeditationScreen = () => {
 
               <button
                 onClick={finalizeSession}
+                disabled={
+                  isSaving || (timeLeft <= 0 && elapsedMsRef.current <= 0)
+                }
                 className="
                   w-13
                   h-13
@@ -1506,6 +1061,28 @@ const MeditationScreen = () => {
               >
                 <Check size={29} />
               </button>
+            </div>
+
+            <div className="min-h-8 px-5 text-center mt-3">
+              {isSaving ? (
+                <p
+                  className="text-xs"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  Saving your meditation...
+                </p>
+              ) : saveMessage ? (
+                <p className="text-xs" style={{ color: "hsl(var(--primary))" }}>
+                  {saveMessage}
+                </p>
+              ) : (
+                <p
+                  className="text-xs"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  Complete the session to save your meditation energy.
+                </p>
+              )}
             </div>
 
             {/* =================================================
@@ -1568,169 +1145,6 @@ const MeditationScreen = () => {
                 );
               })}
             </div>
-
-            {/* =================================================
-                MUSIC SELECTOR
-            ================================================= */}
-
-            <div
-              className="
-                w-full
-                px-5
-                mt-2
-              "
-            >
-              <div
-                className="
-                  flex
-                  items-center
-                  justify-between
-                  mb-2
-                "
-              >
-                <div
-                  className="
-                    flex
-                    items-center
-                    gap-2
-                  "
-                >
-                  <Music2
-                    size={14}
-                    style={{
-                      color: "hsl(var(--primary))",
-                    }}
-                  />
-
-                  <span
-                    className="text-xs"
-                    style={{
-                      color: "hsl(var(--muted-foreground))",
-                    }}
-                  >
-                    Meditation Music
-                  </span>
-                </div>
-
-                <button
-                  onClick={toggleMute}
-                  className="
-                    transition
-                  "
-                  style={{
-                    color: "hsl(var(--muted-foreground))",
-                  }}
-                >
-                  {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-                </button>
-              </div>
-
-              {/* Music list */}
-
-              <div
-                className="
-                  flex
-                  gap-2
-                  overflow-x-auto
-                  pb-1
-                  scrollbar-hide
-                "
-              >
-                {musicLoading ? (
-                  <div
-                    className="text-xs"
-                    style={{
-                      color: "hsl(var(--muted-foreground))",
-                    }}
-                  >
-                    Loading music...
-                  </div>
-                ) : musicList.length === 0 ? (
-                  <div
-                    className="text-xs"
-                    style={{
-                      color: "hsl(var(--muted-foreground))",
-                    }}
-                  >
-                    No music available
-                  </div>
-                ) : (
-                  musicList.map((music) => {
-                    const selected = selectedMusic?.id === music.id;
-
-                    return (
-                      <button
-                        key={music.id}
-                        onClick={() => handleMusicSelect(music)}
-                        className="
-                            shrink-0
-                            px-4
-                            py-2
-                            rounded-full
-                            text-xs
-                            border
-                            transition-all
-                          "
-                        style={{
-                          background: selected
-                            ? "color-mix(in srgb, hsl(var(--primary)) 18%, transparent)"
-                            : "color-mix(in srgb, hsl(var(--background)) 82%, transparent)",
-
-                          borderColor: selected
-                            ? "color-mix(in srgb, hsl(var(--primary)) 55%, transparent)"
-                            : "color-mix(in srgb, hsl(var(--primary)) 15%, transparent)",
-
-                          color: selected
-                            ? "hsl(var(--foreground))"
-                            : "hsl(var(--muted-foreground))",
-
-                          boxShadow: selected
-                            ? "0 0 18px color-mix(in srgb, hsl(var(--primary)) 20%, transparent)"
-                            : "none",
-                        }}
-                      >
-                        {music.title}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* =================================================
-                CURRENT TRACK
-            ================================================= */}
-
-            {selectedMusic && (
-              <div
-                className="
-                  mt-2
-                  text-center
-                "
-              >
-                <p
-                  className="text-[11px]"
-                  style={{
-                    color: "hsl(var(--muted-foreground))",
-                  }}
-                >
-                  {isMusicPlaying ? "♪ Playing" : "♪ Paused"}
-                </p>
-
-                <p
-                  className="
-                    text-xs
-                    mt-0.5
-                  "
-                  style={{
-                    color:
-                      "color-mix(in srgb, hsl(var(--primary)) 65%, transparent)",
-                  }}
-                >
-                  {selectedMusic.title}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>

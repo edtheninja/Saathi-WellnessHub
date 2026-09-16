@@ -1,4 +1,4 @@
-import { supabase } from "@/supabaseClient";
+﻿import { supabase } from "@/supabaseClient";
 import { getDemoMeditation, isDemoMode } from "./DemoMode";
 
 class MeditationService {
@@ -17,7 +17,7 @@ class MeditationService {
       };
 
     const { data } = await supabase
-      .from("meditation")
+      .from("meditation_sessions")
       .select("duration, completed")
       .eq("user_id", user.id)
       .eq("completed", true);
@@ -36,3 +36,4 @@ class MeditationService {
 }
 
 export default new MeditationService();
+
