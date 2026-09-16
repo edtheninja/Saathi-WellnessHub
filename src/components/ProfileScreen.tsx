@@ -30,6 +30,56 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { useGoals } from "@/context/GoalsContext";
 
+/* ------------------------------------------------------------------
+   Decorative doodle SVGs — purely visual, no logic, no external assets.
+   Hand-drawn-style line art so they read as "doodles" rather than icons.
+-------------------------------------------------------------------*/
+function DoodleFlower({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M50 50c0-12 -8-22-8-22s8 4 8 16c0-12 8-16 8-16s-8 10-8 22z" />
+        <path d="M50 50c10-4 22-2 22-2s-4 8-14 10c10 2 16 10 16 10s-12-2-18-8z" />
+        <path d="M50 50c-4 10-2 22-2 22s8-4 10-14c2 10 10 16 10 16s-2-12-8-18z" />
+        <path d="M50 50c-10 4-22 2-22 2s4-8 14-10c-10-2-16-10-16-10s12 2 18 8z" />
+        <path d="M50 50c-2-10-10-16-10-16s2 12 8 18c-10-4-22-2-22-2s4 8 14 10" opacity="0" />
+        <circle cx="50" cy="50" r="4.5" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleLeaf({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M20 85C20 55 45 20 85 15C82 55 55 82 20 85Z" />
+        <path d="M25 80C40 65 55 45 78 22" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleSparkle({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" className={className} aria-hidden="true">
+      <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M20 4v10M20 26v10M4 20h10M26 20h10" />
+      </g>
+    </svg>
+  );
+}
+
 export default function ProfileScreen() {
   const navigate = useNavigate();
   const { themeMode } = useTheme();
@@ -165,24 +215,43 @@ export default function ProfileScreen() {
   ];
 
   return (
-    <div className="min-h-screen bg-background p-6 pb-24">
-      <div className="max-w-md mx-auto space-y-6">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#f6f1fc] via-[#eef2fb] to-[#fdf1f7] p-6 pb-24">
+
+      {/* ---------------- Decorative doodle layer (background only) ---------------- */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* soft ambient blooms */}
+        <div className="absolute -top-20 -left-16 w-64 h-64 rounded-full bg-purple-300/15 blur-3xl" />
+        <div className="absolute top-1/3 -right-20 w-72 h-72 rounded-full bg-pink-300/15 blur-3xl" />
+        <div className="absolute bottom-0 left-1/4 w-80 h-80 rounded-full bg-blue-200/15 blur-3xl" />
+
+        {/* scattered line-art doodles */}
+        <DoodleFlower className="absolute top-6 left-4 w-16 h-16 text-fuchsia-400/25 -rotate-6" />
+        <DoodleLeaf className="absolute top-24 right-6 w-20 h-20 text-emerald-500/20 rotate-12" />
+        <DoodleFlower className="absolute top-[38%] right-10 w-12 h-12 text-purple-400/20 rotate-12" />
+        <DoodleLeaf className="absolute top-[55%] -left-6 w-24 h-24 text-teal-500/15 -rotate-12" />
+        <DoodleFlower className="absolute bottom-40 left-10 w-14 h-14 text-rose-400/20 rotate-6" />
+        <DoodleLeaf className="absolute bottom-16 right-4 w-16 h-16 text-purple-400/20 rotate-45" />
+        <DoodleSparkle className="absolute top-16 right-1/3 w-6 h-6 text-amber-300/40" />
+        <DoodleSparkle className="absolute bottom-32 left-1/3 w-5 h-5 text-fuchsia-300/40" />
+      </div>
+
+      <div className="relative max-w-md mx-auto space-y-6">
 
         {/* Header */}
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold text-foreground">Profile</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold text-purple-950">Profile</h1>
+          <p className="text-purple-900/50">
             Your wellness journey overview
           </p>
         </div>
 
         {/* Profile Card */}
-        <Card className="shadow-elevated border-0">
+        <Card className="border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_10px_30px_rgba(120,80,180,0.10)] rounded-[28px]">
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
               <div
                 onClick={() => setShowAvatarPicker(true)}
-                className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center cursor-pointer overflow-hidden"
+                className="w-20 h-20 rounded-full bg-gradient-to-br from-fuchsia-200 to-purple-300 flex items-center justify-center cursor-pointer overflow-hidden ring-2 ring-white/70 shadow-md"
               >
                 {profileImage ? (
                   <img
@@ -191,7 +260,7 @@ export default function ProfileScreen() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <User className="w-10 h-10 text-primary" />
+                  <User className="w-10 h-10 text-purple-600" />
                 )}
               </div>
 
@@ -207,9 +276,9 @@ export default function ProfileScreen() {
                   </>
                 ) : (
                   <>
-                    <h2 className="text-xl font-semibold">{userName}</h2>
-                    <p className="text-muted-foreground">{userEmail}</p>
-                    <p className="text-sm text-primary">Verified Member</p>
+                    <h2 className="text-xl font-semibold text-purple-950">{userName}</h2>
+                    <p className="text-purple-900/50">{userEmail}</p>
+                    <p className="text-sm text-fuchsia-600">Verified Member</p>
                   </>
                 )}
               </div>
@@ -228,13 +297,13 @@ export default function ProfileScreen() {
         </Card>
 
         {/* Stats */}
-        <Card className="shadow-soft border-0">
+        <Card className="border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_10px_30px_rgba(120,80,180,0.10)] rounded-[28px]">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <BarChart3 className="text-primary" />
+            <CardTitle className="flex items-center space-x-2 text-purple-950">
+              <BarChart3 className="text-fuchsia-500" />
               <span>Your Progress</span>
             </CardTitle>
-            <CardDescription>Your wellness journey so far</CardDescription>
+            <CardDescription className="text-purple-900/50">Your wellness journey so far</CardDescription>
           </CardHeader>
 
           <CardContent>
@@ -242,10 +311,10 @@ export default function ProfileScreen() {
               {stats.map((stat, index) => {
                 const Icon = stat.icon;
                 return (
-                  <div key={index} className="text-center p-4 rounded-2xl bg-primary/10">
-                    <Icon className="w-6 h-6 text-primary mx-auto mb-2" />
-                    <div className="text-2xl font-bold">{stat.value}</div>
-                    <div className="text-xs text-muted-foreground">{stat.label}</div>
+                  <div key={index} className="text-center p-4 rounded-2xl bg-purple-50/70 border border-white/60">
+                    <Icon className="w-6 h-6 text-fuchsia-500 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-purple-950">{stat.value}</div>
+                    <div className="text-xs text-purple-900/50">{stat.label}</div>
                   </div>
                 );
               })}
@@ -254,10 +323,10 @@ export default function ProfileScreen() {
         </Card>
 
         {/* Notification Settings */}
-        <Card className="shadow-soft border-0">
+        <Card className="border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_10px_30px_rgba(120,80,180,0.10)] rounded-[28px]">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Bell className="w-5 h-5 text-primary" />
+            <CardTitle className="flex items-center space-x-2 text-purple-950">
+              <Bell className="w-5 h-5 text-fuchsia-500" />
               <span>Notifications</span>
             </CardTitle>
           </CardHeader>
@@ -268,8 +337,8 @@ export default function ProfileScreen() {
                 className="flex items-center justify-between p-3 rounded-lg"
               >
                 <div>
-                  <h4 className="font-medium">{setting.title}</h4>
-                  <p className="text-sm text-muted-foreground">
+                  <h4 className="font-medium text-purple-950">{setting.title}</h4>
+                  <p className="text-sm text-purple-900/50">
                     {setting.description}
                   </p>
                 </div>
@@ -279,16 +348,16 @@ export default function ProfileScreen() {
           </CardContent>
         </Card>
         {/* Goals */}
-        <Card className="shadow-soft border-0">
+        <Card className="border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_10px_30px_rgba(120,80,180,0.10)] rounded-[28px]">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Target className="text-primary" /> <span>Your Goal</span>
+            <CardTitle className="flex items-center space-x-2 text-purple-950">
+              <Target className="text-fuchsia-500" /> <span>Your Goal</span>
             </CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-3">
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <span className="text-sm font-medium">
+            <div className="p-3 bg-purple-50/70 border border-white/60 rounded-lg">
+              <span className="text-sm font-medium text-purple-950">
                 {goal ? goal.category : "No goal set yet."}
               </span>
             </div>
@@ -300,29 +369,29 @@ export default function ProfileScreen() {
         </Card>
 
         {/* Theme & Mode */}
-        <Card className="shadow-soft border-0">
+        <Card className="border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_10px_30px_rgba(120,80,180,0.10)] rounded-[28px]">
           <CardContent className="p-4 space-y-4">
 
             <div
               onClick={() => navigate("/theme-setup")}
-              className="p-4 rounded-2xl bg-card border cursor-pointer flex justify-between items-center hover:scale-[1.02]"
+              className="p-4 rounded-2xl bg-white/70 border border-white/60 cursor-pointer flex justify-between items-center transition-transform hover:scale-[1.02]"
             >
               <div>
-                <h3 className="font-semibold">Theme</h3>
-                <p className="text-sm text-muted-foreground">Customize your colours</p>
+                <h3 className="font-semibold text-purple-950">Theme</h3>
+                <p className="text-sm text-purple-900/50">Customize your colours</p>
               </div>
-              <Palette className="w-6 h-6 text-primary" />
+              <Palette className="w-6 h-6 text-fuchsia-500" />
             </div>
 
             <div
               onClick={() => navigate("/mode-selector")}
-              className="p-4 rounded-2xl bg-card border cursor-pointer flex justify-between items-center hover:scale-[1.02]"
+              className="p-4 rounded-2xl bg-white/70 border border-white/60 cursor-pointer flex justify-between items-center transition-transform hover:scale-[1.02]"
             >
               <div>
-                <h3 className="font-semibold">Mode</h3>
-                <p className="text-sm text-muted-foreground">Light / Dark / System</p>
+                <h3 className="font-semibold text-purple-950">Mode</h3>
+                <p className="text-sm text-purple-900/50">Light / Dark / System</p>
               </div>
-              <span className="px-3 py-1 rounded-xl bg-primary/10 text-primary capitalize">
+              <span className="px-3 py-1 rounded-xl bg-fuchsia-100 text-fuchsia-700 capitalize">
                 {themeMode}
               </span>
             </div>
@@ -332,9 +401,9 @@ export default function ProfileScreen() {
 
         {showAvatarPicker && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-card p-6 rounded-2xl w-[90%] max-w-sm space-y-4">
+            <div className="bg-white/95 backdrop-blur-xl p-6 rounded-[28px] w-[90%] max-w-sm space-y-4 border border-white/60 shadow-2xl">
 
-              <h3 className="text-lg font-semibold text-center">
+              <h3 className="text-lg font-semibold text-center text-purple-950">
                 Choose Your Avatar
               </h3>
 
@@ -352,7 +421,7 @@ export default function ProfileScreen() {
                       setProfileImage(avatar);
                       setShowAvatarPicker(false);
                     }}
-                    className="w-24 h-24 mx-auto rounded-full bg-primary/10 cursor-pointer flex items-center justify-center overflow-hidden hover:scale-105 transition"
+                    className="w-24 h-24 mx-auto rounded-full bg-purple-100 cursor-pointer flex items-center justify-center overflow-hidden ring-2 ring-white hover:scale-105 transition"
                   >
                     {avatar && (
                       <img
@@ -395,7 +464,7 @@ export default function ProfileScreen() {
 
 
         {/* Actions */}
-        <Card className="shadow-soft border-0">
+        <Card className="border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_10px_30px_rgba(120,80,180,0.10)] rounded-[28px]">
           <CardContent className="p-4 space-y-3">
             <Button
               variant="outline"
@@ -418,16 +487,12 @@ export default function ProfileScreen() {
         </Card>
 
         {/* App Info */}
-        <div className="text-center text-sm text-muted-foreground mt-4">
+        <div className="text-center text-sm text-purple-900/40 mt-4">
           <p>SAATHI v1.0.0</p>
           <p>Your companion in mental wellness</p>
         </div>
 
-
-
-
-
-      </div >
-    </div >
+      </div>
+    </div>
   );
 }
