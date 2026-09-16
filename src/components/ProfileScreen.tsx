@@ -36,18 +36,12 @@ import { useGoals } from "@/context/GoalsContext";
 -------------------------------------------------------------------*/
 function DoodleFlower({ className = "" }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 100 100"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 100 100" fill="none" className={className} aria-hidden="true">
       <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M50 50c0-12 -8-22-8-22s8 4 8 16c0-12 8-16 8-16s-8 10-8 22z" />
         <path d="M50 50c10-4 22-2 22-2s-4 8-14 10c10 2 16 10 16 10s-12-2-18-8z" />
         <path d="M50 50c-4 10-2 22-2 22s8-4 10-14c2 10 10 16 10 16s-2-12-8-18z" />
         <path d="M50 50c-10 4-22 2-22 2s4-8 14-10c-10-2-16-10-16-10s12 2 18 8z" />
-        <path d="M50 50c-2-10-10-16-10-16s2 12 8 18c-10-4-22-2-22-2s4 8 14 10" opacity="0" />
         <circle cx="50" cy="50" r="4.5" />
       </g>
     </svg>
@@ -56,12 +50,7 @@ function DoodleFlower({ className = "" }: { className?: string }) {
 
 function DoodleLeaf({ className = "" }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 100 100"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 100 100" fill="none" className={className} aria-hidden="true">
       <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M20 85C20 55 45 20 85 15C82 55 55 82 20 85Z" />
         <path d="M25 80C40 65 55 45 78 22" />
@@ -75,6 +64,50 @@ function DoodleSparkle({ className = "" }: { className?: string }) {
     <svg viewBox="0 0 40 40" fill="none" className={className} aria-hidden="true">
       <g stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M20 4v10M20 26v10M4 20h10M26 20h10" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleHeart({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M50 88C50 88 12 62 12 34C12 18 24 8 38 8C45 8 50 12 50 12C50 12 55 8 62 8C76 8 88 18 88 34C88 62 50 88 50 88Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/* Layered lotus doodle: outer + inner petals built from one teardrop
+   petal shape, rotated around the center to form the flower. */
+function DoodleLotus({ className = "" }: { className?: string }) {
+  const outerPetal = "M50 50 C 42 34, 36 18, 50 4 C 64 18, 58 34, 50 50 Z";
+  const innerPetal = "M50 50 C 45 40, 42 30, 50 20 C 58 30, 55 40, 50 50 Z";
+  const outerAngles = [0, 45, 90, 135, 180, 225, 270, 315];
+  const innerAngles = [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5];
+
+  return (
+    <svg viewBox="0 0 100 100" fill="none" className={className} aria-hidden="true">
+      <g stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
+        {outerAngles.map((deg) => (
+          <path key={`o-${deg}`} d={outerPetal} transform={`rotate(${deg} 50 50)`} />
+        ))}
+        {innerAngles.map((deg) => (
+          <path
+            key={`i-${deg}`}
+            d={innerPetal}
+            transform={`rotate(${deg} 50 50)`}
+            opacity="0.75"
+          />
+        ))}
+        <circle cx="50" cy="50" r="4" />
+        {/* water ripple base, subtle */}
+        <path d="M20 92c8-4 18-4 30 0s22 4 30 0" opacity="0.6" />
       </g>
     </svg>
   );
@@ -94,7 +127,7 @@ export default function ProfileScreen() {
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
 
-  /* âœ… REAL STATS STATE */
+  /* ✅ REAL STATS STATE */
   const [statsData, setStatsData] = useState({
     daysActive: 0,
     meditationMinutes: 0,
@@ -102,7 +135,7 @@ export default function ProfileScreen() {
     goalsAchieved: 0
   });
 
-  /* âœ… LOAD PROFILE STATS */
+  /* ✅ LOAD PROFILE STATS */
   const loadProfileStats = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -110,7 +143,7 @@ export default function ProfileScreen() {
 
     // Days Active (from mood)
     const { data: moodData } = await supabase
-      .from('moods')
+      .from('mood')
       .select('created_at')
       .eq('user_id', user.id);
 
@@ -122,7 +155,7 @@ export default function ProfileScreen() {
 
     // Meditation Minutes (completed only)
     const { data: meditationData } = await supabase
-      .from('meditation_sessions')
+      .from('meditation')
       .select('duration')
       .eq('user_id', user.id)
       .eq('completed', true);
@@ -145,7 +178,7 @@ export default function ProfileScreen() {
       .eq('user_id', user.id)
       .eq('completed', true);
 
-    /* âœ… CORRECT SETTER */
+    /* ✅ CORRECT SETTER */
     setStatsData({
       daysActive: uniqueDays.size,
       meditationMinutes: totalMeditationMinutes,
@@ -172,7 +205,7 @@ export default function ProfileScreen() {
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name")
-        .eq("user_id", authData.user.id)
+        .eq("id", authData.user.id)
         .single();
 
       if (profile) {
@@ -189,7 +222,7 @@ export default function ProfileScreen() {
     const { error } = await supabase
       .from("profiles")
       .update({ full_name: userName })
-      .eq("user_id", userId);
+      .eq("id", userId);
 
     if (!error) setIsEditing(false);
   };
@@ -199,7 +232,7 @@ export default function ProfileScreen() {
     navigate("/auth");
   };
 
-  /* âœ… CONNECT STATS TO UI */
+  /* ✅ CONNECT STATS TO UI */
   const stats = [
     { label: "Days Active", value: statsData.daysActive, icon: Calendar },
     { label: "Meditation Minutes", value: statsData.meditationMinutes, icon: BarChart3 },
@@ -222,17 +255,37 @@ export default function ProfileScreen() {
         {/* soft ambient blooms */}
         <div className="absolute -top-20 -left-16 w-64 h-64 rounded-full bg-purple-300/15 blur-3xl" />
         <div className="absolute top-1/3 -right-20 w-72 h-72 rounded-full bg-pink-300/15 blur-3xl" />
+        <div className="absolute top-[70%] -left-24 w-72 h-72 rounded-full bg-teal-200/15 blur-3xl" />
         <div className="absolute bottom-0 left-1/4 w-80 h-80 rounded-full bg-blue-200/15 blur-3xl" />
 
-        {/* scattered line-art doodles */}
-        <DoodleFlower className="absolute top-6 left-4 w-16 h-16 text-fuchsia-400/25 -rotate-6" />
-        <DoodleLeaf className="absolute top-24 right-6 w-20 h-20 text-emerald-500/20 rotate-12" />
-        <DoodleFlower className="absolute top-[38%] right-10 w-12 h-12 text-purple-400/20 rotate-12" />
-        <DoodleLeaf className="absolute top-[55%] -left-6 w-24 h-24 text-teal-500/15 -rotate-12" />
-        <DoodleFlower className="absolute bottom-40 left-10 w-14 h-14 text-rose-400/20 rotate-6" />
-        <DoodleLeaf className="absolute bottom-16 right-4 w-16 h-16 text-purple-400/20 rotate-45" />
+        {/* --- Lotuses (hero doodle of the theme) --- */}
+        <DoodleLotus className="absolute top-4 right-4 w-24 h-24 text-fuchsia-400/30 rotate-6" />
+        <DoodleLotus className="absolute top-[48%] -left-8 w-28 h-28 text-purple-400/25 -rotate-12" />
+        <DoodleLotus className="absolute bottom-24 right-2 w-20 h-20 text-rose-400/25 rotate-12" />
+        <DoodleLotus className="absolute top-[85%] left-1/2 w-16 h-16 text-fuchsia-300/25 -rotate-6" />
+
+        {/* --- Flowers --- */}
+        <DoodleFlower className="absolute top-10 left-6 w-14 h-14 text-fuchsia-400/25 -rotate-6" />
+        <DoodleFlower className="absolute top-[30%] right-8 w-12 h-12 text-purple-400/25 rotate-12" />
+        <DoodleFlower className="absolute top-[62%] right-1/4 w-12 h-12 text-pink-400/25 -rotate-12" />
+        <DoodleFlower className="absolute bottom-52 left-8 w-14 h-14 text-rose-400/25 rotate-6" />
+        <DoodleFlower className="absolute bottom-8 left-1/3 w-12 h-12 text-fuchsia-300/25 rotate-12" />
+
+        {/* --- Leaves --- */}
+        <DoodleLeaf className="absolute top-28 right-10 w-20 h-20 text-emerald-500/20 rotate-12" />
+        <DoodleLeaf className="absolute top-[42%] left-2 w-24 h-24 text-teal-500/20 -rotate-12" />
+        <DoodleLeaf className="absolute top-[75%] right-6 w-20 h-20 text-emerald-400/20 rotate-45" />
+        <DoodleLeaf className="absolute bottom-10 right-14 w-16 h-16 text-teal-400/20 -rotate-6" />
+
+        {/* --- Hearts --- */}
+        <DoodleHeart className="absolute top-[20%] left-1/2 w-10 h-10 text-rose-300/25 rotate-6" />
+        <DoodleHeart className="absolute top-[90%] right-1/3 w-9 h-9 text-fuchsia-300/25 -rotate-6" />
+
+        {/* --- Sparkles --- */}
         <DoodleSparkle className="absolute top-16 right-1/3 w-6 h-6 text-amber-300/40" />
-        <DoodleSparkle className="absolute bottom-32 left-1/3 w-5 h-5 text-fuchsia-300/40" />
+        <DoodleSparkle className="absolute top-[55%] right-1/4 w-5 h-5 text-fuchsia-300/40" />
+        <DoodleSparkle className="absolute bottom-32 left-1/4 w-5 h-5 text-purple-300/40" />
+        <DoodleSparkle className="absolute bottom-64 right-8 w-6 h-6 text-amber-300/35" />
       </div>
 
       <div className="relative max-w-md mx-auto space-y-6">
@@ -496,5 +549,3 @@ export default function ProfileScreen() {
     </div>
   );
 }
-
-
