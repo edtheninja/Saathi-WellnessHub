@@ -495,10 +495,6 @@ export default function ProfileScreen() {
       </div>
     </div>
   );
-<<<<<<< HEAD
-}
-=======
 }
 
 
->>>>>>> c49d149a57896cc97d45498800814626568c68c6
