@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+
+import { toPng } from "html-to-image";
 
 import { Button } from "@/components/ui/button";
 
@@ -8,12 +15,12 @@ type WellnessStats = {
   moodAverage: number;
   happiestDay: string;
   streak: number;
-  bestStreak?: number;
-  wellnessScore?: number;
-  meditationMinutes?: number;
-  journalEntries?: number;
-  wellnessStatus?: string;
-  summary?: string;
+  bestStreak: number;
+  wellnessScore: number;
+  meditationMinutes: number;
+  journalEntries: number;
+  wellnessStatus: string;
+  summary: string;
 };
 
 type Profile = {
@@ -33,29 +40,166 @@ type ProfileResponse = {
   stats: WellnessStats;
 };
 
-const apiBase = import.meta.env.VITE_API_URL || "/api";
+type BackendProfileResponse = {
+  profile?: Profile | null;
+  stats?: Partial<WellnessStats> | null;
+  error?: string;
+};
 
-async function fetchProfileAndStats(): Promise<ProfileResponse> {
-  const token = localStorage.getItem("saathi_access_token");
+const configuredApiBase = (
+  import.meta.env.VITE_API_URL || "/api"
+).replace(/\/$/, "");
 
-  const response = await fetch(`${apiBase}/profile`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+const profileWellnessEndpoint =
+  configuredApiBase.endsWith("/api")
+    ? `${configuredApiBase}/profile/me`
+    : `${configuredApiBase}/api/profile/me`;
 
-  const payload = await response.json().catch(() => ({}));
+const EMPTY_WELLNESS_STATS: WellnessStats = {
+  moodAverage: 0,
+  happiestDay: "Not available",
+  streak: 0,
+  bestStreak: 0,
+  wellnessScore: 0,
+  meditationMinutes: 0,
+  journalEntries: 0,
+  wellnessStatus: "Attention",
+  summary: "No wellness data available yet.",
+};
 
-  if (!response.ok) {
-    throw new Error(payload.error || "Unable to load wellness profile");
+function toSafeNumber(
+  value: number | null | undefined,
+): number {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return 0;
   }
 
-  return payload;
+  return Math.max(0, numericValue);
 }
 
-function getDisplayName(profile: Profile | null) {
+function normalizeWellnessStats(
+  stats?: Partial<WellnessStats> | null,
+): WellnessStats {
+  return {
+    moodAverage: Math.min(
+      100,
+      Math.round(
+        toSafeNumber(stats?.moodAverage),
+      ),
+    ),
+
+    happiestDay:
+      typeof stats?.happiestDay === "string" &&
+      stats.happiestDay.trim()
+        ? stats.happiestDay
+        : "Not available",
+
+    streak: Math.round(
+      toSafeNumber(stats?.streak),
+    ),
+
+    bestStreak: Math.round(
+      toSafeNumber(stats?.bestStreak),
+    ),
+
+    wellnessScore: Math.min(
+      100,
+      Math.round(
+        toSafeNumber(stats?.wellnessScore),
+      ),
+    ),
+
+    meditationMinutes: Math.round(
+      toSafeNumber(stats?.meditationMinutes),
+    ),
+
+    journalEntries: Math.round(
+      toSafeNumber(stats?.journalEntries),
+    ),
+
+    wellnessStatus:
+      typeof stats?.wellnessStatus === "string" &&
+      stats.wellnessStatus.trim()
+        ? stats.wellnessStatus
+        : "Attention",
+
+    summary:
+      typeof stats?.summary === "string" &&
+      stats.summary.trim()
+        ? stats.summary
+        : "No wellness data available yet.",
+  };
+}
+
+async function fetchProfileAndStats(): Promise<ProfileResponse> {
+  const token = localStorage.getItem(
+    "saathi_access_token",
+  );
+
+  const controller = new AbortController();
+
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, 10000);
+
+  try {
+    const response = await fetch(
+      profileWellnessEndpoint,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : {}),
+        },
+        signal: controller.signal,
+      },
+    );
+
+    const payload =
+      (await response
+        .json()
+        .catch(
+          () => ({}),
+        )) as BackendProfileResponse;
+
+    if (!response.ok) {
+      throw new Error(
+        payload.error ||
+          "Unable to load wellness profile",
+      );
+    }
+
+    return {
+      profile: payload.profile ?? null,
+      stats: normalizeWellnessStats(
+        payload.stats,
+      ),
+    };
+  } catch (error) {
+    if (
+      error instanceof DOMException &&
+      error.name === "AbortError"
+    ) {
+      throw new Error(
+        "Wellness data request timed out",
+      );
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function getDisplayName(
+  profile: Profile | null,
+) {
   return (
     profile?.full_name ||
     profile?.name ||
@@ -64,28 +208,37 @@ function getDisplayName(profile: Profile | null) {
   );
 }
 
-function getMoodLabel(moodAverage: number) {
+function getMoodLabel(
+  moodAverage: number,
+) {
   if (moodAverage >= 85) return "Thriving";
   if (moodAverage >= 70) return "Improving";
   if (moodAverage >= 50) return "Balanced";
   if (moodAverage >= 30) return "Recovery";
+
   return "Attention";
 }
 
-function getMoodEmoji(moodAverage: number) {
+function getMoodEmoji(
+  moodAverage: number,
+) {
   if (moodAverage >= 85) return "🥰";
   if (moodAverage >= 70) return "😊";
   if (moodAverage >= 50) return "😌";
   if (moodAverage >= 30) return "😔";
+
   return "🌱";
 }
 
 function formatDate() {
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date());
+  return new Intl.DateTimeFormat(
+    "en-IN",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    },
+  ).format(new Date());
 }
 
 function WellnessStatsCard({
@@ -95,15 +248,44 @@ function WellnessStatsCard({
 }: {
   profile: Profile | null;
   stats: WellnessStats;
-  cardRef: React.RefObject<HTMLDivElement>;
+  cardRef: RefObject<HTMLDivElement>;
 }) {
-  const moodAverage = Math.round(stats.moodAverage ?? 0);
-  const wellnessScore = Math.round(
-    stats.wellnessScore ?? stats.moodAverage ?? 0,
+  const moodAverage = Math.min(
+    100,
+    Math.round(
+      toSafeNumber(stats.moodAverage),
+    ),
+  );
+
+  const wellnessScore = Math.min(
+    100,
+    Math.round(
+      toSafeNumber(stats.wellnessScore),
+    ),
+  );
+
+  const longestStreak = Math.round(
+    Math.max(
+      toSafeNumber(stats.bestStreak),
+      toSafeNumber(stats.streak),
+    ),
+  );
+
+  const meditationMinutes = Math.round(
+    toSafeNumber(
+      stats.meditationMinutes,
+    ),
+  );
+
+  const journalEntries = Math.round(
+    toSafeNumber(
+      stats.journalEntries,
+    ),
   );
 
   const moodLabel =
-    stats.wellnessStatus || getMoodLabel(moodAverage);
+    stats.wellnessStatus ||
+    getMoodLabel(moodAverage);
 
   return (
     <div
@@ -111,6 +293,7 @@ function WellnessStatsCard({
       className="relative mx-auto w-full max-w-[440px] overflow-hidden rounded-[32px] bg-gradient-to-br from-violet-600 via-purple-500 to-cyan-500 p-5 text-white shadow-2xl"
     >
       <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/15 blur-3xl" />
+
       <div className="pointer-events-none absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-cyan-300/20 blur-3xl" />
 
       <div className="relative z-10 space-y-5">
@@ -130,7 +313,10 @@ function WellnessStatsCard({
           </div>
 
           <div className="rounded-2xl bg-white/20 px-3 py-2 text-right backdrop-blur-sm">
-            <p className="text-xs text-white/75">Today</p>
+            <p className="text-xs text-white/75">
+              Today
+            </p>
+
             <p className="text-xs font-semibold">
               {formatDate()}
             </p>
@@ -202,7 +388,7 @@ function WellnessStatsCard({
                 </p>
 
                 <p className="text-xl font-bold">
-                  {stats.bestStreak ?? stats.streak ?? 0} days
+                  {longestStreak} days
                 </p>
               </div>
 
@@ -212,7 +398,7 @@ function WellnessStatsCard({
                 </p>
 
                 <p className="text-xl font-bold">
-                  {stats.meditationMinutes ?? 0} min
+                  {meditationMinutes} min
                 </p>
               </div>
             </div>
@@ -227,7 +413,7 @@ function WellnessStatsCard({
               </p>
 
               <p className="text-lg font-bold">
-                {stats.journalEntries ?? 0}
+                {journalEntries}
               </p>
             </div>
 
@@ -237,7 +423,8 @@ function WellnessStatsCard({
               </p>
 
               <p className="text-lg font-bold">
-                {stats.happiestDay || "Not available"}
+                {stats.happiestDay ||
+                  "Not available"}
               </p>
             </div>
           </div>
@@ -269,13 +456,25 @@ export default function ShareMomentModal({
   open,
   onClose,
 }: Props) {
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef =
+    useRef<HTMLDivElement>(null);
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [stats, setStats] = useState<WellnessStats | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState("");
+  const [profile, setProfile] =
+    useState<Profile | null>(null);
+
+  const [stats, setStats] =
+    useState<WellnessStats>(
+      EMPTY_WELLNESS_STATS,
+    );
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [exporting, setExporting] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -287,7 +486,8 @@ export default function ShareMomentModal({
       setError("");
 
       try {
-        const response = await fetchProfileAndStats();
+        const response =
+          await fetchProfileAndStats();
 
         if (!cancelled) {
           setProfile(response.profile);
@@ -295,10 +495,20 @@ export default function ShareMomentModal({
         }
       } catch (err) {
         if (!cancelled) {
+          console.error(
+            "Unable to load wellness data:",
+            err,
+          );
+
+          setProfile(null);
+          setStats(
+            EMPTY_WELLNESS_STATS,
+          );
+
           setError(
             err instanceof Error
-              ? err.message
-              : "Unable to load your wellness data",
+              ? `${err.message}. Showing 0 for unavailable wellness data.`
+              : "Unable to load wellness data. Showing 0 for unavailable wellness data.",
           );
         }
       } finally {
@@ -319,7 +529,9 @@ export default function ShareMomentModal({
 
   async function generateCardImage() {
     if (!cardRef.current) {
-      throw new Error("Wellness card is not ready");
+      throw new Error(
+        "Wellness card is not ready",
+      );
     }
 
     return toPng(cardRef.current, {
@@ -333,14 +545,23 @@ export default function ShareMomentModal({
     try {
       setExporting(true);
 
-      const imageUrl = await generateCardImage();
+      const imageUrl =
+        await generateCardImage();
 
-      const link = document.createElement("a");
-      link.download = "saathi-wellness-journey.png";
+      const link =
+        document.createElement("a");
+
+      link.download =
+        "saathi-wellness-journey.png";
+
       link.href = imageUrl;
+
       link.click();
     } catch (err) {
-      console.error("Unable to save wellness card:", err);
+      console.error(
+        "Unable to save wellness card:",
+        err,
+      );
     } finally {
       setExporting(false);
     }
@@ -350,9 +571,12 @@ export default function ShareMomentModal({
     try {
       setExporting(true);
 
-      const imageUrl = await generateCardImage();
+      const imageUrl =
+        await generateCardImage();
 
-      const blob = await fetch(imageUrl).then((response) =>
+      const blob = await fetch(
+        imageUrl,
+      ).then((response) =>
         response.blob(),
       );
 
@@ -366,11 +590,15 @@ export default function ShareMomentModal({
 
       if (
         navigator.share &&
-        navigator.canShare?.({ files: [file] })
+        navigator.canShare?.({
+          files: [file],
+        })
       ) {
         await navigator.share({
-          title: "My Wellness Journey 🌱",
-          text: "My wellness progress with Saathi",
+          title:
+            "My Wellness Journey 🌱",
+          text:
+            "My wellness progress with Saathi",
           files: [file],
         });
 
@@ -378,15 +606,24 @@ export default function ShareMomentModal({
       }
 
       await shareToSocial({
-        title: "My Wellness Journey 🌱",
-        text: `My wellness progress with Saathi.\n\nWellness Score: ${
-          stats?.wellnessScore ?? stats?.moodAverage ?? 0
-        }/100\nLongest Streak: ${
-          stats?.bestStreak ?? stats?.streak ?? 0
+        title:
+          "My Wellness Journey 🌱",
+
+        text: `My wellness progress with Saathi.
+
+Wellness Score: ${stats.wellnessScore}/100
+Longest Streak: ${
+          Math.max(
+            stats.bestStreak,
+            stats.streak,
+          )
         } days`,
       });
     } catch (err) {
-      console.error("Unable to share wellness card:", err);
+      console.error(
+        "Unable to share wellness card:",
+        err,
+      );
     } finally {
       setExporting(false);
     }
@@ -407,7 +644,8 @@ export default function ShareMomentModal({
             </h1>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              Your wellness journey, beautifully captured.
+              Your wellness journey,
+              beautifully captured.
             </p>
           </div>
 
@@ -432,13 +670,13 @@ export default function ShareMomentModal({
             </div>
           )}
 
-          {error && (
-            <div className="rounded-3xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
+          {error && !loading && (
+            <div className="mb-6 rounded-3xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">
               {error}
             </div>
           )}
 
-          {!loading && !error && stats && (
+          {!loading && (
             <div className="space-y-6">
               <div className="rounded-3xl border bg-muted/20 p-3 sm:p-5">
                 <div className="mb-4">
@@ -447,7 +685,8 @@ export default function ShareMomentModal({
                   </h2>
 
                   <p className="text-sm text-muted-foreground">
-                    Automatically generated from your progress.
+                    Automatically generated
+                    from your progress.
                   </p>
                 </div>
 
@@ -460,7 +699,8 @@ export default function ShareMomentModal({
 
               <div className="rounded-3xl border bg-card p-5 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No typing required. Your card uses your saved
+                  No typing required. Your
+                  card uses your saved
                   wellness data automatically.
                 </p>
               </div>
@@ -489,7 +729,8 @@ export default function ShareMomentModal({
               </div>
 
               <p className="text-center text-xs text-muted-foreground">
-                Share your progress whenever you feel proud of it. 💜
+                Share your progress whenever
+                you feel proud of it. 💜
               </p>
             </div>
           )}
