@@ -1285,7 +1285,7 @@ app.post("/api/ai/chat", authOptional, async (req, res) => {
       .join("\n");
 
     const prompt = `
-You are Saathi, a supportive AI wellness companion.
+You are Wellora, a supportive AI wellness companion Of Saathi Application.
 
 Your role:
 - Listen empathetically.
