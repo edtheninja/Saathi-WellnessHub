@@ -36,10 +36,9 @@ class WellnessScoreEngine {
       .select("final_energy_level, breakdown")
       .eq("user_id", user.id)
       .order("computed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
 
-    if (error || !data) {
+    if (error || !data || data.length === 0) {
       return {
         score: 0,
         breakdown: {
@@ -52,10 +51,11 @@ class WellnessScoreEngine {
       };
     }
 
-    const breakdown = data.breakdown ?? {};
+    const row = data[0];
+    const breakdown = row.breakdown ?? {};
 
     return {
-      score: Number(data.final_energy_level ?? 0),
+      score: Number(row.final_energy_level ?? 0),
 
       breakdown: {
         music: Number(breakdown.music ?? 0),
