@@ -96,63 +96,63 @@ export default function WellnessScore({ score, breakdown }: Props) {
         </div>
 
         {breakdown && (
-          <div className="mt-8 w-full space-y-3 border-t pt-5">
+  <div className="mt-8 w-full space-y-3 border-t pt-5">
 
-            <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between">
 
-              <h3 className="text-sm font-semibold">
-                How your score is built
-              </h3>
+      <h3 className="text-sm font-semibold">
+        How your score is built
+      </h3>
 
-              <span className="text-xs text-muted-foreground">
-                out of 100
-              </span>
+      <span className="text-xs text-muted-foreground">
+        contribution
+      </span>
 
-            </div>
+    </div>
 
-            {[
-              ["Music", breakdown.music],
-              ["Mood", breakdown.mood],
-              ["Meditation", breakdown.meditation],
-              ["Journal", breakdown.journal],
-              ["Community", breakdown.community],
-            ].map(([label, value]) => {
+    {[
+      ["Music", breakdown.music],
+      ["Mood", breakdown.mood],
+      ["Meditation", breakdown.meditation],
+      ["Journal", breakdown.journal],
+      ["Community", breakdown.community],
+    ].map(([label, value]) => {
 
-              const contribution = Math.max(
-                0,
-                Math.min(Number(value ?? 0), 100),
-              );
+      const percentage = Math.max(
+        0,
+        Math.min(Number(value ?? 0), 100),
+      );
 
-              return (
-                <div key={label as string}>
+      return (
+        <div key={label as string}>
 
-                  <div className="mb-1 flex justify-between text-xs">
+          <div className="mb-1 flex justify-between text-xs">
 
-                    <span>{label as string}</span>
+            <span>{label as string}</span>
 
-                    <span className="text-muted-foreground">
-                      {contribution.toFixed(1)} pts
-                    </span>
-
-                  </div>
-
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-700"
-                      style={{
-                        width: `${contribution}%`,
-                      }}
-                    />
-
-                  </div>
-
-                </div>
-              );
-            })}
+            <span className="text-muted-foreground">
+              {percentage.toFixed(1)}%
+            </span>
 
           </div>
-        )}
+
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-700"
+              style={{
+                width: `${percentage}%`,
+              }}
+            />
+
+          </div>
+
+        </div>
+      );
+    })}
+
+  </div>
+)}
 
       </div>
     </motion.div>
