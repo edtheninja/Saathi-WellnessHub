@@ -1065,6 +1065,117 @@ app.put("/api/settings/:key", authRequired, async (req, res) => {
   });
 });
 
+async function calculateAndStoreWellnessScore(userId) {
+  const result = await pool.query(
+    `
+      SELECT
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'music'
+          ),
+          0
+        ) AS music,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'mood'
+          ),
+          0
+        ) AS mood,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'meditation'
+          ),
+          0
+        ) AS meditation,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'journal'
+          ),
+          0
+        ) AS journal,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'community'
+          ),
+          0
+        ) AS community
+
+      FROM activity_history
+      WHERE user_id = $1
+    `,
+    [userId],
+  );
+
+  const row = result.rows[0] || {};
+
+  const breakdown = {
+    music: Number(Number(row.music || 0).toFixed(2)),
+    mood: Number(Number(row.mood || 0).toFixed(2)),
+    meditation: Number(Number(row.meditation || 0).toFixed(2)),
+    journal: Number(Number(row.journal || 0).toFixed(2)),
+    community: Number(Number(row.community || 0).toFixed(2)),
+  };
+
+  const finalEnergyLevel = Number(
+    (
+      (
+        breakdown.music +
+        breakdown.mood +
+        breakdown.meditation +
+        breakdown.journal +
+        breakdown.community
+      ) / 5
+    ).toFixed(2),
+  );
+
+  const updated = await pool.query(
+    `
+      UPDATE wellness_scores
+      SET
+        final_energy_level = $2,
+        breakdown = $3,
+        computed_at = NOW()
+      WHERE user_id = $1
+      RETURNING *
+    `,
+    [
+      userId,
+      finalEnergyLevel,
+      JSON.stringify(breakdown),
+    ],
+  );
+
+  if (updated.rows[0]) {
+    return updated.rows[0];
+  }
+
+  const inserted = await pool.query(
+    `
+      INSERT INTO wellness_scores
+      (
+        user_id,
+        final_energy_level,
+        breakdown,
+        computed_at
+      )
+      VALUES
+      ($1, $2, $3, NOW())
+      RETURNING *
+    `,
+    [
+      userId,
+      finalEnergyLevel,
+      JSON.stringify(breakdown),
+    ],
+  );
+
+  return inserted.rows[0];
+}
+
 app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
   try {
     const { user_id, final_energy_level, breakdown = {} } = req.body || {};
@@ -1162,21 +1273,14 @@ app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
 
 app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT *
-           FROM wellness_scores
-           WHERE user_id = $1
-           ORDER BY
-             computed_at DESC NULLS LAST,
-             created_at DESC
-           LIMIT 1`,
-      [req.auth.sub],
-    );
+    const score = await calculateAndStoreWellnessScore(req.auth.sub);
 
     res.json({
-      data: result.rows[0] || null,
+      data: score,
     });
   } catch (error) {
+    console.error("Wellness score calculation error:", error.message);
+
     publicError(res, error);
   }
 });

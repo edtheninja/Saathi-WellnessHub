@@ -1,6 +1,6 @@
 import JournalService from "./JournalService";
 import MeditationService from "./MeditationService";
-import GoalService, {type Goal} from "./GoalService";
+import GoalService, { type Goal } from "./GoalService";
 import WellnessScoreEngine from "./WellnessScoreEngine";
 import JournalAnalytics, {
   type JournalAnalytics as JournalAnalyticsType,
@@ -9,7 +9,7 @@ import MoodEngine from "./MoodEngine";
 import WellnessStreakService, {
   type WellnessStreak,
 } from "./WellnessStreakService";
-import { GoalCategory } from "@/context/GoalsContext";
+
 export interface WellnessSnapshot {
   journal: {
     totalEntries: number;
@@ -22,27 +22,27 @@ export interface WellnessSnapshot {
     emoji: string;
     color: string;
     message: string;
-    
   };
- 
-journalAnalytics: JournalAnalyticsType;
 
-meditation: {
-  completed: number;
-  minutes: number;
-};
+  journalAnalytics: JournalAnalyticsType;
 
-goal: Goal;
-
-score: {
-  score: number;
-  breakdown: {
-    journal: number;
-    meditation: number;
-    goals: number;
-    health: number;
+  meditation: {
+    completed: number;
+    minutes: number;
   };
-};
+
+  goal: Goal;
+
+  score: {
+    score: number;
+    breakdown: {
+      music: number;
+      mood: number;
+      meditation: number;
+      journal: number;
+      community: number;
+    };
+  };
 }
 
 class WellnessEngine {
@@ -69,8 +69,12 @@ class WellnessEngine {
       streak,
     };
 
-    const score = WellnessScoreEngine.calculate(snapshot);
-    const mood = MoodEngine.calculate({ ...snapshot, score });
+    const score = await WellnessScoreEngine.load();
+
+    const mood = MoodEngine.calculate({
+      ...snapshot,
+      score,
+    });
 
     return {
       ...snapshot,

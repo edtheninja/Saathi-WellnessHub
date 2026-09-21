@@ -4,11 +4,11 @@ import { HeartPulse } from "lucide-react";
 interface Props {
   score?: number;
   breakdown?: {
-    journal: number;
+    music: number;
+    mood: number;
     meditation: number;
-    Moods: number;
-    CommunitySelection: number;
-    Music: number;
+    journal: number;
+    community: number;
   };
 }
 
@@ -79,7 +79,7 @@ export default function WellnessScore({ score, breakdown }: Props) {
 
             <div className="rounded-full bg-primary/10 p-4">
 
-              <HeartPulse className="w-8 h-8 text-primary"/>
+              <HeartPulse className="w-8 h-8 text-primary" />
 
             </div>
 
@@ -104,31 +104,54 @@ export default function WellnessScore({ score, breakdown }: Props) {
         {breakdown && (
           <div className="mt-8 w-full space-y-3 border-t pt-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">How your score is built</h3>
-              <span className="text-xs text-muted-foreground">out of 100</span>
+              <h3 className="text-sm font-semibold">
+                How your score is built
+              </h3>
+
+              <span className="text-xs text-muted-foreground">
+                out of 100
+              </span>
             </div>
+
             {[
-              ["Journal", breakdown.journal, "25%"],
-              ["Meditation", breakdown.meditation, "25%"],
-              ["Mood", breakdown.Mood, "20%"],
-              ["Community Interaction", breakdown.health, "10%"],
-              ["Music", breakdown.health, "20%"],
-            ].map(([label, value, weight]) => (
+              ["Music", breakdown.music],
+              ["Mood", breakdown.mood],
+              ["Meditation", breakdown.meditation],
+              ["Journal", breakdown.journal],
+              ["Community", breakdown.community],
+            ].map(([label, value]) => (
               <div key={label as string}>
+
                 <div className="mb-1 flex justify-between text-xs">
+
                   <span>{label as string}</span>
-                  <span className="text-muted-foreground">{value as number} pts · {weight as string}</span>
+
+                  <span className="text-muted-foreground">
+                    {value as number} pts
+                  </span>
+
                 </div>
+
                 <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(Number(value) * 4, 100)}%` }} />
+
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width: `${Math.min(
+                        Number(value),
+                        100
+                      )}%`,
+                    }}
+                  />
+
                 </div>
+
               </div>
             ))}
           </div>
         )}
 
       </div>
-
     </motion.div>
   );
 }
