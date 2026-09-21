@@ -12,46 +12,64 @@ export interface WellnessScore {
   };
 }
 
-interface EnergyRow {
+interface ActivityRecord {
+  activity_type: string;
   energy_level: number | null;
 }
 
-class WellnessScoreEngine {
-  private async getAverageEnergy(
-    table:
-      | "music"
-      | "moods"
-      | "meditation_sessions"
-      | "journals"
-      | "community_rooms",
-    userId: string,
-  ): Promise<number> {
-    const { data, error } = await supabase
-      .from(table)
-      .select("energy_level")
-      .eq("user_id", userId);
+interface ActivityResponse {
+  data?: ActivityRecord[];
+}
 
-    if (error || !data || data.length === 0) {
-      return 0;
-    }
+const ACTIVITY_TYPES = [
+  "music",
+  "mood",
+  "meditation",
+  "journal",
+  "community",
+] as const;
 
-    const rows = data as EnergyRow[];
+type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
-    const values = rows
-      .map((row) => Number(row.energy_level))
-      .filter((value) => Number.isFinite(value));
+function normalizeEnergy(
+  value: number | null | undefined,
+): number {
+  const numericValue = Number(value);
 
-    if (values.length === 0) {
-      return 0;
-    }
-
-    const average =
-      values.reduce((sum, value) => sum + value, 0) /
-      values.length;
-
-    return Number(average.toFixed(2));
+  if (!Number.isFinite(numericValue)) {
+    return 0;
   }
 
+  return Math.max(0, Math.min(100, numericValue));
+}
+
+function calculateAverage(
+  activities: ActivityRecord[],
+  type: ActivityType,
+): number {
+  const values = activities
+    .filter(
+      (activity) =>
+        activity.activity_type === type &&
+        activity.energy_level !== null &&
+        activity.energy_level !== undefined,
+    )
+    .map((activity) =>
+      normalizeEnergy(activity.energy_level),
+    );
+
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const average =
+    values.reduce((sum, value) => sum + value, 0) /
+    values.length;
+
+  return Number(average.toFixed(2));
+}
+
+class WellnessScoreEngine {
   async load(): Promise<WellnessScore> {
     const {
       data: { user },
@@ -71,45 +89,89 @@ class WellnessScoreEngine {
     }
 
     /*
-     * Overall score
-     * ----------------
-     * This still comes from wellness_scores.
+     * All five wellness parameters come from
+     * activity_history.
+     *
+     * Each value is the average energy_level
+     * for that activity type.
      */
-    const { data: scoreData, error: scoreError } = await supabase
-      .from("wellness_scores")
-      .select("final_energy_level")
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("activity_history")
+      .select(
+        "activity_type, energy_level",
+      )
       .eq("user_id", user.id)
-      .order("computed_at", { ascending: false })
-      .limit(1);
+      .limit(500);
 
-    const score =
-      !scoreError && scoreData && scoreData.length > 0
-        ? Number(scoreData[0].final_energy_level ?? 0)
-        : 0;
+    if (error || !data) {
+      console.error(
+        "Failed to load wellness activity history:",
+        error,
+      );
+
+      return {
+        score: 0,
+        breakdown: {
+          music: 0,
+          mood: 0,
+          meditation: 0,
+          journal: 0,
+          community: 0,
+        },
+      };
+    }
+
+    const activities =
+      data as ActivityRecord[];
+
+    const music = calculateAverage(
+      activities,
+      "music",
+    );
+
+    const mood = calculateAverage(
+      activities,
+      "mood",
+    );
+
+    const meditation = calculateAverage(
+      activities,
+      "meditation",
+    );
+
+    const journal = calculateAverage(
+      activities,
+      "journal",
+    );
+
+    const community = calculateAverage(
+      activities,
+      "community",
+    );
 
     /*
-     * Individual parameters
-     * ---------------------
-     * Each parameter comes directly from its
-     * respective source table.
+     * Overall Wellness Score
+     *
+     * Missing categories are already represented
+     * as 0, so all five parameters participate
+     * equally in the final calculation.
      */
-    const [
-      music,
-      mood,
-      meditation,
-      journal,
-      community,
-    ] = await Promise.all([
-      this.getAverageEnergy("music", user.id),
-      this.getAverageEnergy("moods", user.id),
-      this.getAverageEnergy("meditation_sessions", user.id),
-      this.getAverageEnergy("journals", user.id),
-      this.getAverageEnergy("community_rooms", user.id),
-    ]);
+    const score = Number(
+      (
+        (music +
+          mood +
+          meditation +
+          journal +
+          community) /
+        5
+      ).toFixed(2),
+    );
 
     return {
       score,
-
       breakdown: {
         music,
         mood,
