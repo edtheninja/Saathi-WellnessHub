@@ -1,9 +1,9 @@
-import { supabase } from "@/supabaseClient";
+import { motion } from "framer-motion";
+import { HeartPulse } from "lucide-react";
 
-export interface WellnessScore {
-  score: number;
-
-  breakdown: {
+interface Props {
+  score?: number;
+  breakdown?: {
     music: number;
     mood: number;
     meditation: number;
@@ -12,142 +12,149 @@ export interface WellnessScore {
   };
 }
 
-interface EnergyRow {
-  energy_level: number | null;
+export default function WellnessScore({ score, breakdown }: Props) {
+  const size = 240;
+  const strokeWidth = 12;
+  const radius = (size - strokeWidth) / 2;
+
+  const circumference = 2 * Math.PI * radius;
+
+  const progress =
+    score === undefined ? 0 : Math.max(0, Math.min(score, 100));
+
+  const dashOffset =
+    circumference - (progress / 100) * circumference;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="rounded-[32px] border bg-card p-8"
+    >
+      <div className="flex flex-col items-center">
+
+        <h2 className="text-2xl font-semibold">
+          Overall Wellness
+        </h2>
+
+        <div className="relative mt-10">
+
+          <svg width={size} height={size}>
+
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke="currentColor"
+              className="text-muted"
+              strokeWidth={strokeWidth}
+              fill="transparent"
+            />
+
+            <motion.circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke="currentColor"
+              className="text-primary"
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              fill="transparent"
+              strokeDasharray={circumference}
+              initial={{
+                strokeDashoffset: circumference,
+              }}
+              animate={{
+                strokeDashoffset: dashOffset,
+              }}
+              transition={{
+                duration: 1.2,
+              }}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+
+          </svg>
+
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+
+            <div className="rounded-full bg-primary/10 p-4">
+              <HeartPulse className="w-8 h-8 text-primary" />
+            </div>
+
+            <h1 className="mt-5 text-6xl font-black">
+              {score ?? "--"}
+            </h1>
+
+            <p className="mt-2 text-muted-foreground">
+              {score === undefined
+                ? "Waiting for wellness data"
+                : "Wellness Score"}
+            </p>
+
+          </div>
+
+        </div>
+
+        {breakdown && (
+  <div className="mt-8 w-full space-y-3 border-t pt-5">
+
+    <div className="flex items-center justify-between">
+
+      <h3 className="text-sm font-semibold">
+        How your score is built
+      </h3>
+
+      <span className="text-xs text-muted-foreground">
+        contribution
+      </span>
+
+    </div>
+
+    {[
+      ["Music", breakdown.music],
+      ["Mood", breakdown.mood],
+      ["Meditation", breakdown.meditation],
+      ["Journal", breakdown.journal],
+      ["Community", breakdown.community],
+    ].map(([label, value]) => {
+
+      const percentage = Math.max(
+        0,
+        Math.min(Number(value ?? 0), 100),
+      );
+
+      return (
+        <div key={label as string}>
+
+          <div className="mb-1 flex justify-between text-xs">
+
+            <span>{label as string}</span>
+
+            <span className="text-muted-foreground">
+              {percentage.toFixed(1)}%
+            </span>
+
+          </div>
+
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-700"
+              style={{
+                width: `${percentage}%`,
+              }}
+            />
+
+          </div>
+
+        </div>
+      );
+    })}
+
+  </div>
+)}
+
+      </div>
+    </motion.div>
+  );
 }
-
-class WellnessScoreEngine {
-  private async getAverageEnergy(
-    table:
-      | "music"
-      | "moods"
-      | "meditation_sessions"
-      | "journals"
-      | "community_rooms",
-    userId: string,
-  ): Promise<number> {
-    const { data, error } = await supabase
-      .from(table)
-      .select("energy_level")
-      .eq("user_id", userId);
-
-    if (error) {
-      console.error(
-        `[WellnessScore] Failed to read ${table}:`,
-        error,
-      );
-
-      return 0;
-    }
-
-    if (!data || data.length === 0) {
-      console.warn(
-        `[WellnessScore] No energy data found in ${table} for user ${userId}`,
-      );
-
-      return 0;
-    }
-
-    const rows = data as EnergyRow[];
-
-    const values = rows
-      .map((row) => Number(row.energy_level))
-      .filter((value) => Number.isFinite(value));
-
-    if (values.length === 0) {
-      console.warn(
-        `[WellnessScore] ${table} contains rows, but no valid energy_level values`,
-      );
-
-      return 0;
-    }
-
-    const average =
-      values.reduce((sum, value) => sum + value, 0) /
-      values.length;
-
-    return Number(average.toFixed(2));
-  }
-
-  async load(): Promise<WellnessScore> {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return {
-        score: 0,
-        breakdown: {
-          music: 0,
-          mood: 0,
-          meditation: 0,
-          journal: 0,
-          community: 0,
-        },
-      };
-    }
-
-    /*
-     * Overall Wellness Score
-     * ----------------------
-     * Keep reading the latest stored score.
-     */
-    const { data: scoreData, error: scoreError } = await supabase
-      .from("wellness_scores")
-      .select("final_energy_level")
-      .eq("user_id", user.id)
-      .order("computed_at", { ascending: false })
-      .limit(1);
-
-    if (scoreError) {
-      console.error(
-        "[WellnessScore] Failed to read wellness_scores:",
-        scoreError,
-      );
-    }
-
-    const score =
-      !scoreError && scoreData && scoreData.length > 0
-        ? Number(scoreData[0].final_energy_level ?? 0)
-        : 0;
-
-    /*
-     * Individual parameters
-     * ---------------------
-     * Each parameter is calculated from its
-     * respective source table.
-     */
-    const [
-      music,
-      mood,
-      meditation,
-      journal,
-      community,
-    ] = await Promise.all([
-      this.getAverageEnergy("music", user.id),
-      this.getAverageEnergy("moods", user.id),
-      this.getAverageEnergy("meditation_sessions", user.id),
-      this.getAverageEnergy("journals", user.id),
-      this.getAverageEnergy("community_rooms", user.id),
-    ]);
-
-    const breakdown = {
-      music,
-      mood,
-      meditation,
-      journal,
-      community,
-    };
-
-    console.log("[WellnessScore] User:", user.id);
-    console.log("[WellnessScore] Overall score:", score);
-    console.log("[WellnessScore] Breakdown:", breakdown);
-
-    return {
-      score,
-      breakdown,
-    };
-  }
-}
-
-export default new WellnessScoreEngine();
