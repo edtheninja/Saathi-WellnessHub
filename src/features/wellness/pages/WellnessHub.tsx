@@ -48,7 +48,20 @@ export default function WellnessHub() {
 
       {/* Top Summary Cards */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <WellnessScore score={data?.score.score ?? 0} breakdown={data?.score.breakdown} />
+        <WellnessScore
+          score={data?.score.score ?? 0}
+          breakdown={
+            data?.score.breakdown
+              ? {
+                  journal: data.score.breakdown.journal,
+                  meditation: data.score.breakdown.meditation,
+                  Moods: data.score.breakdown.goals,
+                  CommunitySelection: data.score.breakdown.health,
+                  Music: 0,
+                }
+              : undefined
+          }
+        />
         {data?.mood && <MoodCard mood={data.mood} />}
         {data?.streak && <WellnessStreakCard streak={data.streak} />}
       </div>
@@ -72,7 +85,19 @@ export default function WellnessHub() {
       )}
 
       {/* Breakdown */}
-      <WellnessBreakdown breakdown={data?.score.breakdown} />
+      <WellnessBreakdown
+        breakdown={
+          data?.score.breakdown
+            ? {
+                journal: data.score.breakdown.journal,
+                meditation: data.score.breakdown.meditation,
+                Mood: data.score.breakdown.goals,
+                Music: 0,
+                CommunitySelection: data.score.breakdown.health,
+              }
+            : undefined
+        }
+      />
 
       {/* Weekly Trend */}
       <WeeklyTrend />

@@ -5,15 +5,16 @@ interface Props {
   breakdown?: {
     journal: number;
     meditation: number;
-    goals: number;
-    health: number;
+    Mood: number;
+    Music : number;
+    CommunitySelection: number;
   };
 }
 
 export default function WellnessBreakdown({ breakdown }: Props) {
   const sections = [
     { title: "Mind", icon: Brain, value: breakdown?.journal },
-    { title: "Body", icon: HeartPulse, value: breakdown?.health },
+    { title: "Body", icon: HeartPulse, value: breakdown?.Mood },
     { title: "Balance", icon: Sparkles, value: breakdown?.meditation },
   ];
   return (

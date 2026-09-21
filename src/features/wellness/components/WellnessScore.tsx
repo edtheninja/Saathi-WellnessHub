@@ -6,8 +6,9 @@ interface Props {
   breakdown?: {
     journal: number;
     meditation: number;
-    goals: number;
-    health: number;
+    Moods: number;
+    CommunitySelection: number;
+    Music: number;
   };
 }
 
@@ -108,9 +109,10 @@ export default function WellnessScore({ score, breakdown }: Props) {
             </div>
             {[
               ["Journal", breakdown.journal, "25%"],
-              ["Meditation", breakdown.meditation, "30%"],
-              ["Goals", breakdown.goals, "25%"],
-              ["Health", breakdown.health, "20%"],
+              ["Meditation", breakdown.meditation, "25%"],
+              ["Mood", breakdown.Mood, "20%"],
+              ["Community Interaction", breakdown.health, "10%"],
+              ["Music", breakdown.health, "20%"],
             ].map(([label, value, weight]) => (
               <div key={label as string}>
                 <div className="mb-1 flex justify-between text-xs">

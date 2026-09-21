@@ -143,7 +143,7 @@ export default function ProfileScreen() {
 
     // Days Active (from mood)
     const { data: moodData } = await supabase
-      .from('mood')
+      .from('moods')
       .select('created_at')
       .eq('user_id', user.id);
 
