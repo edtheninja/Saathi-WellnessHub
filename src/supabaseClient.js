@@ -62,7 +62,15 @@ const auth = {
 	},
 };
 
+// Old/short table names used around the codebase → the backend's real resourceConfig keys.
+// Add to this map instead of renaming every .from() call site if this happens again.
+const TABLE_ALIASES = {
+	mood: 'moods',
+	meditation: 'meditation_sessions',
+};
+
 function tableQuery(table) {
+	const resolvedTable = TABLE_ALIASES[table] || table;
 	const filters = [];
 	let order;
 	let limit;
@@ -85,7 +93,7 @@ function tableQuery(table) {
 			if (order) params.set('order', order);
 			if (limit) params.set('limit', String(limit));
 			if (method !== 'GET' && filters.some(([key]) => key === 'id')) params.set('id', filters.find(([key]) => key === 'id')[1]);
-			const run = request(`/data/${table}${params.toString() ? `?${params}` : ''}`, {
+			const run = request(`/data/${resolvedTable}${params.toString() ? `?${params}` : ''}`, {
 				method,
 				...(method === 'POST' || method === 'PATCH' ? { body: JSON.stringify(body) } : {}),
 			}).then((payload) => {
@@ -98,4 +106,34 @@ function tableQuery(table) {
 	return builder;
 }
 
-export const supabase = { auth, from: tableQuery };
+// Profiles has its own dedicated backend route (/api/profile, singular — tied to the
+// auth token, no id needed) instead of the generic /api/data/:resource pattern, and it
+// returns a single object rather than { data: [...] }. This builder speaks that dialect
+// while keeping the same .select()/.eq()/.single()/.update() call shape ProfileScreen.tsx
+// already uses, so no component code needs to change.
+function profileQuery() {
+	let method = 'GET';
+	let body;
+	const builder = {
+		select() { return builder; },
+		eq() { return builder; }, // profile is scoped by the auth token server-side; id/user filters are no-ops here
+		single() { return builder; },
+		update(value) { method = 'PATCH'; body = value; return builder; },
+		then(resolve, reject) {
+			const run = request('/profile', {
+				method,
+				...(method === 'PATCH' ? { body: JSON.stringify(body) } : {}),
+			}).then((payload) => ({ data: payload.data ?? null, error: null }))
+			  .catch((error) => ({ data: null, error }));
+			return run.then(resolve, reject);
+		},
+	};
+	return builder;
+}
+
+function from(table) {
+	if (table === 'profiles') return profileQuery();
+	return tableQuery(table);
+}
+
+export const supabase = { auth, from };
