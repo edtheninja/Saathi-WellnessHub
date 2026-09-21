@@ -275,7 +275,7 @@ export default function ProfileScreen() {
 
     // Meditation Minutes (completed only)
     const { data: meditationData } = await supabase
-      .from("meditation")
+      .from("meditation_sessions")
       .select("duration")
       .eq("user_id", user.id)
       .eq("completed", true);
