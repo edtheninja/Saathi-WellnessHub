@@ -495,7 +495,6 @@ export default function ProfileScreen() {
 
               <div
                 onClick={() => setShowAvatarPicker(true)}
-                className="flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-primary/15 ring-2 ring-background shadow-md"
               >
                 {profileImage ? (
                   <img
