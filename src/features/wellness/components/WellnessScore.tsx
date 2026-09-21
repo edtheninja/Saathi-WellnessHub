@@ -78,23 +78,17 @@ export default function WellnessScore({ score, breakdown }: Props) {
           <div className="absolute inset-0 flex flex-col items-center justify-center">
 
             <div className="rounded-full bg-primary/10 p-4">
-
               <HeartPulse className="w-8 h-8 text-primary" />
-
             </div>
 
             <h1 className="mt-5 text-6xl font-black">
-
               {score ?? "--"}
-
             </h1>
 
             <p className="mt-2 text-muted-foreground">
-
               {score === undefined
                 ? "Waiting for wellness data"
                 : "Wellness Score"}
-
             </p>
 
           </div>
@@ -103,14 +97,17 @@ export default function WellnessScore({ score, breakdown }: Props) {
 
         {breakdown && (
           <div className="mt-8 w-full space-y-3 border-t pt-5">
+
             <div className="flex items-center justify-between">
+
               <h3 className="text-sm font-semibold">
                 How your score is built
               </h3>
 
               <span className="text-xs text-muted-foreground">
-                out of 100
+                contribution
               </span>
+
             </div>
 
             {[
@@ -119,35 +116,41 @@ export default function WellnessScore({ score, breakdown }: Props) {
               ["Meditation", breakdown.meditation],
               ["Journal", breakdown.journal],
               ["Community", breakdown.community],
-            ].map(([label, value]) => (
-              <div key={label as string}>
+            ].map(([label, value]) => {
 
-                <div className="mb-1 flex justify-between text-xs">
+              const percentage = Math.max(
+                0,
+                Math.min(Number(value ?? 0), 100),
+              );
 
-                  <span>{label as string}</span>
+              return (
+                <div key={label as string}>
 
-                  <span className="text-muted-foreground">
-                    {value as number} pts
-                  </span>
+                  <div className="mb-1 flex justify-between text-xs">
+
+                    <span>{label as string}</span>
+
+                    <span className="text-muted-foreground">
+                      {percentage.toFixed(1)}%
+                    </span>
+
+                  </div>
+
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-700"
+                      style={{
+                        width: `${percentage}%`,
+                      }}
+                    />
+
+                  </div>
 
                 </div>
+              );
+            })}
 
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{
-                      width: `${Math.min(
-                        Number(value),
-                        100
-                      )}%`,
-                    }}
-                  />
-
-                </div>
-
-              </div>
-            ))}
           </div>
         )}
 
