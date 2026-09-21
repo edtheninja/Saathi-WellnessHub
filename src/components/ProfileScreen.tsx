@@ -707,10 +707,10 @@ export default function ProfileScreen() {
 
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  "public/Avatar/Male 1.png",
-                  "public/Avatar/Male 2.png",
-                  "public/Avatar/Female 1.png",
-                  "public/Avatar/Female 2.png",
+                  "public/Avatar/Male1.png",
+                  "public/Avatar/Male2.png",
+                  "public/Avatar/Female1.png",
+                  "public/Avatar/Female2.png",
                 ].map((avatar, index) => (
                   <div
                     key={index}
