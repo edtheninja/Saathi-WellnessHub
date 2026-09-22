@@ -12,24 +12,16 @@ export interface WellnessScore {
   };
 }
 
-interface ActivityRecord {
-  activity_type: string;
-  energy_level: number | null;
+interface WellnessScoreResponse {
+  final_energy_level: number | null;
+  breakdown?: {
+    music?: number | null;
+    mood?: number | null;
+    meditation?: number | null;
+    journal?: number | null;
+    community?: number | null;
+  } | null;
 }
-
-interface ActivityResponse {
-  data?: ActivityRecord[];
-}
-
-const ACTIVITY_TYPES = [
-  "music",
-  "mood",
-  "meditation",
-  "journal",
-  "community",
-] as const;
-
-type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
 function normalizeEnergy(
   value: number | null | undefined,
@@ -41,32 +33,6 @@ function normalizeEnergy(
   }
 
   return Math.max(0, Math.min(100, numericValue));
-}
-
-function calculateAverage(
-  activities: ActivityRecord[],
-  type: ActivityType,
-): number {
-  const values = activities
-    .filter(
-      (activity) =>
-        activity.activity_type === type &&
-        activity.energy_level !== null &&
-        activity.energy_level !== undefined,
-    )
-    .map((activity) =>
-      normalizeEnergy(activity.energy_level),
-    );
-
-  if (values.length === 0) {
-    return 0;
-  }
-
-  const average =
-    values.reduce((sum, value) => sum + value, 0) /
-    values.length;
-
-  return Number(average.toFixed(2));
 }
 
 class WellnessScoreEngine {
@@ -89,26 +55,23 @@ class WellnessScoreEngine {
     }
 
     /*
-     * All five wellness parameters come from
-     * activity_history.
+     * The backend calculates the Wellness Score
+     * from activity_history and stores the result
+     * in wellness_scores.
      *
-     * Each value is the average energy_level
-     * for that activity type.
+     * This endpoint returns the latest calculated
+     * wellness score and its category breakdown.
      */
     const {
       data,
       error,
     } = await supabase
-      .from("activity_history")
-      .select(
-        "activity_type, energy_level",
-      )
-      .eq("user_id", user.id)
-      .limit(500);
+      .from("wellness-score/latest")
+      .select("*");
 
     if (error || !data) {
       console.error(
-        "Failed to load wellness activity history:",
+        "Failed to load wellness score:",
         error,
       );
 
@@ -124,61 +87,34 @@ class WellnessScoreEngine {
       };
     }
 
-    const activities =
-      data as ActivityRecord[];
+    const response =
+      data as WellnessScoreResponse;
 
-    const music = calculateAverage(
-      activities,
-      "music",
-    );
-
-    const mood = calculateAverage(
-      activities,
-      "mood",
-    );
-
-    const meditation = calculateAverage(
-      activities,
-      "meditation",
-    );
-
-    const journal = calculateAverage(
-      activities,
-      "journal",
-    );
-
-    const community = calculateAverage(
-      activities,
-      "community",
-    );
-
-    /*
-     * Overall Wellness Score
-     *
-     * Missing categories are already represented
-     * as 0, so all five parameters participate
-     * equally in the final calculation.
-     */
-    const score = Number(
-      (
-        (music +
-          mood +
-          meditation +
-          journal +
-          community) /
-        5
-      ).toFixed(2),
-    );
+    const breakdown = {
+      music: normalizeEnergy(
+        response.breakdown?.music,
+      ),
+      mood: normalizeEnergy(
+        response.breakdown?.mood,
+      ),
+      meditation: normalizeEnergy(
+        response.breakdown?.meditation,
+      ),
+      journal: normalizeEnergy(
+        response.breakdown?.journal,
+      ),
+      community: normalizeEnergy(
+        response.breakdown?.community,
+      ),
+    };
 
     return {
-      score,
-      breakdown: {
-        music,
-        mood,
-        meditation,
-        journal,
-        community,
-      },
+      score: Number(
+        normalizeEnergy(
+          response.final_energy_level,
+        ).toFixed(2),
+      ),
+      breakdown,
     };
   }
 }
