@@ -22,36 +22,43 @@ const BottomNav = () => {
       icon: Home,
       label: "Home",
       path: "/dashboard",
+      mobile: true,
     },
     {
       icon: Calendar,
       label: "Mood",
       path: "/mood",
+      mobile: false,
     },
     {
       icon: Music,
       label: "Music",
       path: "/music",
+      mobile: false,
     },
     {
       icon: Newspaper,
       label: "Feed",
       path: "/feed",
+      mobile: true,
     },
     {
       icon: MessageCircle,
       label: "Chat",
       path: "/chat",
+      mobile: true,
     },
     {
       icon: HeartPulse,
       label: "Wellness",
       path: "/wellness",
+      mobile: true,
     },
     {
       icon: User,
       label: "Profile",
       path: "/profile",
+      mobile: true,
     },
   ];
 
@@ -90,9 +97,10 @@ const BottomNav = () => {
       className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-2 pb-2 sm:px-4 sm:pb-4"
     >
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-        <div className="rounded-[26px] border border-border/60 bg-card/90 p-1.5 shadow-[0_8px_35px_rgba(0,0,0,0.12)] backdrop-blur-2xl sm:rounded-[30px] sm:p-2">
+        {/* Responsive pill-shaped navigation */}
+        <div className="rounded-full border border-border/60 bg-card/90 p-1.5 shadow-[0_8px_35px_rgba(0,0,0,0.12)] backdrop-blur-2xl sm:p-2">
           <div
-            className="flex w-full items-end justify-between gap-0.5 sm:gap-1"
+            className="flex w-full items-center justify-between gap-0.5 sm:gap-1"
             onMouseLeave={() => setHoveredIndex(null)}
           >
             {navItems.map((item, index) => {
@@ -123,11 +131,20 @@ const BottomNav = () => {
                     damping: 20,
                     mass: 0.7,
                   }}
-                  className={`group relative flex min-w-0 flex-1 flex-col items-center justify-center rounded-[20px] px-0.5 py-2 outline-none transition-colors sm:rounded-[23px] sm:px-2 sm:py-2.5 ${
-                    isActive
+                  className={`
+                    group relative flex min-w-0 flex-1
+                    flex-col items-center justify-center
+                    rounded-full px-1 py-1.5
+                    outline-none transition-colors
+                    sm:px-2 sm:py-2.5
+
+                    ${item.mobile ? "flex" : "hidden md:flex"}
+
+                    ${isActive
                       ? "text-primary"
                       : "text-muted-foreground hover:text-foreground"
-                  }`}
+                    }
+                  `}
                   aria-current={isActive ? "page" : undefined}
                   aria-label={item.label}
                 >
@@ -135,7 +152,7 @@ const BottomNav = () => {
                   {isActive && (
                     <motion.div
                       layoutId="bottom-nav-active"
-                      className="absolute inset-0 rounded-[20px] bg-primary/10 sm:rounded-[23px]"
+                      className="absolute inset-0 rounded-full bg-primary/10"
                       transition={{
                         type: "spring",
                         stiffness: 380,
@@ -144,7 +161,7 @@ const BottomNav = () => {
                     />
                   )}
 
-                  {/* Icon container */}
+                  {/* Icon */}
                   <motion.div
                     animate={{
                       y: isActive ? -1 : 0,
@@ -154,22 +171,39 @@ const BottomNav = () => {
                       stiffness: 350,
                       damping: 18,
                     }}
-                    className={`relative z-10 mb-1 flex h-9 w-9 items-center justify-center rounded-[14px] transition-all duration-200 sm:h-10 sm:w-10 sm:rounded-[15px] ${
-                      isActive
+                    className={`
+                      relative z-10 mb-1
+                      flex h-8 w-8 items-center justify-center
+                      rounded-full transition-all duration-200
+                      sm:h-10 sm:w-10
+
+                      ${isActive
                         ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                         : "group-hover:bg-accent"
-                    }`}
+                      }
+                    `}
                   >
-                    <IconComponent className="h-[18px] w-[18px] sm:h-[19px] sm:w-[19px]" />
+                    <IconComponent
+                      className={`h-[17px] w-[17px] sm:h-[19px] sm:w-[19px] ${isActive ? "fill-current" : ""
+                        }`}
+                    />
                   </motion.div>
 
                   {/* Label */}
                   <motion.span
                     animate={{
-                      opacity: hoveredIndex === index || isActive ? 1 : 0.78,
+                      opacity:
+                        hoveredIndex === index || isActive
+                          ? 1
+                          : 0.78,
                       y: hoveredIndex === index ? -1 : 0,
                     }}
-                    className="relative z-10 whitespace-nowrap text-[9px] font-semibold tracking-tight sm:text-[11px]"
+                    className="
+                      relative z-10
+                      whitespace-nowrap
+                      text-[8px] font-semibold tracking-tight
+                      sm:text-[11px]
+                    "
                   >
                     {item.label}
                   </motion.span>
