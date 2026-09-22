@@ -1,4 +1,5 @@
-import { supabase } from "@/supabaseClient";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
 export interface WellnessScore {
   score: number;
@@ -14,6 +15,7 @@ export interface WellnessScore {
 
 interface WellnessScoreResponse {
   final_energy_level: number | null;
+
   breakdown?: {
     music?: number | null;
     mood?: number | null;
@@ -37,11 +39,10 @@ function normalizeEnergy(
 
 class WellnessScoreEngine {
   async load(): Promise<WellnessScore> {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const token =
+      localStorage.getItem("saathi_access_token");
 
-    if (!user) {
+    if (!token) {
       return {
         score: 0,
         breakdown: {
@@ -54,22 +55,71 @@ class WellnessScoreEngine {
       };
     }
 
-    /*
-     * The backend calculates the Wellness Score
-     * from activity_history and stores the result
-     * in wellness_scores.
-     *
-     * This endpoint returns the latest calculated
-     * wellness score and its category breakdown.
-     */
-    const {
-      data,
-      error,
-    } = await supabase
-      .from("wellness-score/latest")
-      .select("*");
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/wellness-score/latest`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
 
-    if (error || !data) {
+      const payload =
+        await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ||
+            "Failed to load wellness score",
+        );
+      }
+
+      const data =
+        payload?.data as WellnessScoreResponse | null;
+
+      if (!data) {
+        return {
+          score: 0,
+          breakdown: {
+            music: 0,
+            mood: 0,
+            meditation: 0,
+            journal: 0,
+            community: 0,
+          },
+        };
+      }
+
+      const breakdown = {
+        music: normalizeEnergy(
+          data.breakdown?.music,
+        ),
+        mood: normalizeEnergy(
+          data.breakdown?.mood,
+        ),
+        meditation: normalizeEnergy(
+          data.breakdown?.meditation,
+        ),
+        journal: normalizeEnergy(
+          data.breakdown?.journal,
+        ),
+        community: normalizeEnergy(
+          data.breakdown?.community,
+        ),
+      };
+
+      return {
+        score: Number(
+          normalizeEnergy(
+            data.final_energy_level,
+          ).toFixed(2),
+        ),
+        breakdown,
+      };
+    } catch (error) {
       console.error(
         "Failed to load wellness score:",
         error,
@@ -86,36 +136,6 @@ class WellnessScoreEngine {
         },
       };
     }
-
-    const response =
-      data as WellnessScoreResponse;
-
-    const breakdown = {
-      music: normalizeEnergy(
-        response.breakdown?.music,
-      ),
-      mood: normalizeEnergy(
-        response.breakdown?.mood,
-      ),
-      meditation: normalizeEnergy(
-        response.breakdown?.meditation,
-      ),
-      journal: normalizeEnergy(
-        response.breakdown?.journal,
-      ),
-      community: normalizeEnergy(
-        response.breakdown?.community,
-      ),
-    };
-
-    return {
-      score: Number(
-        normalizeEnergy(
-          response.final_energy_level,
-        ).toFixed(2),
-      ),
-      breakdown,
-    };
   }
 }
 
