@@ -50,17 +50,7 @@ export default function WellnessHub() {
       <div className="grid gap-6 lg:grid-cols-3">
         <WellnessScore
           score={data?.score.score ?? 0}
-          breakdown={
-            data?.score.breakdown
-              ? {
-                  journal: data.score.breakdown.journal,
-                  meditation: data.score.breakdown.meditation,
-                  Moods: data.score.breakdown.goals,
-                  CommunitySelection: data.score.breakdown.health,
-                  Music: 0,
-                }
-              : undefined
-          }
+          breakdown={data?.score.breakdown}
         />
         {data?.mood && <MoodCard mood={data.mood} />}
         {data?.streak && <WellnessStreakCard streak={data.streak} />}
@@ -86,17 +76,7 @@ export default function WellnessHub() {
 
       {/* Breakdown */}
       <WellnessBreakdown
-        breakdown={
-          data?.score.breakdown
-            ? {
-                journal: data.score.breakdown.journal,
-                meditation: data.score.breakdown.meditation,
-                Mood: data.score.breakdown.goals,
-                Music: 0,
-                CommunitySelection: data.score.breakdown.health,
-              }
-            : undefined
-        }
+        breakdown={data?.score.breakdown}
       />
 
       {/* Weekly Trend */}
