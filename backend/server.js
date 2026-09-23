@@ -2858,6 +2858,92 @@ app.post(
   },
 );
 
+app.post("/api/data/moods", authRequired, async (req, res) => {
+  const items = Array.isArray(req.body) ? req.body : [req.body];
+
+  if (!items.length) {
+    return res.status(400).json({ error: "Body cannot be empty" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const insertedItems = [];
+
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const { mood, note } = item;
+      let energyLevel = item.energy_level;
+
+      if (!mood || !String(mood).trim()) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "mood is required" });
+      }
+
+      energyLevel =
+        energyLevel !== null && energyLevel !== undefined && energyLevel !== ""
+          ? Number(energyLevel)
+          : null;
+
+      if (
+        energyLevel !== null &&
+        (!Number.isFinite(energyLevel) || energyLevel < 1 || energyLevel > 100)
+      ) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: "energy_level must be a number between 1 and 100",
+        });
+      }
+
+      const insertResult = await client.query(
+        `INSERT INTO moods (user_id, mood, energy_level, note)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [
+          req.auth.sub,
+          String(mood).trim(),
+          energyLevel,
+          note !== undefined && note !== null ? String(note) : null,
+        ],
+      );
+
+      const inserted = insertResult.rows[0];
+      insertedItems.push(inserted);
+
+      const activity = await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "mood",
+        title: inserted.mood ? String(inserted.mood) : "Mood Logged",
+        subtitle: null,
+        energyLevel: inserted.energy_level,
+        metadata: {
+          mood_id: inserted.id,
+          mood: inserted.mood,
+          energy_level: inserted.energy_level,
+        },
+      });
+
+      console.log(`[ACTIVITY] mood created and activity recorded: ${activity.id}`);
+    }
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      data: insertedItems,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
+});
+
 app.patch("/api/data/moods", authRequired, async (req, res) => {
   const id = req.query.id;
 
