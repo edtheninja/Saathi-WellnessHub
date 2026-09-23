@@ -1,5 +1,6 @@
 import { toJpeg, toPng } from "html-to-image";
 import jsPDF from "jspdf";
+import WellnessScoreEngine from "./WellnessScoreEngine";
 
 export interface WeeklyWellnessData {
   score: number;
@@ -221,6 +222,17 @@ class WellnessShareService {
           0,
         ) / values.length,
       );
+
+      // Persist the whole breakdown to backend so it doesn't remain empty; final_energy_level is read-only
+      if (values.some((v) => v > 0)) {
+        WellnessScoreEngine.saveBreakdown({
+          mood,
+          journal,
+          music,
+          community,
+          meditation,
+        }).catch(() => {});
+      }
 
       return {
         score,
