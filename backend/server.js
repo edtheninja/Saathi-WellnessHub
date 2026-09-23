@@ -1273,14 +1273,21 @@ app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
 
 app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
   try {
-    const score = await calculateAndStoreWellnessScore(req.auth.sub);
+    const result = await pool.query(
+      `SELECT *
+           FROM wellness_scores
+           WHERE user_id = $1
+           ORDER BY
+             computed_at DESC NULLS LAST,
+             created_at DESC
+           LIMIT 1`,
+      [req.auth.sub],
+    );
 
     res.json({
-      data: score,
+      data: result.rows[0] || null,
     });
   } catch (error) {
-    console.error("Wellness score calculation error:", error.message);
-
     publicError(res, error);
   }
 });
