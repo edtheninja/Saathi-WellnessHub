@@ -1,5 +1,6 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || "/api"
+).replace(/\/$/, "");
 
 export interface WellnessScore {
   score: number;
@@ -16,31 +17,21 @@ export interface WellnessScore {
 interface WellnessScoreResponse {
   final_energy_level: number | null;
 
-  breakdown?: {
-    music?: number | null;
-    mood?: number | null;
-    meditation?: number | null;
-    journal?: number | null;
-    community?: number | null;
-  } | null;
-}
-
-function normalizeEnergy(
-  value: number | null | undefined,
-): number {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, numericValue));
+  breakdown?:
+    | {
+        music?: number | null;
+        mood?: number | null;
+        meditation?: number | null;
+        journal?: number | null;
+        community?: number | null;
+      }
+    | string
+    | null;
 }
 
 class WellnessScoreEngine {
   async load(): Promise<WellnessScore> {
-    const token =
-      localStorage.getItem("saathi_access_token");
+    const token = localStorage.getItem("saathi_access_token");
 
     if (!token) {
       return {
@@ -67,18 +58,15 @@ class WellnessScoreEngine {
         },
       );
 
-      const payload =
-        await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
-          payload?.error ||
-            "Failed to load wellness score",
+          payload?.error || "Failed to load wellness score",
         );
       }
 
-      const data =
-        payload?.data as WellnessScoreResponse | null;
+      const data = payload?.data as WellnessScoreResponse | null;
 
       if (!data) {
         return {
@@ -93,37 +81,30 @@ class WellnessScoreEngine {
         };
       }
 
-      const breakdown = {
-        music: normalizeEnergy(
-          data.breakdown?.music,
-        ),
-        mood: normalizeEnergy(
-          data.breakdown?.mood,
-        ),
-        meditation: normalizeEnergy(
-          data.breakdown?.meditation,
-        ),
-        journal: normalizeEnergy(
-          data.breakdown?.journal,
-        ),
-        community: normalizeEnergy(
-          data.breakdown?.community,
-        ),
-      };
+      let rawBreakdown: Record<string, unknown> = {};
+
+      if (typeof data.breakdown === "string") {
+        try {
+          rawBreakdown = JSON.parse(data.breakdown);
+        } catch {
+          rawBreakdown = {};
+        }
+      } else if (data.breakdown && typeof data.breakdown === "object") {
+        rawBreakdown = data.breakdown as Record<string, unknown>;
+      }
 
       return {
-        score: Number(
-          normalizeEnergy(
-            data.final_energy_level,
-          ).toFixed(2),
-        ),
-        breakdown,
+        score: Number(data.final_energy_level ?? 0),
+        breakdown: {
+          music: Number(rawBreakdown.music ?? 0),
+          mood: Number(rawBreakdown.mood ?? 0),
+          meditation: Number(rawBreakdown.meditation ?? 0),
+          journal: Number(rawBreakdown.journal ?? 0),
+          community: Number(rawBreakdown.community ?? 0),
+        },
       };
     } catch (error) {
-      console.error(
-        "Failed to load wellness score:",
-        error,
-      );
+      console.error("Failed to load wellness score:", error);
 
       return {
         score: 0,
@@ -139,4 +120,4 @@ class WellnessScoreEngine {
   }
 }
 
-export default new WellnessScoreEngine();
+export default new WellnessScoreEngine();

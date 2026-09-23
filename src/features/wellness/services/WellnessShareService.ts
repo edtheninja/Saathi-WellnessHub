@@ -21,8 +21,9 @@ interface ActivityResponse {
   data?: ActivityRecord[];
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || ""
+).replace(/\/$/, "");
 
 const ACTIVITY_TYPES = [
   "mood",
@@ -37,6 +38,7 @@ type ActivityType = (typeof ACTIVITY_TYPES)[number];
 function getAccessToken(): string | null {
   try {
     const possibleKeys = [
+      "saathi_access_token",
       "saathi_session",
       "saathi_auth",
       "auth_session",
