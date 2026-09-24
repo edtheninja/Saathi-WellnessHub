@@ -1122,31 +1122,17 @@ async function calculateAndStoreWellnessScore(userId) {
     community: Number(Number(row.community || 0).toFixed(2)),
   };
 
-  const finalEnergyLevel = Number(
-    (
-      (
-        breakdown.music +
-        breakdown.mood +
-        breakdown.meditation +
-        breakdown.journal +
-        breakdown.community
-      ) / 5
-    ).toFixed(2),
-  );
-
   const updated = await pool.query(
     `
       UPDATE wellness_scores
       SET
-        final_energy_level = $2,
-        breakdown = $3,
+        breakdown = $2,
         computed_at = NOW()
       WHERE user_id = $1
       RETURNING *
     `,
     [
       userId,
-      finalEnergyLevel,
       JSON.stringify(breakdown),
     ],
   );
@@ -1165,12 +1151,11 @@ async function calculateAndStoreWellnessScore(userId) {
         computed_at
       )
       VALUES
-      ($1, $2, $3, NOW())
+      ($1, 0, $2, NOW())
       RETURNING *
     `,
     [
       userId,
-      finalEnergyLevel,
       JSON.stringify(breakdown),
     ],
   );
@@ -1180,7 +1165,7 @@ async function calculateAndStoreWellnessScore(userId) {
 
 app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
   try {
-    const { user_id, final_energy_level, breakdown = {} } = req.body || {};
+    const { user_id, breakdown = {} } = req.body || {};
 
     if (!user_id) {
       return res.status(400).json({
@@ -1188,33 +1173,19 @@ app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
       });
     }
 
-    const numericEnergy = Number(final_energy_level);
-
-    if (
-      !Number.isFinite(numericEnergy) ||
-      numericEnergy < 0 ||
-      numericEnergy > 100
-    ) {
-      return res.status(400).json({
-        error: "final_energy_level must be a number between 0 and 100",
-      });
-    }
-
-    const roundedEnergy = Math.round(numericEnergy);
-
+    // No final energy score change from ML logic: only update breakdown
     const updated = await pool.query(
       `UPDATE wellness_scores
-           SET final_energy_level = $2,
-               breakdown = $3,
+           SET breakdown = $2,
                computed_at = NOW()
            WHERE user_id = $1
            RETURNING *`,
-      [user_id, roundedEnergy, JSON.stringify(breakdown ?? {})],
+      [user_id, JSON.stringify(breakdown ?? {})],
     );
 
     if (updated.rows[0]) {
       console.log(
-        `[ML] final_energy_level updated for user ${user_id}: ${updated.rows[0].final_energy_level}`,
+        `[ML] breakdown updated for user ${user_id} (final_energy_level unchanged)`,
       );
 
       return res.status(200).json({
@@ -1231,13 +1202,13 @@ app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
              computed_at
            )
            VALUES
-           ($1, $2, $3, NOW())
+           ($1, 0, $2, NOW())
            RETURNING *`,
-      [user_id, roundedEnergy, JSON.stringify(breakdown ?? {})],
+      [user_id, JSON.stringify(breakdown ?? {})],
     );
 
     console.log(
-      `[ML] final_energy_level inserted for user ${user_id}: ${inserted.rows[0].final_energy_level}`,
+      `[ML] breakdown inserted for user ${user_id} (final_energy_level initialized to 0)`,
     );
 
     res.status(201).json({
@@ -1250,7 +1221,174 @@ app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
   }
 });
 
+async function calculateUserBreakdown(userId) {
+  const result = await pool.query(
+    `
+      SELECT
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'music'
+          ),
+          0
+        ) AS music,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'mood'
+          ),
+          0
+        ) AS mood,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'meditation'
+          ),
+          0
+        ) AS meditation,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'journal'
+          ),
+          0
+        ) AS journal,
+
+        COALESCE(
+          AVG(energy_level) FILTER (
+            WHERE activity_type = 'community'
+          ),
+          0
+        ) AS community
+
+      FROM activity_history
+      WHERE user_id = $1
+    `,
+    [userId],
+  );
+
+  const row = result.rows[0] || {};
+
+  return {
+    music: Math.round(Number(row.music || 0)),
+    mood: Math.round(Number(row.mood || 0)),
+    meditation: Math.round(Number(row.meditation || 0)),
+    journal: Math.round(Number(row.journal || 0)),
+    community: Math.round(Number(row.community || 0)),
+  };
+}
+
+app.post("/api/wellness-score/breakdown", authRequired, async (req, res) => {
+  try {
+    const userId = req.auth.sub;
+    const incomingBreakdown = req.body?.breakdown;
+
+    let breakdown;
+    if (incomingBreakdown && typeof incomingBreakdown === "object") {
+      breakdown = {
+        music: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.music ?? 0)))),
+        mood: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.mood ?? 0)))),
+        meditation: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.meditation ?? 0)))),
+        journal: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.journal ?? 0)))),
+        community: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.community ?? 0)))),
+      };
+    } else {
+      breakdown = await calculateUserBreakdown(userId);
+    }
+
+    // final_energy_level is strictly READ-ONLY (only set by ML service).
+    // Here we only update or insert the breakdown.
+    const updated = await pool.query(
+      `UPDATE wellness_scores
+           SET breakdown = $2,
+               computed_at = NOW()
+           WHERE user_id = $1
+           RETURNING *`,
+      [userId, JSON.stringify(breakdown)],
+    );
+
+    if (updated.rows[0]) {
+      return res.status(200).json({
+        data: updated.rows[0],
+        message: "Breakdown updated. final_energy_level is read-only.",
+      });
+    }
+
+    const inserted = await pool.query(
+      `INSERT INTO wellness_scores
+           (
+             user_id,
+             final_energy_level,
+             breakdown,
+             computed_at
+           )
+           VALUES
+           ($1, 0, $2, NOW())
+           RETURNING *`,
+      [userId, JSON.stringify(breakdown)],
+    );
+
+    res.status(201).json({
+      data: inserted.rows[0],
+      message: "Breakdown saved. final_energy_level is read-only.",
+    });
+  } catch (error) {
+    publicError(res, error);
+  }
+});
+
 app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
+  try {
+    const userId = req.auth.sub;
+    const incomingBreakdown = req.body?.breakdown;
+    const breakdown =
+      incomingBreakdown && typeof incomingBreakdown === "object"
+        ? {
+            music: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.music ?? 0)))),
+            mood: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.mood ?? 0)))),
+            meditation: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.meditation ?? 0)))),
+            journal: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.journal ?? 0)))),
+            community: Math.max(0, Math.min(100, Math.round(Number(incomingBreakdown.community ?? 0)))),
+          }
+        : await calculateUserBreakdown(userId);
+
+    const updated = await pool.query(
+      `UPDATE wellness_scores
+           SET breakdown = $2,
+               computed_at = NOW()
+           WHERE user_id = $1
+           RETURNING *`,
+      [userId, JSON.stringify(breakdown)],
+    );
+
+    let row = updated.rows[0];
+
+    if (!row) {
+      const inserted = await pool.query(
+        `INSERT INTO wellness_scores
+             (
+               user_id,
+               final_energy_level,
+               breakdown,
+               computed_at
+             )
+             VALUES
+             ($1, 0, $2, NOW())
+             RETURNING *`,
+        [userId, JSON.stringify(breakdown)],
+      );
+      row = inserted.rows[0];
+    }
+
+    res.status(200).json({
+      data: row,
+      note: "final_energy_level is read-only and computed by the separate ML backend. Breakdown has been updated.",
+    });
+  } catch (error) {
+    publicError(res, error);
+  }
+});
+
+app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT *
@@ -1263,26 +1401,70 @@ app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
       [req.auth.sub],
     );
 
-    res.status(200).json({
-      data: result.rows[0] || null,
+    let row = result.rows[0] || null;
 
-      note: "final_energy_level is computed by the separate ML backend; this endpoint does not calculate it.",
-    });
-  } catch (error) {
-    publicError(res, error);
-  }
-});
+    if (!row) {
+      const breakdown = await calculateUserBreakdown(req.auth.sub);
+      const inserted = await pool.query(
+        `INSERT INTO wellness_scores
+             (
+               user_id,
+               final_energy_level,
+               breakdown,
+               computed_at
+             )
+             VALUES
+             ($1, 0, $2, NOW())
+             RETURNING *`,
+        [req.auth.sub, JSON.stringify(breakdown)],
+      );
+      row = inserted.rows[0];
+    } else {
+      let currentBreakdown = row.breakdown;
+      if (typeof currentBreakdown === "string") {
+        try {
+          currentBreakdown = JSON.parse(currentBreakdown);
+        } catch {
+          currentBreakdown = null;
+        }
+      }
+      const isBreakdownEmpty =
+        !currentBreakdown ||
+        (Number(currentBreakdown.music || 0) === 0 &&
+          Number(currentBreakdown.mood || 0) === 0 &&
+          Number(currentBreakdown.meditation || 0) === 0 &&
+          Number(currentBreakdown.journal || 0) === 0 &&
+          Number(currentBreakdown.community || 0) === 0);
 
-app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
-  try {
-    const score = await calculateAndStoreWellnessScore(req.auth.sub);
+      if (isBreakdownEmpty) {
+        const breakdown = await calculateUserBreakdown(req.auth.sub);
+        const hasAnyActivity =
+          breakdown.music > 0 ||
+          breakdown.mood > 0 ||
+          breakdown.meditation > 0 ||
+          breakdown.journal > 0 ||
+          breakdown.community > 0;
+
+        if (hasAnyActivity) {
+          const updated = await pool.query(
+            `UPDATE wellness_scores
+                 SET breakdown = $2,
+                     computed_at = NOW()
+                 WHERE user_id = $1
+                 RETURNING *`,
+            [req.auth.sub, JSON.stringify(breakdown)],
+          );
+          if (updated.rows[0]) {
+            row = updated.rows[0];
+          }
+        }
+      }
+    }
 
     res.json({
-      data: score,
+      data: row,
     });
   } catch (error) {
-    console.error("Wellness score calculation error:", error.message);
-
     publicError(res, error);
   }
 });
@@ -2859,6 +3041,92 @@ app.post(
     });
   },
 );
+
+app.post("/api/data/moods", authRequired, async (req, res) => {
+  const items = Array.isArray(req.body) ? req.body : [req.body];
+
+  if (!items.length) {
+    return res.status(400).json({ error: "Body cannot be empty" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const insertedItems = [];
+
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const { mood, note } = item;
+      let energyLevel = item.energy_level;
+
+      if (!mood || !String(mood).trim()) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "mood is required" });
+      }
+
+      energyLevel =
+        energyLevel !== null && energyLevel !== undefined && energyLevel !== ""
+          ? Number(energyLevel)
+          : null;
+
+      if (
+        energyLevel !== null &&
+        (!Number.isFinite(energyLevel) || energyLevel < 1 || energyLevel > 100)
+      ) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: "energy_level must be a number between 1 and 100",
+        });
+      }
+
+      const insertResult = await client.query(
+        `INSERT INTO moods (user_id, mood, energy_level, note)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [
+          req.auth.sub,
+          String(mood).trim(),
+          energyLevel,
+          note !== undefined && note !== null ? String(note) : null,
+        ],
+      );
+
+      const inserted = insertResult.rows[0];
+      insertedItems.push(inserted);
+
+      const activity = await recordActivity(client, {
+        userId: req.auth.sub,
+        activityType: "mood",
+        title: inserted.mood ? String(inserted.mood) : "Mood Logged",
+        subtitle: null,
+        energyLevel: inserted.energy_level,
+        metadata: {
+          mood_id: inserted.id,
+          mood: inserted.mood,
+          energy_level: inserted.energy_level,
+        },
+      });
+
+      console.log(`[ACTIVITY] mood created and activity recorded: ${activity.id}`);
+    }
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      data: insertedItems,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    publicError(res, error);
+  } finally {
+    client.release();
+  }
+});
 
 app.patch("/api/data/moods", authRequired, async (req, res) => {
   const id = req.query.id;

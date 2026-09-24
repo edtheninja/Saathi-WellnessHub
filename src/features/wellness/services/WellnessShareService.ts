@@ -1,5 +1,6 @@
 import { toJpeg, toPng } from "html-to-image";
 import jsPDF from "jspdf";
+import WellnessScoreEngine from "./WellnessScoreEngine";
 
 export interface WeeklyWellnessData {
   score: number;
@@ -21,8 +22,9 @@ interface ActivityResponse {
   data?: ActivityRecord[];
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || ""
+).replace(/\/$/, "");
 
 const ACTIVITY_TYPES = [
   "mood",
@@ -37,6 +39,7 @@ type ActivityType = (typeof ACTIVITY_TYPES)[number];
 function getAccessToken(): string | null {
   try {
     const possibleKeys = [
+      "saathi_access_token",
       "saathi_session",
       "saathi_auth",
       "auth_session",
@@ -219,6 +222,17 @@ class WellnessShareService {
           0,
         ) / values.length,
       );
+
+      // Persist the whole breakdown to backend so it doesn't remain empty; final_energy_level is read-only
+      if (values.some((v) => v > 0)) {
+        WellnessScoreEngine.saveBreakdown({
+          mood,
+          journal,
+          music,
+          community,
+          meditation,
+        }).catch(() => {});
+      }
 
       return {
         score,
