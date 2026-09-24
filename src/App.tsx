@@ -83,7 +83,7 @@ export default function App() {
                 {/* Main app */}
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/mood" element={<MoodTracker />} />
-                <Route path="/feed" element={<AnonymousThoughts />} />        
+                <Route path="/feed" element={<AnonymousThoughts />} />
                 <Route path="/naam-jaap" element={<NaamJaapScreen />} />
                 <Route path="/journal" element={<Journal />} />
                 <Route path="/meditation" element={<MeditationScreen />} />
@@ -118,7 +118,7 @@ export default function App() {
                 <Route path="/settings/reminders" element={<ReminderSettings />} />
                 <Route path="/settings/privacy" element={<PrivacySettings />} />
                 <Route path="/settings/therapist" element={<TherapistAccess />} />
-                     
+
                 <Route path="/settings/about" element={<About />} />
                 <Route path="/settings/emergency" element={<Emergency />} />
                 <Route path="/settings/delete-account" element={<DeleteAccount />} />

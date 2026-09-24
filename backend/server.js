@@ -1065,105 +1065,9 @@ app.put("/api/settings/:key", authRequired, async (req, res) => {
   });
 });
 
-async function calculateAndStoreWellnessScore(userId) {
-  const result = await pool.query(
-    `
-      SELECT
-        COALESCE(
-          AVG(energy_level) FILTER (
-            WHERE activity_type = 'music'
-          ),
-          0
-        ) AS music,
-
-        COALESCE(
-          AVG(energy_level) FILTER (
-            WHERE activity_type = 'mood'
-          ),
-          0
-        ) AS mood,
-
-        COALESCE(
-          AVG(energy_level) FILTER (
-            WHERE activity_type = 'meditation'
-          ),
-          0
-        ) AS meditation,
-
-        COALESCE(
-          AVG(energy_level) FILTER (
-            WHERE activity_type = 'journal'
-          ),
-          0
-        ) AS journal,
-
-        COALESCE(
-          AVG(energy_level) FILTER (
-            WHERE activity_type = 'community'
-          ),
-          0
-        ) AS community
-
-      FROM activity_history
-      WHERE user_id = $1
-    `,
-    [userId],
-  );
-
-  const row = result.rows[0] || {};
-
-  const breakdown = {
-    music: Number(Number(row.music || 0).toFixed(2)),
-    mood: Number(Number(row.mood || 0).toFixed(2)),
-    meditation: Number(Number(row.meditation || 0).toFixed(2)),
-    journal: Number(Number(row.journal || 0).toFixed(2)),
-    community: Number(Number(row.community || 0).toFixed(2)),
-  };
-
-  const updated = await pool.query(
-    `
-      UPDATE wellness_scores
-      SET
-        breakdown = $2,
-        computed_at = NOW()
-      WHERE user_id = $1
-      RETURNING *
-    `,
-    [
-      userId,
-      JSON.stringify(breakdown),
-    ],
-  );
-
-  if (updated.rows[0]) {
-    return updated.rows[0];
-  }
-
-  const inserted = await pool.query(
-    `
-      INSERT INTO wellness_scores
-      (
-        user_id,
-        final_energy_level,
-        breakdown,
-        computed_at
-      )
-      VALUES
-      ($1, 0, $2, NOW())
-      RETURNING *
-    `,
-    [
-      userId,
-      JSON.stringify(breakdown),
-    ],
-  );
-
-  return inserted.rows[0];
-}
-
 app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
   try {
-    const { user_id, breakdown = {} } = req.body || {};
+    const { user_id, final_energy_level, breakdown } = req.body || {};
 
     if (!user_id) {
       return res.status(400).json({
@@ -1171,19 +1075,56 @@ app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
       });
     }
 
-    // No final energy score change from ML logic: only update breakdown
+    const numericEnergy = Number(final_energy_level);
+    const hasValidEnergy =
+      Number.isFinite(numericEnergy) &&
+      numericEnergy >= 0 &&
+      numericEnergy <= 100;
+    const roundedEnergy = hasValidEnergy
+      ? Math.round(numericEnergy)
+      : null;
+
+    // Fetch existing row to preserve breakdown if ML didn't pass one, or preserve energy if not passed
+    const existing = await pool.query(
+      `SELECT * FROM wellness_scores WHERE user_id = $1 LIMIT 1`,
+      [user_id],
+    );
+    const existingRow = existing.rows[0];
+
+    const finalEnergyToSet =
+      roundedEnergy !== null
+        ? roundedEnergy
+        : (existingRow?.final_energy_level ?? 0);
+
+    let existingBreakdown = existingRow?.breakdown;
+    if (typeof existingBreakdown === "string") {
+      try {
+        existingBreakdown = JSON.parse(existingBreakdown);
+      } catch {
+        existingBreakdown = {};
+      }
+    }
+
+    const breakdownToSet =
+      breakdown &&
+      typeof breakdown === "object" &&
+      Object.keys(breakdown).length > 0
+        ? breakdown
+        : (existingBreakdown ?? {});
+
     const updated = await pool.query(
       `UPDATE wellness_scores
-           SET breakdown = $2,
+           SET final_energy_level = $2,
+               breakdown = $3,
                computed_at = NOW()
            WHERE user_id = $1
            RETURNING *`,
-      [user_id, JSON.stringify(breakdown ?? {})],
+      [user_id, finalEnergyToSet, JSON.stringify(breakdownToSet)],
     );
 
     if (updated.rows[0]) {
       console.log(
-        `[ML] breakdown updated for user ${user_id} (final_energy_level unchanged)`,
+        `[ML] wellness_scores updated for user ${user_id}: energy=${updated.rows[0].final_energy_level}`,
       );
 
       return res.status(200).json({
@@ -1200,13 +1141,13 @@ app.post("/api/wellness-score", mlServiceRequired, async (req, res) => {
              computed_at
            )
            VALUES
-           ($1, 0, $2, NOW())
+           ($1, $2, $3, NOW())
            RETURNING *`,
-      [user_id, JSON.stringify(breakdown ?? {})],
+      [user_id, finalEnergyToSet, JSON.stringify(breakdownToSet)],
     );
 
     console.log(
-      `[ML] breakdown inserted for user ${user_id} (final_energy_level initialized to 0)`,
+      `[ML] wellness_scores inserted for user ${user_id}: energy=${inserted.rows[0].final_energy_level}`,
     );
 
     res.status(201).json({
