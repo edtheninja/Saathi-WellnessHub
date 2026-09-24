@@ -61,7 +61,7 @@ const AuthScreen = () => {
           );
         }
 
-        alert('Verification email sentðŸŽ‰. Please verify before login.âœ…');
+        alert('Verification email sent 🎉. Please verify before login. ✅');
         return;
       }
 
@@ -77,7 +77,7 @@ const AuthScreen = () => {
         // ðŸš¨ BLOCK UNVERIFIED USERS
         if (!data.user?.email_confirmed_at) {
           await supabase.auth.signOut();
-          alert('Please verify your email before logging in.âŒ');
+          alert('Please verify your email before logging in. ❌');
           return;
         }
 
@@ -93,7 +93,7 @@ const AuthScreen = () => {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#dcd5ff] via-[#dff4f5] to-[#c9f0df] px-4 py-8 sm:px-6">
-      
+
       {/* =========================================================
           BACKGROUND ATMOSPHERE
       ========================================================= */}
@@ -379,19 +379,19 @@ const AuthScreen = () => {
             FLOATING HEARTS / SPARKLES
         ======================================================= */}
         <div className="absolute left-[10%] top-[30%] text-2xl text-[#9b8ce4]/55">
-          âœ¦
+          ✦
         </div>
 
         <div className="absolute right-[12%] top-[38%] text-xl text-[#7dbda0]/60">
-          âœ¦
+          ✦
         </div>
 
         <div className="absolute left-[16%] bottom-[24%] text-2xl text-[#a78de9]/45">
-          â™¥
+          ♥
         </div>
 
         <div className="absolute right-[18%] bottom-[28%] text-xl text-[#8cc9ad]/55">
-          â™¥
+          ♥
         </div>
 
         {/* =======================================================
@@ -403,7 +403,7 @@ const AuthScreen = () => {
           Days
           <br />
           Ahead
-          <span className="block mt-1 text-sm">â™¥</span>
+          <span className="block mt-1 text-sm">♥</span>
         </div>
 
         <div className="absolute right-[3%] top-[28%] rotate-[7deg] text-center font-serif text-lg leading-tight text-[#68a88c]/60 sm:right-[7%] sm:text-xl">
@@ -414,7 +414,7 @@ const AuthScreen = () => {
           Big
           <br />
           Changes
-          <span className="block mt-1 text-sm">â™¥</span>
+          <span className="block mt-1 text-sm">♥</span>
         </div>
 
         <div className="absolute bottom-[8%] left-[5%] rotate-[-5deg] text-center font-serif text-lg leading-tight text-[#756bd0]/50 sm:left-[9%] sm:text-xl">
@@ -423,7 +423,7 @@ const AuthScreen = () => {
           Are
           <br />
           Enough
-          <span className="block mt-1 text-sm">â™¥</span>
+          <span className="block mt-1 text-sm">♥</span>
         </div>
 
         {/* subtle grain */}
@@ -744,7 +744,13 @@ const AuthScreen = () => {
                   onClick={() => void handleOAuth('apple')}
                   className="h-12 rounded-xl border-[#d9e2ef] bg-white/70 text-sm font-medium text-[#4d5c74] shadow-none transition-all hover:-translate-y-0.5 hover:border-[#c5b9f1] hover:bg-white hover:shadow-md"
                 >
-                  <span className="mr-2 text-lg">ï£¿</span>
+                  <svg
+                    className="mr-2 h-5 w-5 fill-current"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M17.05 12.7c-.02-2.04 1.67-3.02 1.75-3.07-.95-1.39-2.43-1.58-2.96-1.6-1.26-.13-2.48.75-3.12.75-.65 0-1.65-.73-2.71-.71-1.39.02-2.67.81-3.38 2.05-1.45 2.51-.37 6.21 1.02 8.24.68.99 1.48 2.1 2.54 2.06 1.02-.04 1.4-.66 2.63-.66 1.22 0 1.57.66 2.64.64 1.1-.02 1.79-1 2.46-2 .77-1.13 1.08-2.23 1.1-2.29-.02-.01-2.1-.81-2.12-3.41ZM15 6.7c.57-.69.95-1.65.84-2.61-.82.03-1.81.55-2.4 1.24-.52.6-.98 1.57-.86 2.5.91.07 1.84-.46 2.42-1.13Z" />
+                  </svg>
                   Apple
                 </Button>
 
@@ -767,7 +773,7 @@ const AuthScreen = () => {
               {/* tiny brand detail */}
               <div className="mt-7 flex items-center justify-center gap-3 opacity-50">
                 <div className="h-px w-12 bg-[#9b8de2]" />
-                <span className="text-sm text-[#8b7de5]">âœ¦</span>
+                <span className="text-sm text-[#8b7de5]">✦</span>
                 <div className="h-px w-12 bg-[#9b8de2]" />
               </div>
 
@@ -776,7 +782,7 @@ const AuthScreen = () => {
 
           {/* Bottom reassurance */}
           <p className="mt-5 text-center text-xs font-medium tracking-wide text-[#66758f]/75">
-            A little step toward feeling better ðŸŒ¿
+            A little step toward feeling better 🌿
           </p>
 
         </div>
