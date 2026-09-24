@@ -82,17 +82,17 @@ export default function WellnessHub() {
       {/* Weekly Trend */}
       <WeeklyTrend />
 
-      {/* Mental + Physical */}
+      {/* Mental + Physical
       <div className="grid gap-6 lg:grid-cols-2">
         <MentalHealthSection
           journalEntries={data?.journal.totalEntries ?? 0}
           meditationMinutes={data?.meditation.minutes ?? 0}
         />
         <PhysicalHealthSection connected={deviceStatus.connected} />
-      </div>
+      </div> */}
 
-      {/* AI Insights */}
-      <InsightPanel insights={insights} />
+      {/* AI Insights
+      <InsightPanel insights={insights} /> */}
 
       {/* Recommendations */}
       <RecommendationSection recommendations={recommendations} />
