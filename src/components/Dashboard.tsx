@@ -8,6 +8,7 @@ import ShareModal from "./ShareMomentModal";
 import { ArrowRight, Share2 } from "lucide-react";
 import { Users } from "lucide-react";
 import { motion } from "motion/react";
+import SubscriptionCard from "./SubscriptionCard";
 import {
   Brain,
   Wind,
@@ -865,6 +866,10 @@ export default function Dashboard(): JSX.Element {
             })}
           </div>
         </section>
+        {/* Subscription */}
+        <section> 
+          <SubscriptionCard />
+        </section>
 
         {/* Quick Actions */}
         <section>
@@ -943,7 +948,6 @@ export default function Dashboard(): JSX.Element {
       <ShareModal
         open={openShare}
         onClose={() => setOpenShare(false)}
-        stats={stats}
       />
     </div>
   );

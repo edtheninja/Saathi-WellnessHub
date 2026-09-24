@@ -986,6 +986,8 @@ const profileColumns = [
   "reminder_time",
   "preferred_meditation_duration",
   "onboarding_completed",
+  "is_subscribed",
+  "subscribed_at",
 ];
 
 app.get("/api/profile", authRequired, async (req, res) => {

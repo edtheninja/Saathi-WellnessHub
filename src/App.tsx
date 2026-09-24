@@ -39,6 +39,8 @@ import Community from "@/pages/Community";
 import CommunityRoomPage from "@/pages/community/CommunityRoomPage";
 import CustomCommunityRoomPage from "@/pages/community/CustomCommunityRoomPage";
 
+import { SubscriptionProvider } from "@/context/SubscriptionContext";
+
 /* ------------------------------- Layout Wrapper ------------------------------- */
 function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -63,6 +65,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
+          <SubscriptionProvider>
           <Toaster />
           <Sonner />
 
@@ -130,6 +133,7 @@ export default function App() {
               </Routes>
             </LayoutWrapper>
           </BrowserRouter>
+          </SubscriptionProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -23,11 +23,15 @@ import {
   Edit3,
   Save,
   Palette,
+  Crown,
 } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { useGoals } from "@/context/GoalsContext";
+
+import UpgradeModal from "./UpgradeModal";
+import { useSubscription } from "@/context/SubscriptionContext";
 
 /* ------------------------------------------------------------------
    Decorative doodle SVGs
@@ -236,6 +240,7 @@ export default function ProfileScreen() {
   const navigate = useNavigate();
   const { themeMode } = useTheme();
   const { goal } = useGoals();
+  const { isSubscribed, subscribe } = useSubscription();
 
   const [isEditing, setIsEditing] = useState(false);
   const [userName, setUserName] = useState("");
@@ -260,6 +265,7 @@ export default function ProfileScreen() {
     } = await supabase.auth.getUser();
 
     if (!user) return;
+    
 
     // Days Active (from mood)
     const { data: moodData } = await supabase
@@ -535,7 +541,23 @@ export default function ProfileScreen() {
                     <p className="text-sm text-primary">
                       Verified Member
                     </p>
+
+                    {isSubscribed ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full px-3 py-1 w-fit">
+                        <Crown className="w-3.5 h-3.5" /> Saathi Plus Member
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="rounded-full w-fit"
+                        onClick={subscribe}
+                      >
+                        Subscribe
+                      </Button>
+                    )}
+
                   </>
+                  
                 )}
               </div>
 

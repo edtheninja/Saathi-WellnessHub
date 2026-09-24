@@ -5,6 +5,7 @@ import type { WellnessSnapshot } from "../services/WellnessEngine";
 export function useWellness() {
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [data, setData] =
     useState<WellnessSnapshot | null>(null);
@@ -12,13 +13,15 @@ export function useWellness() {
   useEffect(() => {
 
     async function load() {
-
-      const snapshot =
-        await WellnessEngine.load();
-
-      setData(snapshot);
-
-      setLoading(false);
+      try {
+        const snapshot = await WellnessEngine.load();
+        setData(snapshot);
+      } catch (err) {
+        console.error("Failed to load wellness data:", err);
+        setError("Failed to load wellness data");
+      } finally {
+        setLoading(false);
+      }
     }
 
     load();
@@ -27,6 +30,7 @@ export function useWellness() {
 
   return {
     loading,
+    error,
     data,
   };
 }
