@@ -22,9 +22,10 @@ interface ActivityResponse {
   data?: ActivityRecord[];
 }
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || ""
-).replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "")
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
 
 const ACTIVITY_TYPES = [
   "mood",

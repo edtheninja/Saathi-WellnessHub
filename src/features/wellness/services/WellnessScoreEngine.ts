@@ -1,6 +1,7 @@
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || ""
-).replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "")
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
 
 export interface WellnessScore {
   score: number;
