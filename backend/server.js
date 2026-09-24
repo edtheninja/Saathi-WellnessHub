@@ -1388,7 +1388,7 @@ app.post("/api/wellness-score/recompute", authRequired, async (req, res) => {
   }
 });
 
-app.get("/wellness-score/latest", authRequired, async (req, res) => {
+app.get("/api/wellness-score/latest", authRequired, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT *
