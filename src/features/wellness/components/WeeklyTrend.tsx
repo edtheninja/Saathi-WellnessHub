@@ -9,6 +9,9 @@ import WellnessShareService, {
   type WeeklyWellnessData,
 } from "../services/WellnessShareService";
 
+import { useSubscription } from "@/context/SubscriptionContext";
+import UpgradeModal from "@/components/UpgradeModal";
+
 const days = [
   "Mon",
   "Tue",
@@ -32,6 +35,9 @@ const EMPTY_WELLNESS_DATA: WeeklyWellnessData = {
 export default function WeeklyTrend() {
   const [shareOpen, setShareOpen] =
     useState(false);
+  const [showUpgrade, setShowUpgrade] =
+   useState(false);
+    const { isSubscribed } = useSubscription();
 
   const [wellnessData, setWellnessData] =
     useState<WeeklyWellnessData>(
@@ -90,7 +96,12 @@ export default function WeeklyTrend() {
 
           <button
             type="button"
-            onClick={() => setShareOpen(true)}
+            
+            onClick={() =>
+            isSubscribed
+               ? setShareOpen(true)
+               : setShowUpgrade(true)
+           }
             disabled={loading}
             className="flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
           >
@@ -127,6 +138,11 @@ export default function WeeklyTrend() {
         open={shareOpen}
         onClose={() => setShareOpen(false)}
       />
+      <UpgradeModal
+  open={showUpgrade}
+       onClose={() => setShowUpgrade(false)}
+       featureName="Weekly Wellness Report"
+     />
     </>
   );
 }

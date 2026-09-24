@@ -2,7 +2,7 @@ import { useWellness } from "../hooks/useWellness";
 
 import WellnessHeader from "../components/WellnessHeader";
 import WellnessScore from "../components/WellnessScore";
-import WellnessBreakdown from "../components/WellnessBreakdown";
+// import WellnessBreakdown from "../components/WellnessBreakdown";
 import WeeklyTrend from "../components/WeeklyTrend";
 import MentalHealthSection from "../components/MentalHealthSection";
 import PhysicalHealthSection from "../components/PhysicalHealthSection";
@@ -75,9 +75,9 @@ export default function WellnessHub() {
       )}
 
       {/* Breakdown */}
-      <WellnessBreakdown
+      {/* <WellnessBreakdown
         breakdown={data?.score.breakdown}
-      />
+      /> */}
 
       {/* Weekly Trend */}
       <WeeklyTrend />
