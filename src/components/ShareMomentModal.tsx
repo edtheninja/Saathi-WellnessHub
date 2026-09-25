@@ -279,10 +279,12 @@ function WellnessStatsCard({
   profile,
   stats,
   cardRef,
+  isExport = false,
 }: {
   profile: Profile | null;
   stats: WellnessStats;
   cardRef: RefObject<HTMLDivElement>;
+  isExport?: boolean;
 }) {
   const moodAverage = Math.min(
     100,
@@ -315,92 +317,115 @@ function WellnessStatsCard({
   return (
     <div
       ref={cardRef}
-      className="relative mx-auto w-full max-w-[440px] overflow-hidden rounded-[32px] bg-gradient-to-br from-violet-600 via-purple-500 to-cyan-500 p-5 text-white shadow-2xl"
+      style={isExport ? { width: "440px", minWidth: "440px", maxWidth: "440px" } : undefined}
+      className={`relative mx-auto overflow-hidden text-white shadow-2xl bg-gradient-to-br from-violet-600 via-purple-500 to-cyan-500 ${
+        isExport
+          ? "w-[440px] min-w-[440px] max-w-[440px] rounded-[32px] p-5"
+          : "w-full max-w-[440px] rounded-[24px] sm:rounded-[32px] p-4 sm:p-5"
+      }`}
     >
       <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/15 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-cyan-300/20 blur-3xl" />
 
-      <div className="relative z-10 space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-white/80">Saathi</p>
-            <h2 className="mt-1 text-2xl font-bold">My Wellness Journey</h2>
-            <p className="mt-1 text-sm text-white/75">
+      <div className={`relative z-10 ${isExport ? "space-y-5" : "space-y-4 sm:space-y-5"}`}>
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-medium text-white/80">Saathi</p>
+            <h2 className="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold truncate">My Wellness Journey</h2>
+            <p className="mt-0.5 text-xs sm:text-sm text-white/75 truncate">
               Your progress, one day at a time
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white/20 px-3 py-2 text-right backdrop-blur-sm">
-            <p className="text-xs text-white/75">Today</p>
-            <p className="text-xs font-semibold">{formatDate()}</p>
+          <div className="shrink-0 rounded-2xl bg-white/20 px-2.5 py-1.5 sm:px-3 sm:py-2 text-right backdrop-blur-sm">
+            <p className="text-[10px] sm:text-xs text-white/75">Today</p>
+            <p className="text-xs font-semibold whitespace-nowrap">{formatDate()}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 rounded-3xl bg-white/15 p-4 backdrop-blur-sm">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-white text-5xl shadow-lg">
+        <div className={`flex items-center backdrop-blur-sm ${
+          isExport
+            ? "gap-4 rounded-3xl bg-white/15 p-4"
+            : "gap-3 sm:gap-4 rounded-2xl sm:rounded-3xl bg-white/15 p-3.5 sm:p-4"
+        }`}>
+          <div className={`shrink-0 flex items-center justify-center rounded-full bg-white shadow-lg ${
+            isExport
+              ? "h-20 w-20 text-5xl"
+              : "h-14 w-14 sm:h-20 sm:w-20 text-3xl sm:text-5xl"
+          }`}>
             {getMoodEmoji(moodAverage)}
           </div>
 
-          <div>
-            <p className="text-sm text-white/75">Your wellness status</p>
-            <h3 className="text-2xl font-bold">{moodLabel}</h3>
-            <p className="mt-1 text-sm text-white/80">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm text-white/75">Your wellness status</p>
+            <h3 className={`font-bold truncate ${isExport ? "text-2xl" : "text-xl sm:text-2xl"}`}>{moodLabel}</h3>
+            <p className="mt-0.5 text-xs sm:text-sm text-white/80 line-clamp-2">
               {stats.summary || "Small steps are still progress."}
             </p>
           </div>
         </div>
 
-        <div className="rounded-3xl bg-white p-5 text-slate-900 shadow-xl">
-          <div className="grid grid-cols-2 gap-5">
-            <div className="flex flex-col items-center justify-center border-r border-slate-200 pr-4">
+        <div className={`bg-white text-slate-900 shadow-xl ${
+          isExport
+            ? "rounded-3xl p-5"
+            : "rounded-2xl sm:rounded-3xl p-4 sm:p-5"
+        }`}>
+          <div className="grid grid-cols-[auto_1fr] gap-3 sm:gap-5 items-center">
+            <div className={`flex flex-col items-center justify-center border-r border-slate-200 ${
+              isExport ? "pr-4" : "pr-3 sm:pr-4"
+            }`}>
               <div
-                className="flex h-28 w-28 items-center justify-center rounded-full"
+                className={`flex items-center justify-center rounded-full ${
+                  isExport ? "h-28 w-28" : "h-20 w-20 sm:h-28 sm:w-28"
+                }`}
                 style={{
                   background: `conic-gradient(#7c3aed ${
                     wellnessScore * 3.6
                   }deg, #e9d5ff 0deg)`,
                 }}
               >
-                <div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white">
-                  <span className="text-3xl font-bold">{wellnessScore}</span>
-                  <span className="text-xs text-slate-500">/ 100</span>
+                <div className={`flex flex-col items-center justify-center rounded-full bg-white ${
+                  isExport ? "h-20 w-20" : "h-14 w-14 sm:h-20 sm:w-20"
+                }`}>
+                  <span className={`font-bold ${isExport ? "text-3xl" : "text-2xl sm:text-3xl"}`}>{wellnessScore}</span>
+                  <span className="text-[10px] sm:text-xs text-slate-500">/ 100</span>
                 </div>
               </div>
 
-              <p className="mt-3 text-center text-sm font-semibold">
+              <p className="mt-2 text-center text-xs sm:text-sm font-semibold whitespace-nowrap">
                 Wellness Score
               </p>
             </div>
 
-            <div className="space-y-4">
+            <div className={`min-w-0 pl-1 sm:pl-0 ${isExport ? "space-y-4" : "space-y-2.5 sm:space-y-4"}`}>
               <div>
-                <p className="text-xs text-slate-500">😊 Mood Average</p>
-                <p className="text-xl font-bold">{moodAverage}/100</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate">😊 Mood Average</p>
+                <p className={`font-bold ${isExport ? "text-xl" : "text-base sm:text-xl"}`}>{moodAverage}/100</p>
               </div>
 
               <div>
-                <p className="text-xs text-slate-500">🔥 Longest Streak</p>
-                <p className="text-xl font-bold">{longestStreak} days</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate">🔥 Longest Streak</p>
+                <p className={`font-bold ${isExport ? "text-xl" : "text-base sm:text-xl"}`}>{longestStreak} days</p>
               </div>
 
               <div>
-                <p className="text-xs text-slate-500">🧘 Meditation</p>
-                <p className="text-xl font-bold">{meditationMinutes} min</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate">🧘 Meditation</p>
+                <p className={`font-bold ${isExport ? "text-xl" : "text-base sm:text-xl"}`}>{meditationMinutes} min</p>
               </div>
             </div>
           </div>
 
-          <div className="my-5 h-px bg-slate-200" />
+          <div className={`h-px bg-slate-200 ${isExport ? "my-5" : "my-3.5 sm:my-5"}`} />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
             <div>
-              <p className="text-xs text-slate-500">📔 Journal Entries</p>
-              <p className="text-lg font-bold">{journalEntries}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate">📔 Journal Entries</p>
+              <p className={`font-bold ${isExport ? "text-lg" : "text-base sm:text-lg"}`}>{journalEntries}</p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500">🥰 Happiest Day</p>
-              <p className="text-lg font-bold">
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate">🥰 Happiest Day</p>
+              <p className={`font-bold truncate ${isExport ? "text-lg" : "text-base sm:text-lg"}`}>
                 {stats.happiestDay || "Today"}
               </p>
             </div>
@@ -408,12 +433,12 @@ function WellnessStatsCard({
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">{getDisplayName(profile)}</p>
-            <p className="text-xs text-white/70">Your zen companion</p>
+          <div className="min-w-0">
+            <p className="text-xs sm:text-sm font-semibold truncate">{getDisplayName(profile)}</p>
+            <p className="text-[10px] sm:text-xs text-white/70">Your zen companion</p>
           </div>
 
-          <p className="text-right text-xs italic text-white/80">
+          <p className="text-right text-[11px] sm:text-xs italic text-white/80 shrink-0">
             Small steps.
             <br />
             Real progress. 🌱
@@ -426,6 +451,7 @@ function WellnessStatsCard({
 
 export default function ShareMomentModal({ open, onClose }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const exportCardRef = useRef<HTMLDivElement>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<WellnessStats>(DEFAULT_WELLNESS_STATS);
@@ -470,16 +496,38 @@ export default function ShareMomentModal({ open, onClose }: Props) {
   if (!open) return null;
 
   async function generateCardImage() {
-    if (!cardRef.current) {
+    const target = exportCardRef.current || cardRef.current;
+    if (!target) {
       throw new Error("Wellness card is not ready");
     }
 
-    return toPng(cardRef.current, {
+    if (document.fonts?.ready) {
+      try {
+        await document.fonts.ready;
+      } catch {}
+    }
+
+    const width = 440;
+    const height = Math.max(target.offsetHeight, target.scrollHeight, 620);
+
+    return toPng(target, {
       cacheBust: true,
       pixelRatio: 2,
+      width,
+      height,
+      canvasWidth: width,
+      canvasHeight: height,
       backgroundColor: "#8b5cf6",
       style: {
         transform: "none",
+        position: "static",
+        left: "auto",
+        top: "auto",
+        margin: "0",
+        width: `${width}px`,
+        minWidth: `${width}px`,
+        maxWidth: `${width}px`,
+        height: `${height}px`,
       },
     });
   }
@@ -562,10 +610,10 @@ export default function ShareMomentModal({ open, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 backdrop-blur-sm sm:p-6">
       <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-[32px] border bg-background shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-5 py-5 sm:px-8">
+        <div className="flex items-center justify-between border-b px-4 py-4 sm:px-8 sm:py-5">
           <div>
             <p className="text-sm font-medium text-primary">Saathi Wellness</p>
             <h1 className="text-2xl font-bold sm:text-3xl">Share My Progress</h1>
@@ -586,7 +634,7 @@ export default function ShareMomentModal({ open, onClose }: Props) {
         </div>
 
         {/* Scrollable content */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 pb-8 sm:px-8 sm:py-6 sm:pb-8">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-6 sm:px-8 sm:py-6 sm:pb-8">
           {loading && (
             <div className="rounded-3xl border bg-muted/30 p-8 text-center">
               <p className="text-sm text-muted-foreground">
@@ -597,7 +645,7 @@ export default function ShareMomentModal({ open, onClose }: Props) {
 
           {!loading && (
             <div className="space-y-6">
-              <div className="rounded-3xl border bg-muted/20 p-3 sm:p-5">
+              <div className="rounded-3xl border bg-muted/20 p-2.5 sm:p-5">
                 <div className="mb-4">
                   <h2 className="text-lg font-bold">Your Wellness Card</h2>
                   <p className="text-sm text-muted-foreground">
@@ -609,6 +657,7 @@ export default function ShareMomentModal({ open, onClose }: Props) {
                   profile={profile}
                   stats={stats}
                   cardRef={cardRef}
+                  isExport={false}
                 />
               </div>
 
@@ -667,6 +716,30 @@ export default function ShareMomentModal({ open, onClose }: Props) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Hidden export card with fixed canonical dimensions for pristine PNG/Share generation */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          left: "-9999px",
+          top: "0",
+          width: "440px",
+          minWidth: "440px",
+          maxWidth: "440px",
+          overflow: "visible",
+          pointerEvents: "none",
+          zIndex: -100,
+          opacity: 1,
+        }}
+      >
+        <WellnessStatsCard
+          profile={profile}
+          stats={stats}
+          cardRef={exportCardRef}
+          isExport={true}
+        />
       </div>
     </div>
   );
