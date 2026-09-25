@@ -121,9 +121,14 @@ const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   "kun faya kun": 6,
   "sun saiyaan": 10,
   hamdard: 14,
+  humdard: 14,
   "jiyein kyun": 18,
+  "iyein kyun": 18,
   "tere bina": 22,
+  terebina: 22,
   "kun faya kun (added)": 26,
+  "kabira encore": 26,
+  kabira: 26,
   iktara: 30,
   "tu kisi rail si": 34,
   "kho gaye hum kahan": 38,
@@ -133,27 +138,31 @@ const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   safarnama: 54,
   "phir se ud chala": 58,
   "chaand ke parinday": 62,
+  "khaabon ke parinday": 62,
   "tum se hi": 66,
   ilahi: 70,
   "love you zindagi": 74,
+  matargashti: 78,
   "matargashti (added)": 78,
   "sooraj ki baahon mein": 82,
   "tumhi ho bandhu": 86,
   "patakha guddi": 90,
   "gallan goodiyaan": 94,
   "badtemeez dil": 98,
+  "badtameez dil": 98,
 };
 
 const normalizeMusicTitle = (title: string): string => {
+  let cleaned = String(title || "").trim();
+  cleaned = cleaned.replace(/\s*[-_]?\s*jab we met.*$/i, "");
+  cleaned = cleaned.replace(/\s*\(\s*\d+\s*kbps\s*\)/i, "");
+  cleaned = cleaned.replace(/\s*\([^)]*\)/g, " ");
+
   return (
-    String(title || "")
-      .trim()
-      // Convert camelCase/PascalCase filenames such as AaoMiloChalen
-      // into "aao milo chalen".
+    cleaned
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
       .replace(/[-_]+/g, " ")
-      .replace(/[()]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .toLowerCase()
@@ -162,7 +171,17 @@ const normalizeMusicTitle = (title: string): string => {
 
 const getMusicEnergyLevel = (title: string): number | null => {
   const key = normalizeMusicTitle(title);
-  return MUSIC_ENERGY_BY_TITLE[key] ?? null;
+  if (typeof MUSIC_ENERGY_BY_TITLE[key] === "number") {
+    return MUSIC_ENERGY_BY_TITLE[key];
+  }
+
+  for (const [entryKey, energy] of Object.entries(MUSIC_ENERGY_BY_TITLE)) {
+    if (key.includes(entryKey) || entryKey.includes(key)) {
+      return energy;
+    }
+  }
+
+  return null;
 };
 
 /*
@@ -1742,7 +1761,21 @@ export default function MusicScreen() {
           throw error;
         }
 
-        const value = Number(data?.final_energy_level);
+        let value = Number(data?.final_energy_level);
+
+        if (!Number.isFinite(value) || value <= 0) {
+          const { data: moodData } = await supabase
+            .from("moods")
+            .select("energy_level")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (moodData && Number.isFinite(Number(moodData.energy_level))) {
+            value = Number(moodData.energy_level);
+          }
+        }
 
         if (Number.isFinite(value) && value >= 0 && value <= 100) {
           if (!cancelled) {
@@ -1844,6 +1877,23 @@ export default function MusicScreen() {
       if (chosen) {
         selected.push(chosen);
         usedIds.add(chosen.id);
+      }
+    }
+
+    if (selected.length < 4 && available.length > selected.length) {
+      const remainingCandidates = available
+        .filter((track) => !usedIds.has(track.id))
+        .sort((a, b) => {
+          const distA = Math.abs(Number(a.energyLevel) - targetEnergy);
+          const distB = Math.abs(Number(b.energyLevel) - targetEnergy);
+          if (distA !== distB) return distA - distB;
+          return a.title.localeCompare(b.title);
+        });
+
+      for (const candidate of remainingCandidates) {
+        if (selected.length >= 4) break;
+        selected.push(candidate);
+        usedIds.add(candidate.id);
       }
     }
 

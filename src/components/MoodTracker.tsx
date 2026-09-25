@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   Card,
@@ -61,6 +61,7 @@ const sectionAnim = {
 };
 
 const MoodTracker = () => {
+  const navigate = useNavigate();
   const location = useLocation();
 
   const dashboardMood = (location.state as { moodValue?: number } | null)
@@ -739,6 +740,7 @@ const MoodTracker = () => {
                   <Button
                     variant="ghost"
                     className="w-full mt-4 justify-between"
+                    onClick={() => navigate("/music")}
                   >
                     Listen now
                     <ChevronRight className="w-4 h-4" />
@@ -767,6 +769,7 @@ const MoodTracker = () => {
                   <Button
                     variant="ghost"
                     className="w-full mt-4 justify-between"
+                    onClick={() => navigate("/meditation")}
                   >
                     Start
                     <ChevronRight className="w-4 h-4" />

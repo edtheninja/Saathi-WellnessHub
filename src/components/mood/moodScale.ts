@@ -18,7 +18,7 @@ export const moodStates: MoodState[] = [
     expression: "😭",
     message: "It seems like things feel a little heavy right now.",
     tip: "Be gentle with yourself. You don't have to figure everything out at once.",
-    music: "Agar Tum Saath Ho",
+    music: "Kun Faya Kun",
     meditation: "5-Minute Breathing",
     journalPrompt: "What is weighing on your mind right now?",
   },
