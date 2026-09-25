@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
+import { useLocation } from "react-router-dom";
 
 import {
   Heart,
@@ -23,6 +24,8 @@ import {
 
 import meditationGirl from "@/assets/meditation-girl-scene.png";
 import { supabase } from "@/supabaseClient";
+import WellnessEngine from "@/features/wellness/services/WellnessEngine";
+import WellnessScoreEngine from "@/features/wellness/services/WellnessScoreEngine";
 /* -------------------------------------------------------------------------- */
 /*                                Local music                                 */
 /* -------------------------------------------------------------------------- */
@@ -317,10 +320,52 @@ export default function MusicScreen() {
 
   const [search, setSearch] = useState("");
 
-  const [finalEnergyLevel, setFinalEnergyLevel] =
-    useState(DEFAULT_ENERGY_LEVEL);
+  const location = useLocation();
 
-  const [hasFinalEnergy, setHasFinalEnergy] = useState(false);
+  const routeEnergy = useMemo(() => {
+    const s = location.state as { energyLevel?: number; moodValue?: number } | null;
+    const candidate = s?.energyLevel ?? s?.moodValue;
+    if (typeof candidate === "number" && candidate > 0 && candidate <= 100) {
+      return Math.round(candidate);
+    }
+    try {
+      const stored = localStorage.getItem("saathi_latest_energy");
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) {
+        return Math.round(parsed);
+      }
+    } catch {}
+    return null;
+  }, [location.state]);
+
+  const [finalEnergyLevel, setFinalEnergyLevel] = useState<number>(() => {
+    return routeEnergy ?? DEFAULT_ENERGY_LEVEL;
+  });
+
+  const [hasFinalEnergy, setHasFinalEnergy] = useState<boolean>(() => {
+    return routeEnergy !== null && routeEnergy > 0;
+  });
+
+  useEffect(() => {
+    if (routeEnergy !== null && routeEnergy > 0) {
+      setFinalEnergyLevel(routeEnergy);
+      setHasFinalEnergy(true);
+    }
+  }, [routeEnergy]);
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "saathi_latest_energy" && e.newValue) {
+        const val = Number(e.newValue);
+        if (Number.isFinite(val) && val > 0 && val <= 100) {
+          setFinalEnergyLevel(Math.round(val));
+          setHasFinalEnergy(true);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   /* ------------------------------------------------------------------------ */
   /*                                   Refs                                   */
@@ -1737,62 +1782,115 @@ export default function MusicScreen() {
 
     const loadFinalEnergy = async () => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        let value: number | null = null;
 
-        if (!user) {
+        // 1. Check Supabase/backend wellness_scores, moods, and activity_history (if user is authenticated)
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (user) {
+            const { data } = await supabase
+              .from("wellness_scores")
+              .select("final_energy_level")
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const parsedScore = Number(data?.final_energy_level);
+            if (Number.isFinite(parsedScore) && parsedScore > 0) {
+              value = parsedScore;
+            } else {
+              const { data: moodData } = await supabase
+                .from("moods")
+                .select("energy_level")
+                .eq("user_id", user.id)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              const parsedMood = Number(moodData?.energy_level);
+              if (Number.isFinite(parsedMood) && parsedMood > 0) {
+                value = parsedMood;
+              } else {
+                const { data: actData } = await supabase
+                  .from("activity_history")
+                  .select("energy_level")
+                  .eq("user_id", user.id)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                const parsedAct = Number(actData?.energy_level);
+                if (Number.isFinite(parsedAct) && parsedAct > 0) {
+                  value = parsedAct;
+                }
+              }
+            }
+          }
+        } catch (supabaseErr) {
+          console.warn("Backend energy lookup skipped/failed:", supabaseErr);
+        }
+
+        // 2. Check WellnessScoreEngine.load() (dedicated endpoint for score & ML computation)
+        if (value === null || value <= 0) {
+          try {
+            const scoreObj = await WellnessScoreEngine.load();
+            const engScore = Number(scoreObj?.score);
+            if (Number.isFinite(engScore) && engScore > 0) {
+              value = engScore;
+            }
+          } catch {
+            // WellnessScoreEngine fallback
+          }
+        }
+
+        // 3. Check WellnessEngine.load() (aggregates activities, journal analytics, demo mode)
+        if (value === null || value <= 0) {
+          try {
+            const snapshot = await WellnessEngine.load();
+            const engScore = Number(snapshot.score?.score);
+            if (Number.isFinite(engScore) && engScore > 0) {
+              value = engScore;
+            }
+          } catch {
+            // WellnessEngine load fallback
+          }
+        }
+
+        // 4. Check localStorage for most recent mood/energy recorded
+        if (value === null || value <= 0) {
+          try {
+            const stored = localStorage.getItem("saathi_latest_energy");
+            const parsedStored = Number(stored);
+            if (Number.isFinite(parsedStored) && parsedStored > 0) {
+              value = parsedStored;
+            }
+          } catch {
+            // Local storage read fallback
+          }
+        }
+
+        // 5. Update component state with resolved energy and sync cache
+        if (Number.isFinite(value) && value !== null && value > 0 && value <= 100) {
+          const finalVal = Math.round(value);
+          try {
+            localStorage.setItem("saathi_latest_energy", String(finalVal));
+          } catch {}
           if (!cancelled) {
-            setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
-            setHasFinalEnergy(false);
+            setFinalEnergyLevel(finalVal);
+            setHasFinalEnergy(true);
           }
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("wellness_scores")
-          .select("final_energy_level")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) {
-          throw error;
-        }
-
-        let value = Number(data?.final_energy_level);
-
-        if (!Number.isFinite(value) || value <= 0) {
-          const { data: moodData } = await supabase
-            .from("moods")
-            .select("energy_level")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (moodData && Number.isFinite(Number(moodData.energy_level))) {
-            value = Number(moodData.energy_level);
-          }
-        }
-
-        if (Number.isFinite(value) && value >= 0 && value <= 100) {
-          if (!cancelled) {
-            const normalizedValue =
-              value === 0 ? DEFAULT_ENERGY_LEVEL : Math.round(value);
-
-            setFinalEnergyLevel(normalizedValue);
-            setHasFinalEnergy(value > 0);
-          }
-        } else if (!cancelled) {
+        } else if (!cancelled && !routeEnergy) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
           setHasFinalEnergy(false);
         }
       } catch (error) {
         console.error("Final energy lookup failed:", error);
 
-        if (!cancelled) {
+        if (!cancelled && !routeEnergy) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
           setHasFinalEnergy(false);
         }

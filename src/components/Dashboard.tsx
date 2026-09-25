@@ -225,7 +225,14 @@ export default function Dashboard(): JSX.Element {
     },
   };
 
-  const [moodValue, setMoodValue] = useState(50);
+  const [moodValue, setMoodValue] = useState(() => {
+    try {
+      const stored = localStorage.getItem("saathi_latest_energy");
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed;
+    } catch {}
+    return 50;
+  });
 
   const moodCheckpoints = [
     { value: 0, emoji: "😞", label: "Very Low" },
@@ -688,9 +695,13 @@ export default function Dashboard(): JSX.Element {
                 max="100"
                 step="1"
                 value={moodValue}
-                onChange={(event) =>
-                  setMoodValue(Number(event.target.value))
-                }
+                onChange={(event) => {
+                  const val = Number(event.target.value);
+                  setMoodValue(val);
+                  try {
+                    localStorage.setItem("saathi_latest_energy", String(val));
+                  } catch {}
+                }}
                 onMouseDown={() => setIsDragging(true)}
                 onMouseUp={() => setIsDragging(false)}
                 onTouchStart={() => setIsDragging(true)}
@@ -725,13 +736,16 @@ export default function Dashboard(): JSX.Element {
                 type="button"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={() =>
+                onClick={() => {
+                  try {
+                    localStorage.setItem("saathi_latest_energy", String(moodValue));
+                  } catch {}
                   navigate("/mood", {
                     state: {
                       moodValue,
                     },
-                  })
-                }
+                  });
+                }}
                 className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-shadow hover:shadow-lg"
               >
                 Continue with {moodValue}

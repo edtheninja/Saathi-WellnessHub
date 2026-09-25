@@ -1423,7 +1423,23 @@ app.get("/api/music/recommendations", authRequired, async (req, res) => {
       [req.auth.sub],
     );
 
-    const targetEnergy = Number(latest.rows[0]?.final_energy_level);
+    let targetEnergy = Number(latest.rows[0]?.final_energy_level);
+
+    if (!Number.isFinite(targetEnergy) || targetEnergy <= 0) {
+      const moodLatest = await pool.query(
+        `SELECT energy_level FROM moods WHERE user_id = $1 AND energy_level IS NOT NULL AND energy_level > 0 ORDER BY created_at DESC LIMIT 1`,
+        [req.auth.sub],
+      );
+      targetEnergy = Number(moodLatest.rows[0]?.energy_level);
+    }
+
+    if (!Number.isFinite(targetEnergy) || targetEnergy <= 0) {
+      const actLatest = await pool.query(
+        `SELECT energy_level FROM activity_history WHERE user_id = $1 AND energy_level IS NOT NULL AND energy_level > 0 ORDER BY created_at DESC LIMIT 1`,
+        [req.auth.sub],
+      );
+      targetEnergy = Number(actLatest.rows[0]?.energy_level);
+    }
 
     const safeTarget =
       Number.isFinite(targetEnergy) && targetEnergy > 0

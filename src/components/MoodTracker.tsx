@@ -67,9 +67,15 @@ const MoodTracker = () => {
   const dashboardMood = (location.state as { moodValue?: number } | null)
     ?.moodValue;
 
-  const [moodValue, setMoodValue] = useState(
-    typeof dashboardMood === "number" ? dashboardMood : 50,
-  );
+  const [moodValue, setMoodValue] = useState(() => {
+    if (typeof dashboardMood === "number") return dashboardMood;
+    try {
+      const stored = localStorage.getItem("saathi_latest_energy");
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed;
+    } catch {}
+    return 50;
+  });
 
   const [isDragging, setIsDragging] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -204,6 +210,10 @@ const MoodTracker = () => {
    */
   const handleSaveMood = async () => {
     try {
+      try {
+        localStorage.setItem("saathi_latest_energy", String(moodValue));
+      } catch {}
+
       const {
         data: { user },
         error: userError,
@@ -638,9 +648,13 @@ const MoodTracker = () => {
                       max="100"
                       step="1"
                       value={moodValue}
-                      onChange={(event) =>
-                        setMoodValue(Number(event.target.value))
-                      }
+                      onChange={(event) => {
+                        const val = Number(event.target.value);
+                        setMoodValue(val);
+                        try {
+                          localStorage.setItem("saathi_latest_energy", String(val));
+                        } catch {}
+                      }}
                       onMouseDown={() => setIsDragging(true)}
                       onMouseUp={() => setIsDragging(false)}
                       onTouchStart={() => setIsDragging(true)}
@@ -740,7 +754,12 @@ const MoodTracker = () => {
                   <Button
                     variant="ghost"
                     className="w-full mt-4 justify-between"
-                    onClick={() => navigate("/music")}
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("saathi_latest_energy", String(moodValue));
+                      } catch {}
+                      navigate("/music", { state: { energyLevel: moodValue } });
+                    }}
                   >
                     Listen now
                     <ChevronRight className="w-4 h-4" />
