@@ -368,10 +368,25 @@ function oauthConfigured(provider) {
   );
 }
 
-function oauthState(provider) {
+function getClientOrigin(req) {
+  const ref = req?.headers?.referer || req?.headers?.origin;
+  if (ref) {
+    try {
+      const u = new URL(ref);
+      const origin = `${u.protocol}//${u.host}`;
+      if (allowedOrigins.includes(origin)) {
+        return origin;
+      }
+    } catch {}
+  }
+  return frontendOrigin;
+}
+
+function oauthState(provider, origin = frontendOrigin) {
   return jwt.sign(
     {
       provider,
+      origin,
       nonce: crypto.randomUUID(),
     },
     jwtSecret,
@@ -381,8 +396,8 @@ function oauthState(provider) {
   );
 }
 
-function oauthCallbackUrl(token) {
-  return `${frontendOrigin}/auth/callback?oauth_token=${encodeURIComponent(
+function oauthCallbackUrl(token, origin = frontendOrigin) {
+  return `${origin}/auth/callback?oauth_token=${encodeURIComponent(
     token,
   )}`;
 }
@@ -1636,7 +1651,7 @@ Respond as SAATHI.
   }
 });
 
-app.get("/api/auth/oauth/google/start", (_req, res) => {
+app.get("/api/auth/oauth/google/start", (req, res) => {
   if (!oauthConfigured("google")) {
     return res.status(503).json({
       error: "Google OAuth is not configured",
@@ -1654,7 +1669,7 @@ app.get("/api/auth/oauth/google/start", (_req, res) => {
 
     access_type: "offline",
 
-    state: oauthState("google"),
+    state: oauthState("google", getClientOrigin(req)),
   });
 
   res.json({
@@ -1721,7 +1736,12 @@ app.get("/api/auth/oauth/google/callback", async (req, res) => {
       fullName: profile.name,
     });
 
-    res.redirect(oauthCallbackUrl(tokenFor(user)));
+    const targetOrigin =
+      state?.origin && allowedOrigins.includes(state.origin)
+        ? state.origin
+        : frontendOrigin;
+
+    res.redirect(oauthCallbackUrl(tokenFor(user), targetOrigin));
   } catch (error) {
     res.redirect(
       `${frontendOrigin}/auth?oauth_error=${encodeURIComponent(
@@ -1731,7 +1751,7 @@ app.get("/api/auth/oauth/google/callback", async (req, res) => {
   }
 });
 
-app.get("/api/auth/oauth/apple/start", (_req, res) => {
+app.get("/api/auth/oauth/apple/start", (req, res) => {
   if (!oauthConfigured("apple")) {
     return res.status(503).json({
       error: "Apple OAuth is not configured",
@@ -1749,7 +1769,7 @@ app.get("/api/auth/oauth/apple/start", (_req, res) => {
 
     scope: "name email",
 
-    state: oauthState("apple"),
+    state: oauthState("apple", getClientOrigin(req)),
   });
 
   res.json({
@@ -1830,7 +1850,12 @@ app.post("/api/auth/oauth/apple/callback", async (req, res) => {
       email: verified.payload.email,
     });
 
-    res.redirect(oauthCallbackUrl(tokenFor(user)));
+    const targetOrigin =
+      state?.origin && allowedOrigins.includes(state.origin)
+        ? state.origin
+        : frontendOrigin;
+
+    res.redirect(oauthCallbackUrl(tokenFor(user), targetOrigin));
   } catch (error) {
     res.redirect(
       `${frontendOrigin}/auth?oauth_error=${encodeURIComponent(
@@ -1838,6 +1863,12 @@ app.post("/api/auth/oauth/apple/callback", async (req, res) => {
       )}`,
     );
   }
+});
+
+app.get(["/auth/callback", "/callback"], (req, res) => {
+  const target = getClientOrigin(req);
+  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  res.redirect(`${target}/auth/callback${query}`);
 });
 
 app.get("/api/integrations/fitbit/start", authRequired, async (req, res) => {

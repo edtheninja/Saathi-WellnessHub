@@ -126,10 +126,11 @@ export default function App() {
                 <Route path="/settings/emergency" element={<Emergency />} />
                 <Route path="/settings/delete-account" element={<DeleteAccount />} />
 
-                {/* 404 */}
-                <Route path="*" element={<NotFound />} />
-
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/callback" element={<AuthCallback />} />
+
+                {/* 404 - Must be last */}
+                <Route path="*" element={<NotFound />} />
               </Routes>
             </LayoutWrapper>
           </BrowserRouter>
