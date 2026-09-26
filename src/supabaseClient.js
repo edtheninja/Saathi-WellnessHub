@@ -85,6 +85,7 @@ function tableQuery(table) {
 		order(field, { ascending = true } = {}) { order = `${field}:${ascending ? 'asc' : 'desc'}`; return builder; },
 		limit(value) { limit = value; return builder; },
 		single() { single = true; return builder; },
+		maybeSingle() { single = true; return builder; },
 		insert(value) { method = 'POST'; body = value; return builder; },
 		update(value) { method = 'PATCH'; body = value; return builder; },
 		delete() { method = 'DELETE'; return builder; },
@@ -118,6 +119,7 @@ function profileQuery() {
 		select() { return builder; },
 		eq() { return builder; }, // profile is scoped by the auth token server-side; id/user filters are no-ops here
 		single() { return builder; },
+		maybeSingle() { return builder; },
 		update(value) { method = 'PATCH'; body = value; return builder; },
 		then(resolve, reject) {
 			const run = request('/profile', {

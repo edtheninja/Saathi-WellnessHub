@@ -2,7 +2,7 @@ import { useWellness } from "../hooks/useWellness";
 
 import WellnessHeader from "../components/WellnessHeader";
 import WellnessScore from "../components/WellnessScore";
-import WellnessBreakdown from "../components/WellnessBreakdown";
+// import WellnessBreakdown from "../components/WellnessBreakdown";
 import WeeklyTrend from "../components/WeeklyTrend";
 import MentalHealthSection from "../components/MentalHealthSection";
 import PhysicalHealthSection from "../components/PhysicalHealthSection";
@@ -49,8 +49,8 @@ export default function WellnessHub() {
       {/* Top Summary Cards */}
       <div className="grid gap-6 lg:grid-cols-3">
         <WellnessScore
-          score={data?.score.score ?? 0}
-          breakdown={data?.score.breakdown}
+          score={data?.score?.score}
+          breakdown={data?.score?.breakdown}
         />
         {data?.mood && <MoodCard mood={data.mood} />}
         {data?.streak && <WellnessStreakCard streak={data.streak} />}
@@ -75,24 +75,24 @@ export default function WellnessHub() {
       )}
 
       {/* Breakdown */}
-      <WellnessBreakdown
+      {/* <WellnessBreakdown
         breakdown={data?.score.breakdown}
-      />
+      /> */}
 
       {/* Weekly Trend */}
       <WeeklyTrend />
 
-      {/* Mental + Physical */}
+      {/* Mental + Physical
       <div className="grid gap-6 lg:grid-cols-2">
         <MentalHealthSection
           journalEntries={data?.journal.totalEntries ?? 0}
           meditationMinutes={data?.meditation.minutes ?? 0}
         />
         <PhysicalHealthSection connected={deviceStatus.connected} />
-      </div>
+      </div> */}
 
-      {/* AI Insights */}
-      <InsightPanel insights={insights} />
+      {/* AI Insights
+      <InsightPanel insights={insights} /> */}
 
       {/* Recommendations */}
       <RecommendationSection recommendations={recommendations} />

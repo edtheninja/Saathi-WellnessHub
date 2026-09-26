@@ -73,6 +73,9 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN NOT NULL 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS reminder_time TIME;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_meditation_duration INTEGER CHECK (preferred_meditation_duration IS NULL OR preferred_meditation_duration > 0);
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE;
+-- Subscription fields--
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_subscribed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscribed_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS community_memberships (
   room_id TEXT NOT NULL REFERENCES community_rooms(id) ON DELETE CASCADE,

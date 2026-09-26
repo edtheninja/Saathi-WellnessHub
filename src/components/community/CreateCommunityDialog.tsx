@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+import { useSubscription } from "@/context/SubscriptionContext";
+import UpgradeModal from "@/components/UpgradeModal";
+
 import {
   Dialog,
   DialogContent,
@@ -63,6 +66,9 @@ export default function CreateCommunityDialog({
 }: Props) {
   const [open, setOpen] = useState(false);
 
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const { isSubscribed } = useSubscription();
+
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
   const [description, setDescription] = useState("");
@@ -118,7 +124,17 @@ export default function CreateCommunityDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <Dialog
+      open={open}
+     onOpenChange={(next) => {
+       if (next && !isSubscribed) {
+         setShowUpgrade(true);
+         return;
+       }
+       setOpen(next);
+     }}
+   >
       <DialogTrigger asChild>
         <Button className="rounded-xl">
           <Plus className="mr-2 h-4 w-4" />
@@ -304,6 +320,12 @@ export default function CreateCommunityDialog({
           </Button>
         </div>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <UpgradeModal
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        featureName="Create Community"
+      />
+    </>
   );
 }

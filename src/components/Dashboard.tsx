@@ -6,7 +6,6 @@ import { useTheme } from "@/context/ThemeContext";
 import type { HSL } from "@/context/ThemeContext";
 import ShareModal from "./ShareMomentModal";
 import { motion } from "motion/react";
-
 import {
   ArrowRight,
   Share2,
@@ -455,7 +454,14 @@ export default function Dashboard(): JSX.Element {
      MOOD
   ========================================================== */
 
-  const [moodValue, setMoodValue] = useState(50);
+  const [moodValue, setMoodValue] = useState(() => {
+    try {
+      const stored = localStorage.getItem("saathi_latest_energy");
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed;
+    } catch {}
+    return 50;
+  });
 
   const moodCheckpoints = [
     {
@@ -1114,7 +1120,9 @@ export default function Dashboard(): JSX.Element {
                 max="100"
                 step="1"
                 value={moodValue}
-                onChange={(event) => setMoodValue(Number(event.target.value))}
+                onChange={(event) =>
+                  setMoodValue(Number(event.target.value))
+                }
                 onMouseDown={() => setIsDragging(true)}
                 onMouseUp={() => setIsDragging(false)}
                 onTouchStart={() => setIsDragging(true)}
@@ -1146,19 +1154,15 @@ export default function Dashboard(): JSX.Element {
             <div className="mt-8 flex justify-center">
               <motion.button
                 type="button"
-                whileHover={{
-                  scale: 1.03,
-                }}
-                whileTap={{
-                  scale: 0.97,
-                }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() =>
                   navigate("/mood", {
                     state: {
                       moodValue,
                     },
-                  })
-                }
+                  });
+                }}
                 className="rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-shadow hover:shadow-lg"
               >
                 Continue with {moodValue}
@@ -1550,6 +1554,10 @@ export default function Dashboard(): JSX.Element {
             })}
           </div>
         </section>
+        {/* Subscription */}
+        <section> 
+          <SubscriptionCard />
+        </section>
 
         {/* ====================================================
             QUICK ACTIONS
@@ -1641,7 +1649,6 @@ export default function Dashboard(): JSX.Element {
       <ShareModal
         open={openShare}
         onClose={() => setOpenShare(false)}
-        stats={stats}
       />
     </div>
   );

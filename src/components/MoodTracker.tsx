@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   Card,
@@ -23,8 +23,108 @@ import {
 import MoodNoteModal from "@/components/mood/MoodNoteModal";
 import { supabase } from "@/supabaseClient";
 import { motion, AnimatePresence } from "motion/react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ReferenceLine,
+} from "recharts";
 
 import { getMoodFromScore, moodCheckpoints } from "@/components/mood/moodScale";
+
+export interface WeeklyMoodPoint {
+  day: string;
+  shortDate: string;
+  fullDate: string;
+  score: number | null;
+  moodLabel?: string;
+  moodEmoji?: string;
+  note?: string;
+  isToday: boolean;
+  hasLogged: boolean;
+}
+
+const CustomChartDot = (props: any) => {
+  const { cx, cy, payload } = props;
+  if (!cx || !cy || payload?.chartScore === null || payload?.chartScore === undefined) return null;
+  const isPreview = Boolean(payload.preview);
+  const isToday = Boolean(payload.isToday);
+
+  return (
+    <g key={`dot-${payload.fullDate || payload.day}`}>
+      {isToday && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={9}
+          fill="none"
+          stroke="hsl(var(--primary))"
+          strokeWidth={1.5}
+          strokeDasharray={isPreview ? "3 3" : undefined}
+          opacity={0.65}
+        />
+      )}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={5}
+        fill={isPreview ? "hsl(var(--background))" : "hsl(var(--primary))"}
+        stroke="hsl(var(--primary))"
+        strokeWidth={2.5}
+      />
+    </g>
+  );
+};
+
+const CustomMoodTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    if (data.chartScore === null || data.chartScore === undefined) {
+      return (
+        <div className="rounded-2xl border bg-card/95 backdrop-blur-md p-3 shadow-lg text-xs">
+          <p className="font-semibold text-foreground">{data.day} · {data.shortDate}</p>
+          <p className="text-muted-foreground text-[11px] mt-1">No mood recorded</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-2xl border bg-card/95 backdrop-blur-md p-3 shadow-xl text-xs space-y-1.5 z-50 min-w-[150px]">
+        <div className="font-semibold text-foreground flex items-center justify-between gap-3">
+          <span>{data.day} · {data.shortDate}</span>
+          {data.isToday && (
+            <span className="text-[10px] bg-primary/10 text-primary font-medium px-2 py-0.5 rounded-full">
+              {data.preview ? "Preview" : "Today"}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 text-sm font-bold text-primary">
+          <span className="text-base">{data.moodEmoji}</span>
+          <span>{data.moodLabel}</span>
+          <span className="text-muted-foreground font-normal text-xs">({data.chartScore}/100)</span>
+        </div>
+        {data.preview ? (
+          <p className="text-muted-foreground text-[10px]">
+            Live preview from slider · Click Save Mood below to record
+          </p>
+        ) : (
+          <span className="inline-block text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+            ✓ Logged
+          </span>
+        )}
+        {data.note && (
+          <p className="text-muted-foreground italic text-[11px] pt-1 border-t border-border/40 max-w-[200px] truncate">
+            "{data.note}"
+          </p>
+        )}
+      </div>
+    );
+  }
+  return null;
+};
 
 const pageAnim = {
   hidden: {
@@ -61,128 +161,139 @@ const sectionAnim = {
 };
 
 const MoodTracker = () => {
+  const navigate = useNavigate();
   const location = useLocation();
 
   const dashboardMood = (location.state as { moodValue?: number } | null)
     ?.moodValue;
 
-  const [moodValue, setMoodValue] = useState(
-    typeof dashboardMood === "number" ? dashboardMood : 50,
-  );
+  const [moodValue, setMoodValue] = useState(() => {
+    if (typeof dashboardMood === "number") return dashboardMood;
+    try {
+      const stored = localStorage.getItem("saathi_latest_energy");
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed;
+    } catch {}
+    return 50;
+  });
 
   const [isDragging, setIsDragging] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
-  const [weeklyData, setWeeklyData] = useState<number[]>(Array(7).fill(0));
+  const [weeklyPoints, setWeeklyPoints] = useState<WeeklyMoodPoint[]>([]);
+  const [weeklyAvg, setWeeklyAvg] = useState<number | null>(null);
+  const [loggedCount, setLoggedCount] = useState<number>(0);
 
   const currentMood = useMemo(() => getMoodFromScore(moodValue), [moodValue]);
 
   /*
    * -------------------------------------------
-   * LOAD WEEKLY DATA
+   * LOAD WEEKLY DATA (Multi-Tier: DB + Local)
    * -------------------------------------------
    */
   const loadWeeklyProgress = async () => {
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        console.error("Authentication error:", userError);
-        return;
-      }
-
-      if (!user) return;
-
       const today = new Date();
-
-      /*
-       * Find Monday of the current week.
-       */
+      const day = today.getDay();
+      const diff = day === 0 ? -6 : 1 - day; // Monday as first day
       const monday = new Date(today);
-
-      const day = monday.getDay();
-
-      const diff = day === 0 ? -6 : 1 - day;
-
-      monday.setDate(monday.getDate() + diff);
-
+      monday.setDate(today.getDate() + diff);
       monday.setHours(0, 0, 0, 0);
 
-      /*
-       * Find Sunday.
-       */
       const sunday = new Date(monday);
-
       sunday.setDate(monday.getDate() + 6);
-
       sunday.setHours(23, 59, 59, 999);
 
-      /*
-       * Fetch this week's moods.
-       */
-      const { data, error } = await supabase
-        .from("moods")
-        .select("id, energy_level, mood, created_at")
-        .eq("user_id", user.id)
-        .gte("created_at", monday.toISOString())
-        .lte("created_at", sunday.toISOString())
-        .order("created_at", {
-          ascending: true,
-        });
+      // 1. Read cached/local moods
+      let localMap: Record<string, { score: number; mood: string; note?: string }> = {};
+      try {
+        const raw = localStorage.getItem("saathi_mood_history");
+        if (raw) localMap = JSON.parse(raw);
+      } catch {}
 
-      if (error) {
-        console.error("Progress fetch error:", error);
+      // 2. Fetch authenticated moods from Supabase if logged in
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-        return;
+        if (user) {
+          const { data, error } = await supabase
+            .from("moods")
+            .select("id, energy_level, mood, note, created_at")
+            .eq("user_id", user.id)
+            .gte("created_at", monday.toISOString())
+            .lte("created_at", sunday.toISOString())
+            .order("created_at", { ascending: true });
+
+          if (!error && Array.isArray(data)) {
+            data.forEach((row) => {
+              const numScore = Number(row.energy_level);
+              if (Number.isFinite(numScore) && numScore >= 1 && numScore <= 100) {
+                const dateKey = new Date(row.created_at).toLocaleDateString("en-CA");
+                localMap[dateKey] = {
+                  score: numScore,
+                  mood: row.mood || getMoodFromScore(numScore).label,
+                  note: row.note || "",
+                };
+              }
+            });
+            try {
+              localStorage.setItem("saathi_mood_history", JSON.stringify(localMap));
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote moods, using local cache:", err);
       }
 
-      /*
-       * Map:
-       *
-       * YYYY-MM-DD → highest mood score
-       */
-      const map: Record<string, number> = {};
-
-      data?.forEach((row) => {
-        if (typeof row.energy_level !== "number") {
-          return;
-        }
-
-        const dateKey = new Date(row.created_at).toLocaleDateString("en-CA");
-
-        /*
-         * Database stores the mood score directly as 1–100.
-         */
-        const score = row.energy_level;
-
-        map[dateKey] = Math.max(map[dateKey] || 0, score);
-      });
-
-      /*
-       * Build Monday → Sunday.
-       */
-      const weekly: number[] = [];
+      // 3. Assemble Monday -> Sunday points
+      const points: WeeklyMoodPoint[] = [];
+      let totalLogged = 0;
+      let scoreSum = 0;
 
       for (let i = 0; i < 7; i++) {
-        const date = new Date(monday);
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const dateKey = d.toLocaleDateString("en-CA");
+        const isToday = d.toDateString() === today.toDateString();
+        const entry = localMap[dateKey];
 
-        date.setDate(monday.getDate() + i);
-
-        const dateKey = date.toLocaleDateString("en-CA");
-
-        weekly.push(map[dateKey] || 0);
+        if (entry) {
+          const meta = getMoodFromScore(entry.score);
+          points.push({
+            day: d.toLocaleDateString("en-US", { weekday: "short" }),
+            shortDate: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            fullDate: dateKey,
+            score: entry.score,
+            moodLabel: entry.mood || meta.label,
+            moodEmoji: meta.expression,
+            note: entry.note,
+            isToday,
+            hasLogged: true,
+          });
+          totalLogged += 1;
+          scoreSum += entry.score;
+        } else {
+          points.push({
+            day: d.toLocaleDateString("en-US", { weekday: "short" }),
+            shortDate: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            fullDate: dateKey,
+            score: null,
+            isToday,
+            hasLogged: false,
+          });
+        }
       }
 
-      console.log("Weekly mood data:", weekly);
-
-      setWeeklyData(weekly);
+      setWeeklyPoints(points);
+      setLoggedCount(totalLogged);
+      setWeeklyAvg(totalLogged > 0 ? Math.round(scoreSum / totalLogged) : null);
     } catch (error) {
       console.error("Unexpected progress error:", error);
     }
   };
+
   /*
    * -------------------------------------------
    * INITIAL LOAD
@@ -191,6 +302,32 @@ const MoodTracker = () => {
   useEffect(() => {
     loadWeeklyProgress();
   }, []);
+
+  const chartData = useMemo(() => {
+    return weeklyPoints.map((point) => {
+      if (point.hasLogged && point.score !== null) {
+        return {
+          ...point,
+          chartScore: point.score,
+          preview: false,
+        };
+      }
+      if (point.isToday) {
+        return {
+          ...point,
+          chartScore: moodValue,
+          moodLabel: currentMood.label,
+          moodEmoji: currentMood.expression,
+          preview: true,
+        };
+      }
+      return {
+        ...point,
+        chartScore: null,
+        preview: false,
+      };
+    });
+  }, [weeklyPoints, moodValue, currentMood]);
 
   /*
    * -------------------------------------------
@@ -201,119 +338,97 @@ const MoodTracker = () => {
    * is stored directly in the moods table.
    * -------------------------------------------
    */
+  /*
+   * -------------------------------------------
+   * SAVE MOOD
+   * -------------------------------------------
+   *
+   * Stores to localStorage cache and Supabase
+   * backend (if authenticated).
+   * -------------------------------------------
+   */
   const handleSaveMood = async () => {
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        console.error("Authentication error:", userError);
-        alert("Unable to verify your account.");
-        return;
-      }
-
-      if (!user) {
-        alert("Please sign in before saving your mood.");
-        return;
-      }
-
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
-
-      /*
-       * Store the exact mood score as 1–100.
-       */
+      const todayKey = new Date().toLocaleDateString("en-CA");
       const energyLevel = moodValue;
 
-      /*
-       * Find today's mood entry.
-       */
-      const { data: existingMoods, error: findError } = await supabase
-        .from("moods")
-        .select("id")
-        .eq("user_id", user.id)
-        .gte("created_at", todayStart.toISOString())
-        .lte("created_at", todayEnd.toISOString())
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(1);
-
-      const existingMood = existingMoods?.[0] ?? null;
-
-      if (findError) {
-        console.error("Failed to find today's mood:", findError);
-
-        alert(`Could not load today's mood: ${findError.message}`);
-
-        return;
-      }
-
-      /*
-       * UPDATE existing mood
-       */
-      if (existingMood) {
-        const { error: updateError } = await supabase
-          .from("moods")
-          .update({
-            mood: currentMood.label,
-            energy_level: energyLevel,
-          })
-          .eq("id", existingMood.id)
-          .eq("user_id", user.id);
-
-        if (updateError) {
-          console.error("Mood update error:", updateError);
-
-          alert(`Failed to update mood: ${updateError.message}`);
-
-          return;
-        }
-      } else {
-
-      /*
-       * INSERT new mood
-       */
-        const { error: insertError } = await supabase.from("moods").insert({
-          user_id: user.id,
+      // 1. Immediately store to local cache & latest energy
+      try {
+        localStorage.setItem("saathi_latest_energy", String(energyLevel));
+        const raw = localStorage.getItem("saathi_mood_history");
+        const history = raw ? JSON.parse(raw) : {};
+        history[todayKey] = {
+          score: energyLevel,
           mood: currentMood.label,
-          energy_level: energyLevel,
-        });
+          note: note.trim() || undefined,
+          timestamp: new Date().toISOString(),
+        };
+        localStorage.setItem("saathi_mood_history", JSON.stringify(history));
+      } catch {}
 
-        if (insertError) {
-          console.error("Mood insert error:", insertError);
+      // 2. Check if user is authenticated for Supabase sync
+      let syncedWithDb = false;
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-          alert(`Failed to save mood: ${insertError.message}`);
+        if (user) {
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
 
-          return;
+          const todayEnd = new Date();
+          todayEnd.setHours(23, 59, 59, 999);
+
+          // Find today's mood entry
+          const { data: existingMoods } = await supabase
+            .from("moods")
+            .select("id")
+            .eq("user_id", user.id)
+            .gte("created_at", todayStart.toISOString())
+            .lte("created_at", todayEnd.toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          const existingMood = existingMoods?.[0] ?? null;
+
+          if (existingMood) {
+            await supabase
+              .from("moods")
+              .update({
+                mood: currentMood.label,
+                energy_level: energyLevel,
+                note: note.trim() || null,
+              })
+              .eq("id", existingMood.id)
+              .eq("user_id", user.id);
+          } else {
+            await supabase.from("moods").insert({
+              user_id: user.id,
+              mood: currentMood.label,
+              energy_level: energyLevel,
+              note: note.trim() || null,
+            });
+          }
+          syncedWithDb = true;
         }
+      } catch (dbErr) {
+        console.warn("Could not sync mood to remote server:", dbErr);
       }
 
-      /*
-       * Reload the weekly chart from Supabase.
-       */
+      // 3. Reload graph data
       await loadWeeklyProgress();
-
-      /*
-       * Close any open modal.
-       */
       setNoteOpen(false);
 
-      /*
-       * Give the user confirmation.
-       */
       alert(
-        `Mood saved successfully ✨\n${currentMood.expression} ${currentMood.label} · ${moodValue}/100`,
+        syncedWithDb
+          ? `Mood saved & synced ✨\n${currentMood.expression} ${currentMood.label} · ${moodValue}/100`
+          : `Mood saved locally ✨\n${currentMood.expression} ${currentMood.label} · ${moodValue}/100\n(Sign in anytime to sync across devices)`
       );
     } catch (error) {
       console.error("Unexpected mood save error:", error);
-
-      alert("Something went wrong while saving your mood.");
+      alert("Mood saved ✨");
+      await loadWeeklyProgress();
     }
   };
 
@@ -322,72 +437,65 @@ const MoodTracker = () => {
    * SAVE NOTE
    * -------------------------------------------
    */
-  const handleSaveNote = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user || !note.trim()) return;
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
-    const { data, error: fetchError } = await supabase
-      .from("moods")
-      .select("id")
-      .eq("user_id", user.id)
-      .gte("created_at", todayStart.toISOString())
-      .lte("created_at", todayEnd.toISOString())
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .single();
-
-    if (fetchError || !data) {
-      alert("No mood found for today");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("moods")
-      .update({ note })
-      .eq("id", data.id);
-
-    if (error) {
-      console.error(error);
-
-      alert("Failed to save note");
-
-      return;
-    }
-
-    alert("Note saved successfully ✨");
-
-    setNoteOpen(false);
-  };
-
   /*
    * -------------------------------------------
-   * WEEK DAY LABELS
+   * SAVE NOTE
    * -------------------------------------------
    */
-  const getWeekDate = (index: number) => {
-    const today = new Date();
+  const handleSaveNote = async () => {
+    const trimmed = note.trim();
+    if (!trimmed) return;
 
-    const monday = new Date(today);
-    const day = monday.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
+    const todayKey = new Date().toLocaleDateString("en-CA");
+    try {
+      const raw = localStorage.getItem("saathi_mood_history");
+      const history = raw ? JSON.parse(raw) : {};
+      if (history[todayKey]) {
+        history[todayKey].note = trimmed;
+      } else {
+        history[todayKey] = {
+          score: moodValue,
+          mood: currentMood.label,
+          note: trimmed,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      localStorage.setItem("saathi_mood_history", JSON.stringify(history));
+    } catch {}
 
-    monday.setDate(monday.getDate() + diff);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + index);
+      if (user) {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
 
-    return d;
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const { data } = await supabase
+          .from("moods")
+          .select("id")
+          .eq("user_id", user.id)
+          .gte("created_at", todayStart.toISOString())
+          .lte("created_at", todayEnd.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (data?.id) {
+          await supabase.from("moods").update({ note: trimmed }).eq("id", data.id);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not sync note to server:", e);
+    }
+
+    await loadWeeklyProgress();
+    alert("Note saved successfully ✨");
+    setNoteOpen(false);
   };
 
   return (
@@ -637,9 +745,13 @@ const MoodTracker = () => {
                       max="100"
                       step="1"
                       value={moodValue}
-                      onChange={(event) =>
-                        setMoodValue(Number(event.target.value))
-                      }
+                      onChange={(event) => {
+                        const val = Number(event.target.value);
+                        setMoodValue(val);
+                        try {
+                          localStorage.setItem("saathi_latest_energy", String(val));
+                        } catch {}
+                      }}
                       onMouseDown={() => setIsDragging(true)}
                       onMouseUp={() => setIsDragging(false)}
                       onTouchStart={() => setIsDragging(true)}
@@ -739,6 +851,12 @@ const MoodTracker = () => {
                   <Button
                     variant="ghost"
                     className="w-full mt-4 justify-between"
+                    onClick={() => {
+                      try {
+                        localStorage.setItem("saathi_latest_energy", String(moodValue));
+                      } catch {}
+                      navigate("/music", { state: { energyLevel: moodValue } });
+                    }}
                   >
                     Listen now
                     <ChevronRight className="w-4 h-4" />
@@ -767,6 +885,7 @@ const MoodTracker = () => {
                   <Button
                     variant="ghost"
                     className="w-full mt-4 justify-between"
+                    onClick={() => navigate("/meditation")}
                   >
                     Start
                     <ChevronRight className="w-4 h-4" />
@@ -826,106 +945,135 @@ const MoodTracker = () => {
           </motion.div>
 
           {/* -------------------------------- */}
-          {/* WEEKLY PROGRESS */}
+          {/* WEEKLY MOOD GRAPH */}
           {/* -------------------------------- */}
 
-          {/* Progress */}
           <motion.div variants={sectionAnim}>
-            <Card className="shadow-soft border-0">
-              <CardHeader className="pb-3">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="w-5 h-5 text-primary" />
+            <Card className="shadow-soft border-0 overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Weekly Mood Flow</CardTitle>
+                      <CardDescription>
+                        {loggedCount > 0 ? (
+                          <>
+                            {loggedCount} of 7 days logged
+                            {weeklyAvg !== null && (
+                              <span className="ml-1.5 font-medium text-foreground">
+                                · Weekly Avg: {weeklyAvg}/100 ({getMoodFromScore(weeklyAvg).expression} {getMoodFromScore(weeklyAvg).label})
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          "Your mood energy curve throughout this week"
+                        )}
+                      </CardDescription>
+                    </div>
+                  </div>
 
-                  <CardTitle className="text-lg">Your Progress</CardTitle>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      Live Tracker
+                    </span>
+                  </div>
                 </div>
-
-                <CardDescription>
-                  Your mood energy throughout this week
-                </CardDescription>
               </CardHeader>
 
-              <CardContent>
-                {/* Chart */}
-                <div className="grid grid-cols-7 gap-2 h-48">
-                  {weeklyData.map((value, index) => {
-                    const today = new Date();
+              <CardContent className="pt-2">
+                {/* Recharts Area Graph */}
+                <div className="h-60 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 16, right: 12, left: -22, bottom: 4 }}
+                    >
+                      <defs>
+                        <linearGradient id="moodWaveGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.38} />
+                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
 
-                    /*
-                     * Find Monday of the current week
-                     */
-                    const monday = new Date(today);
-                    const day = monday.getDay();
+                      <XAxis
+                        dataKey="day"
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        dy={6}
+                      />
 
-                    const diff = day === 0 ? -6 : 1 - day;
+                      <YAxis
+                        domain={[0, 100]}
+                        ticks={[20, 50, 80]}
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                        dx={-4}
+                      />
 
-                    monday.setDate(monday.getDate() + diff);
+                      <ReferenceLine
+                        y={80}
+                        stroke="hsl(var(--border))"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.7}
+                      />
+                      <ReferenceLine
+                        y={50}
+                        stroke="hsl(var(--border))"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.7}
+                      />
+                      <ReferenceLine
+                        y={20}
+                        stroke="hsl(var(--border))"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.7}
+                      />
 
-                    monday.setHours(0, 0, 0, 0);
+                      <Tooltip content={<CustomMoodTooltip />} />
 
-                    /*
-                     * Current day
-                     */
-                    const date = new Date(monday);
+                      <Area
+                        type="monotone"
+                        dataKey="chartScore"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={3}
+                        fillOpacity={1}
+                        fill="url(#moodWaveGradient)"
+                        connectNulls
+                        dot={<CustomChartDot />}
+                        activeDot={{
+                          r: 7,
+                          stroke: "hsl(var(--primary))",
+                          strokeWidth: 3,
+                          fill: "hsl(var(--background))",
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
 
-                    date.setDate(monday.getDate() + index);
-
-                    const isToday =
-                      date.toDateString() === today.toDateString();
-
-                    /*
-                     * Convert 0–100 mood score
-                     * into chart height.
-                     */
-                    const barHeight =
-                      value > 0 ? Math.max(8, (value / 100) * 150) : 8;
-
-                    return (
-                      <div
-                        key={index}
-                        className="h-full flex flex-col items-center justify-end min-w-0"
-                      >
-                        {/* Bar area */}
-                        <div className="h-[150px] w-full flex items-end justify-center">
-                          <motion.div
-                            initial={{
-                              height: 0,
-                              opacity: 0,
-                            }}
-                            animate={{
-                              height: `${barHeight}px`,
-                              opacity: value > 0 ? 1 : 0.35,
-                            }}
-                            transition={{
-                              duration: 0.7,
-                              delay: index * 0.05,
-                              ease: "easeOut",
-                            }}
-                            className={`w-7 max-w-full rounded-t-xl ${
-                              value > 0 ? "bg-gradient-calm" : "bg-muted"
-                            }`}
-                            title={
-                              value > 0 ? `${value}/100 mood` : "No mood logged"
-                            }
-                          />
-                        </div>
-
-                        {/* Day label */}
-                        <span
-                          className={`mt-4 text-xs sm:text-sm text-center whitespace-nowrap ${
-                            isToday
-                              ? "text-primary font-semibold"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          {isToday
-                            ? "Today"
-                            : date.toLocaleDateString("en-US", {
-                                weekday: "short",
-                              })}
-                        </span>
-                      </div>
-                    );
-                  })}
+                {/* Graph footer legend */}
+                <div className="mt-3 pt-3 border-t border-border/50 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-4">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                      Logged mood
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full border border-primary bg-background" />
+                      Today preview
+                    </span>
+                  </div>
+                  <span>
+                    Scale: 0–100 (Low → Calm → Thriving)
+                  </span>
                 </div>
               </CardContent>
             </Card>

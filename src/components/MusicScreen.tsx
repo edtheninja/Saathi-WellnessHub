@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
+import { useLocation } from "react-router-dom";
 
 import {
   Heart,
@@ -23,6 +24,8 @@ import {
 
 import meditationGirl from "@/assets/meditation-girl-scene.png";
 import { supabase } from "@/supabaseClient";
+import WellnessEngine from "@/features/wellness/services/WellnessEngine";
+import WellnessScoreEngine from "@/features/wellness/services/WellnessScoreEngine";
 /* -------------------------------------------------------------------------- */
 /*                                Local music                                 */
 /* -------------------------------------------------------------------------- */
@@ -121,9 +124,14 @@ const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   "kun faya kun": 6,
   "sun saiyaan": 10,
   hamdard: 14,
+  humdard: 14,
   "jiyein kyun": 18,
+  "iyein kyun": 18,
   "tere bina": 22,
+  terebina: 22,
   "kun faya kun (added)": 26,
+  "kabira encore": 26,
+  kabira: 26,
   iktara: 30,
   "tu kisi rail si": 34,
   "kho gaye hum kahan": 38,
@@ -133,27 +141,31 @@ const MUSIC_ENERGY_BY_TITLE: Record<string, number> = {
   safarnama: 54,
   "phir se ud chala": 58,
   "chaand ke parinday": 62,
+  "khaabon ke parinday": 62,
   "tum se hi": 66,
   ilahi: 70,
   "love you zindagi": 74,
+  matargashti: 78,
   "matargashti (added)": 78,
   "sooraj ki baahon mein": 82,
   "tumhi ho bandhu": 86,
   "patakha guddi": 90,
   "gallan goodiyaan": 94,
   "badtemeez dil": 98,
+  "badtameez dil": 98,
 };
 
 const normalizeMusicTitle = (title: string): string => {
+  let cleaned = String(title || "").trim();
+  cleaned = cleaned.replace(/\s*[-_]?\s*jab we met.*$/i, "");
+  cleaned = cleaned.replace(/\s*\(\s*\d+\s*kbps\s*\)/i, "");
+  cleaned = cleaned.replace(/\s*\([^)]*\)/g, " ");
+
   return (
-    String(title || "")
-      .trim()
-      // Convert camelCase/PascalCase filenames such as AaoMiloChalen
-      // into "aao milo chalen".
+    cleaned
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
       .replace(/[-_]+/g, " ")
-      .replace(/[()]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .toLowerCase()
@@ -162,7 +174,17 @@ const normalizeMusicTitle = (title: string): string => {
 
 const getMusicEnergyLevel = (title: string): number | null => {
   const key = normalizeMusicTitle(title);
-  return MUSIC_ENERGY_BY_TITLE[key] ?? null;
+  if (typeof MUSIC_ENERGY_BY_TITLE[key] === "number") {
+    return MUSIC_ENERGY_BY_TITLE[key];
+  }
+
+  for (const [entryKey, energy] of Object.entries(MUSIC_ENERGY_BY_TITLE)) {
+    if (key.includes(entryKey) || entryKey.includes(key)) {
+      return energy;
+    }
+  }
+
+  return null;
 };
 
 /*
@@ -298,10 +320,52 @@ export default function MusicScreen() {
 
   const [search, setSearch] = useState("");
 
-  const [finalEnergyLevel, setFinalEnergyLevel] =
-    useState(DEFAULT_ENERGY_LEVEL);
+  const location = useLocation();
 
-  const [hasFinalEnergy, setHasFinalEnergy] = useState(false);
+  const routeEnergy = useMemo(() => {
+    const s = location.state as { energyLevel?: number; moodValue?: number } | null;
+    const candidate = s?.energyLevel ?? s?.moodValue;
+    if (typeof candidate === "number" && candidate > 0 && candidate <= 100) {
+      return Math.round(candidate);
+    }
+    try {
+      const stored = localStorage.getItem("saathi_latest_energy");
+      const parsed = Number(stored);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) {
+        return Math.round(parsed);
+      }
+    } catch {}
+    return null;
+  }, [location.state]);
+
+  const [finalEnergyLevel, setFinalEnergyLevel] = useState<number>(() => {
+    return routeEnergy ?? DEFAULT_ENERGY_LEVEL;
+  });
+
+  const [hasFinalEnergy, setHasFinalEnergy] = useState<boolean>(() => {
+    return routeEnergy !== null && routeEnergy > 0;
+  });
+
+  useEffect(() => {
+    if (routeEnergy !== null && routeEnergy > 0) {
+      setFinalEnergyLevel(routeEnergy);
+      setHasFinalEnergy(true);
+    }
+  }, [routeEnergy]);
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "saathi_latest_energy" && e.newValue) {
+        const val = Number(e.newValue);
+        if (Number.isFinite(val) && val > 0 && val <= 100) {
+          setFinalEnergyLevel(Math.round(val));
+          setHasFinalEnergy(true);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   /* ------------------------------------------------------------------------ */
   /*                                   Refs                                   */
@@ -1718,48 +1782,115 @@ export default function MusicScreen() {
 
     const loadFinalEnergy = async () => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        let value: number | null = null;
 
-        if (!user) {
-          if (!cancelled) {
-            setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
-            setHasFinalEnergy(false);
+        // 1. Check Supabase/backend wellness_scores, moods, and activity_history (if user is authenticated)
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (user) {
+            const { data } = await supabase
+              .from("wellness_scores")
+              .select("final_energy_level")
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const parsedScore = Number(data?.final_energy_level);
+            if (Number.isFinite(parsedScore) && parsedScore > 0) {
+              value = parsedScore;
+            } else {
+              const { data: moodData } = await supabase
+                .from("moods")
+                .select("energy_level")
+                .eq("user_id", user.id)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              const parsedMood = Number(moodData?.energy_level);
+              if (Number.isFinite(parsedMood) && parsedMood > 0) {
+                value = parsedMood;
+              } else {
+                const { data: actData } = await supabase
+                  .from("activity_history")
+                  .select("energy_level")
+                  .eq("user_id", user.id)
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                const parsedAct = Number(actData?.energy_level);
+                if (Number.isFinite(parsedAct) && parsedAct > 0) {
+                  value = parsedAct;
+                }
+              }
+            }
           }
-          return;
+        } catch (supabaseErr) {
+          console.warn("Backend energy lookup skipped/failed:", supabaseErr);
         }
 
-        const { data, error } = await supabase
-          .from("wellness_scores")
-          .select("final_energy_level")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) {
-          throw error;
+        // 2. Check WellnessScoreEngine.load() (dedicated endpoint for score & ML computation)
+        if (value === null || value <= 0) {
+          try {
+            const scoreObj = await WellnessScoreEngine.load();
+            const engScore = Number(scoreObj?.score);
+            if (Number.isFinite(engScore) && engScore > 0) {
+              value = engScore;
+            }
+          } catch {
+            // WellnessScoreEngine fallback
+          }
         }
 
-        const value = Number(data?.final_energy_level);
-
-        if (Number.isFinite(value) && value >= 0 && value <= 100) {
-          if (!cancelled) {
-            const normalizedValue =
-              value === 0 ? DEFAULT_ENERGY_LEVEL : Math.round(value);
-
-            setFinalEnergyLevel(normalizedValue);
-            setHasFinalEnergy(value > 0);
+        // 3. Check WellnessEngine.load() (aggregates activities, journal analytics, demo mode)
+        if (value === null || value <= 0) {
+          try {
+            const snapshot = await WellnessEngine.load();
+            const engScore = Number(snapshot.score?.score);
+            if (Number.isFinite(engScore) && engScore > 0) {
+              value = engScore;
+            }
+          } catch {
+            // WellnessEngine load fallback
           }
-        } else if (!cancelled) {
+        }
+
+        // 4. Check localStorage for most recent mood/energy recorded
+        if (value === null || value <= 0) {
+          try {
+            const stored = localStorage.getItem("saathi_latest_energy");
+            const parsedStored = Number(stored);
+            if (Number.isFinite(parsedStored) && parsedStored > 0) {
+              value = parsedStored;
+            }
+          } catch {
+            // Local storage read fallback
+          }
+        }
+
+        // 5. Update component state with resolved energy and sync cache
+        if (Number.isFinite(value) && value !== null && value > 0 && value <= 100) {
+          const finalVal = Math.round(value);
+          try {
+            localStorage.setItem("saathi_latest_energy", String(finalVal));
+          } catch {}
+          if (!cancelled) {
+            setFinalEnergyLevel(finalVal);
+            setHasFinalEnergy(true);
+          }
+        } else if (!cancelled && !routeEnergy) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
           setHasFinalEnergy(false);
         }
       } catch (error) {
         console.error("Final energy lookup failed:", error);
 
-        if (!cancelled) {
+        if (!cancelled && !routeEnergy) {
           setFinalEnergyLevel(DEFAULT_ENERGY_LEVEL);
           setHasFinalEnergy(false);
         }
@@ -1844,6 +1975,23 @@ export default function MusicScreen() {
       if (chosen) {
         selected.push(chosen);
         usedIds.add(chosen.id);
+      }
+    }
+
+    if (selected.length < 4 && available.length > selected.length) {
+      const remainingCandidates = available
+        .filter((track) => !usedIds.has(track.id))
+        .sort((a, b) => {
+          const distA = Math.abs(Number(a.energyLevel) - targetEnergy);
+          const distB = Math.abs(Number(b.energyLevel) - targetEnergy);
+          if (distA !== distB) return distA - distB;
+          return a.title.localeCompare(b.title);
+        });
+
+      for (const candidate of remainingCandidates) {
+        if (selected.length >= 4) break;
+        selected.push(candidate);
+        usedIds.add(candidate.id);
       }
     }
 
