@@ -862,10 +862,18 @@ export default function Dashboard(): JSX.Element {
   };
 
   /* ==========================================================
-     TURN INSIGHT INTO NOTIFICATION
+     AUTO-PUSH INSIGHT INTO NOTIFICATION (NO USER INTERACTION NEEDED)
   ========================================================== */
 
-  const turnInsightIntoNotification = async () => {
+  const pushInsightNotification = async (force = false) => {
+    if (!prediction && !recTitle) return;
+
+    const insightKey = `saathi_notified_insight_${prediction?.id || prediction?.prediction_date || recTitle}_${new Date().toISOString().slice(0, 10)}`;
+
+    if (!force && typeof window !== "undefined" && localStorage.getItem(insightKey)) {
+      return;
+    }
+
     try {
       setRemindLoading(true);
 
@@ -881,9 +889,9 @@ export default function Dashboard(): JSX.Element {
               icon: "/favicon.ico",
             });
           } catch (e) {
-            console.warn("Could not dispatch native notification:", e);
+            console.debug("Native notification skipped:", e);
           }
-        } else if (Notification.permission !== "denied") {
+        } else if (Notification.permission === "default") {
           try {
             const perm = await Notification.requestPermission();
             if (perm === "granted") {
@@ -893,7 +901,7 @@ export default function Dashboard(): JSX.Element {
               });
             }
           } catch (e) {
-            console.warn("Permission request failed:", e);
+            console.debug("Permission request skipped:", e);
           }
         }
       }
@@ -937,15 +945,26 @@ export default function Dashboard(): JSX.Element {
       setShowNotification(true);
       setReminded(true);
 
+      if (typeof window !== "undefined") {
+        localStorage.setItem(insightKey, "true");
+      }
+
       setTimeout(() => {
         setReminded(false);
       }, 4000);
     } catch (err) {
-      console.error("Failed to turn insight into notification:", err);
+      console.error("Failed to push insight notification:", err);
     } finally {
       setRemindLoading(false);
     }
   };
+
+  // Automatically push notification as soon as insight is loaded (no click required)
+  useEffect(() => {
+    if (prediction && recTitle) {
+      pushInsightNotification(false);
+    }
+  }, [prediction, recTitle, recBody]);
 
   /* ==========================================================
      RENDER
@@ -1904,12 +1923,12 @@ export default function Dashboard(): JSX.Element {
 
                     <button
                       type="button"
-                      onClick={turnInsightIntoNotification}
+                      onClick={() => pushInsightNotification(true)}
                       disabled={remindLoading}
                       className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-5 py-2.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300 transition hover:bg-emerald-500/20 hover:shadow-sm disabled:opacity-50"
                     >
                       <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      {reminded ? "Notification set ✨" : "Remind me 🔔"}
+                      {reminded ? "Notification active ✨" : "Send notification 🔔"}
                     </button>
 
                   </div>
