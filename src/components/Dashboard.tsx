@@ -1,6 +1,6 @@
 // src/components/Dashboard.tsx
 
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import type { HSL } from "@/context/ThemeContext";

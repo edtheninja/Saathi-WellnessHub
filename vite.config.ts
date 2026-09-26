@@ -142,12 +142,8 @@ function musicLibraryPlugin(): Plugin {
 ========================================================= */
 
 export default defineConfig(({ mode }) => ({
-  base:
-    process.env.VERCEL
-      ? "/"
-      : mode === "production"
-      ? "/Saathi/"
-      : "/",
+  base: "/",
+
 
   /* =======================================================
      DEV SERVER
