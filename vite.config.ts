@@ -178,7 +178,9 @@ export default defineConfig(({ mode }) => ({
 
     VitePWA({
       registerType: "autoUpdate",
-
+      devOptions: {
+        enabled: true,
+      },
       includeAssets: [
         "favicon.ico",
         "robots.txt",

@@ -3,17 +3,25 @@ import NotificationStore from "../services/NotificationStore";
 import WellnessEvents from "../services/WellnessEvents";
 
 export function useNotifications() {
+  const [notifications, setNotifications] = useState(
+    NotificationStore.getAll()
+  );
 
-  const [notifications, setNotifications] =
-    useState(
-      NotificationStore.getAll()
-    );
+  useEffect(() => {
+    // Initial fetch from backend if online/authenticated
+    NotificationStore.syncFromBackend().then((items) => {
+      if (items && items.length > 0) {
+        setNotifications([...items]);
+      }
+    });
 
-useEffect(() => {
     const unsubscribe = WellnessEvents.subscribe(() => {
       setNotifications([...NotificationStore.getAll()]);
     });
-    return () => { unsubscribe(); };
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   return notifications;
