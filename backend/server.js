@@ -4825,8 +4825,19 @@ app.get(
         [req.auth.sub],
       );
 
+      let row = result.rows[0] || null;
+      if (row) {
+        const recommendation = getWellnessRecommendation(row.predicted_energy_level);
+        row = {
+          ...row,
+          recommendation_title: row.recommendation_title || recommendation.title,
+          recommendation_activity: row.recommendation_activity || recommendation.activity,
+          recommendation_body: row.recommendation_body || recommendation.body,
+        };
+      }
+
       res.json({
-        data: result.rows[0] || null,
+        data: row,
       });
     } catch (error) {
       console.error(

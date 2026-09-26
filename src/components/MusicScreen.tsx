@@ -609,7 +609,7 @@ export default function MusicScreen() {
                 (track) =>
                   track.src === row.audio_url ||
                   (track.title.trim().toLowerCase() ===
-                    row.song_name.trim().toLowerCase() &&
+                    row.song_name?.trim().toLowerCase() &&
                     track.artist.trim().toLowerCase() ===
                       (row.artist || "Saathi Music").trim().toLowerCase()),
               );

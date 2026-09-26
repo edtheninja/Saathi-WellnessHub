@@ -763,47 +763,71 @@ export default function Dashboard(): JSX.Element {
       : null;
 
   /* ==========================================================
+     RECOMMENDATION FALLBACK HELPER
+  ========================================================== */
+
+  const getWellnessRecommendationFallback = (score?: number | null) => {
+    const num = Number(score);
+    if (!Number.isFinite(num) || num <= 30) {
+      return {
+        title: "Take a gentle reset",
+        activity: "10-minute reset",
+        body: "Take a few minutes to drink water, breathe slowly, and give yourself a short break.",
+      };
+    }
+    if (num <= 55) {
+      return {
+        title: "Give yourself a small boost",
+        activity: "5-minute movement break",
+        body: "Take a short movement break, stretch, and give yourself a few minutes away from your current task.",
+      };
+    }
+    if (num <= 75) {
+      return {
+        title: "Keep your routine balanced",
+        activity: "5-minute mindful break",
+        body: "Your wellness level looks fairly balanced. A short mindful break can help you maintain your routine.",
+      };
+    }
+    return {
+      title: "Keep the positive routine going",
+      activity: "Positive routine",
+      body: "Your wellness level looks positive. Continue the activities and routines that are working well for you.",
+    };
+  };
+
+  const fallbackRec = getWellnessRecommendationFallback(
+    prediction?.predicted_energy_level,
+  );
+
+  const recTitle =
+    prediction?.recommendation_title || fallbackRec.title;
+
+  const recActivity =
+    prediction?.recommendation_activity || fallbackRec.activity;
+
+  const recBody =
+    prediction?.recommendation_body || fallbackRec.body;
+
+  /* ==========================================================
      START RECOMMENDED ACTIVITY
   ========================================================== */
 
-  const startRecommendedActivity =
-    () => {
-      if (!prediction) {
-        return;
-      }
+  const startRecommendedActivity = () => {
+    const activity = (recActivity || "").toLowerCase();
 
-      const activity =
-        prediction.recommendation_activity.toLowerCase();
-
-      if (
-        activity.includes(
-          "movement",
-        )
-      ) {
-        navigate("/wellness");
-        return;
-      }
-
-      if (
-        activity.includes(
-          "mindful",
-        )
-      ) {
-        navigate("/meditation");
-        return;
-      }
-
-      if (
-        activity.includes(
-          "reset",
-        )
-      ) {
-        navigate("/meditation");
-        return;
-      }
-
+    if (activity.includes("movement")) {
       navigate("/wellness");
-    };
+      return;
+    }
+
+    if (activity.includes("mindful") || activity.includes("reset")) {
+      navigate("/meditation");
+      return;
+    }
+
+    navigate("/wellness");
+  };
 
   /* ==========================================================
      RENDER
@@ -1707,7 +1731,7 @@ export default function Dashboard(): JSX.Element {
 
                       <h3 className="mt-1 text-2xl font-bold tracking-tight text-primary">
                         {
-                          prediction.recommendation_title
+                          recTitle
                         }
                       </h3>
 
@@ -1717,7 +1741,7 @@ export default function Dashboard(): JSX.Element {
 
                   <p className="mt-5 max-w-2xl text-sm leading-7 text-muted-foreground">
                     {
-                      prediction.recommendation_body
+                      recBody
                     }
                   </p>
 
@@ -1734,7 +1758,7 @@ export default function Dashboard(): JSX.Element {
                       <CheckCircle2 className="h-4 w-4" />
 
                       {
-                        prediction.recommendation_activity
+                        recActivity
                       }
 
                       <ArrowRight className="h-4 w-4" />

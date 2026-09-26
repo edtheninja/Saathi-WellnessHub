@@ -1410,6 +1410,19 @@ ADD COLUMN IF NOT EXISTS
 created_at TIMESTAMPTZ
 NOT NULL DEFAULT NOW();
 
+ALTER TABLE weekly_energy_predictions
+ADD COLUMN IF NOT EXISTS
+recommendation_title TEXT;
+
+ALTER TABLE weekly_energy_predictions
+ADD COLUMN IF NOT EXISTS
+recommendation_activity TEXT;
+
+ALTER TABLE weekly_energy_predictions
+ADD COLUMN IF NOT EXISTS
+recommendation_body TEXT;
+
+
 
 -- Backfill old rows
 
