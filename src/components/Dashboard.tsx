@@ -29,6 +29,7 @@ import {
 
 import ModeSelectorV2 from "@/components/ModeSelectorV2";
 import { isDemoMode } from "@/features/wellness/services/DemoMode";
+import NotificationStore from "@/features/wellness/services/NotificationStore";
 
 /* ============================================================
    HELPERS
@@ -125,6 +126,9 @@ export default function Dashboard(): JSX.Element {
 
   const [showNotification, setShowNotification] =
     useState(false);
+
+  const [reminded, setReminded] = useState(false);
+  const [remindLoading, setRemindLoading] = useState(false);
 
   /* ==========================================================
      API CONFIG
@@ -855,6 +859,92 @@ export default function Dashboard(): JSX.Element {
     navigate(`/meditation?duration=${duration}`, {
       state: { duration, source: "insight", activity: recActivity },
     });
+  };
+
+  /* ==========================================================
+     TURN INSIGHT INTO NOTIFICATION
+  ========================================================== */
+
+  const turnInsightIntoNotification = async () => {
+    try {
+      setRemindLoading(true);
+
+      const title = `🌿 ${recTitle}`;
+      const body = recBody;
+
+      // 1. Browser System Notification (Web Notification API)
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (Notification.permission === "granted") {
+          try {
+            new Notification(title, {
+              body,
+              icon: "/favicon.ico",
+            });
+          } catch (e) {
+            console.warn("Could not dispatch native notification:", e);
+          }
+        } else if (Notification.permission !== "denied") {
+          try {
+            const perm = await Notification.requestPermission();
+            if (perm === "granted") {
+              new Notification(title, {
+                body,
+                icon: "/favicon.ico",
+              });
+            }
+          } catch (e) {
+            console.warn("Permission request failed:", e);
+          }
+        }
+      }
+
+      // 2. Add to In-App Local Notification Store
+      NotificationStore.add({
+        id: `insight-${Date.now()}`,
+        title,
+        description: body,
+        type: "mindfulness",
+        createdAt: new Date().toISOString(),
+        read: false,
+      });
+
+      // 3. Persist to Backend PostgreSQL if user is logged in
+      const token = getAccessToken();
+      if (token) {
+        await fetch(buildApiUrl("/api/data/notifications"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            notification_type: "wellness_insight",
+            title,
+            body,
+          }),
+        }).catch((err) => {
+          console.debug("Backend notification insert skipped:", err);
+        });
+      }
+
+      // 4. Update In-App Dashboard Notification State & Bell
+      setNotification({
+        title,
+        body,
+        notification_type: "wellness_insight",
+        created_at: new Date().toISOString(),
+      });
+      setShowNotification(true);
+      setReminded(true);
+
+      setTimeout(() => {
+        setReminded(false);
+      }, 4000);
+    } catch (err) {
+      console.error("Failed to turn insight into notification:", err);
+    } finally {
+      setRemindLoading(false);
+    }
   };
 
   /* ==========================================================
@@ -1810,6 +1900,16 @@ export default function Dashboard(): JSX.Element {
                         ? "Refreshing..."
                         : "Refresh insight"}
 
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={turnInsightIntoNotification}
+                      disabled={remindLoading}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-5 py-2.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300 transition hover:bg-emerald-500/20 hover:shadow-sm disabled:opacity-50"
+                    >
+                      <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      {reminded ? "Notification set ✨" : "Remind me 🔔"}
                     </button>
 
                   </div>
