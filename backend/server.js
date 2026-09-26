@@ -235,6 +235,21 @@ const resourceConfig = {
 
     readOnly: true,
   },
+
+  weekly_data: {
+    table: "weekly_data",
+
+    columns: [
+      "week_start",
+      "day_of_week",
+      "avg_wellness",
+      "activity_count",
+      "sample_count",
+      "updated_at",
+    ],
+
+    readOnly: true,
+  },
 };
 
 async function initializeDatabase() {
@@ -4825,6 +4840,116 @@ app.get(
     }
   },
 );
+
+
+// ------------------------------------------------------------
+// GET CURRENT WEEKLY DATA (Ensures week exists, returns 7 days)
+// ------------------------------------------------------------
+
+app.get(
+  "/api/weekly-data/current",
+  authRequired,
+  async (req, res) => {
+    try {
+      const userId = req.auth.sub;
+      await pool.query(
+        "SELECT ensure_weekly_data_for_date($1, CURRENT_DATE)",
+        [userId],
+      );
+
+      const result = await pool.query(
+        `
+          SELECT *
+          FROM weekly_data
+          WHERE user_id = $1
+            AND week_start = DATE_TRUNC('week', CURRENT_DATE)::DATE
+          ORDER BY CASE day_of_week
+            WHEN 'Monday' THEN 1
+            WHEN 'Tuesday' THEN 2
+            WHEN 'Wednesday' THEN 3
+            WHEN 'Thursday' THEN 4
+            WHEN 'Friday' THEN 5
+            WHEN 'Saturday' THEN 6
+            WHEN 'Sunday' THEN 7
+          END ASC
+        `,
+        [userId],
+      );
+
+      res.json({
+        data: result.rows,
+      });
+    } catch (error) {
+      console.error("Current weekly data error:", error);
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  },
+);
+
+
+// ------------------------------------------------------------
+// POST SYNC / REFRESH WEEKLY DATA
+// ------------------------------------------------------------
+
+app.post(
+  "/api/weekly-data/sync",
+  authRequired,
+  async (req, res) => {
+    try {
+      const userId = req.auth.sub;
+
+      await pool.query(
+        "SELECT ensure_weekly_data_for_date($1, CURRENT_DATE)",
+        [userId],
+      );
+
+      // Refresh all distinct activity days for this user
+      await pool.query(
+        `
+          SELECT refresh_weekly_data_day($1, created_at)
+          FROM (
+            SELECT DISTINCT created_at
+            FROM activity_history
+            WHERE user_id = $1
+          ) acts
+        `,
+        [userId],
+      );
+
+      const result = await pool.query(
+        `
+          SELECT *
+          FROM weekly_data
+          WHERE user_id = $1
+            AND week_start = DATE_TRUNC('week', CURRENT_DATE)::DATE
+          ORDER BY CASE day_of_week
+            WHEN 'Monday' THEN 1
+            WHEN 'Tuesday' THEN 2
+            WHEN 'Wednesday' THEN 3
+            WHEN 'Thursday' THEN 4
+            WHEN 'Friday' THEN 5
+            WHEN 'Saturday' THEN 6
+            WHEN 'Sunday' THEN 7
+          END ASC
+        `,
+        [userId],
+      );
+
+      res.json({
+        message: "Weekly data successfully synchronized",
+        data: result.rows,
+      });
+    } catch (error) {
+      console.error("Sync weekly data error:", error);
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  },
+);
+
 
 
 // ------------------------------------------------------------

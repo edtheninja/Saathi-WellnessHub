@@ -1023,30 +1023,26 @@ ON weekly_data(
 
 
 -- =========================================================
--- FUNCTION
+-- FUNCTION: ensure_weekly_data_for_date
 --
--- Creates the seven empty rows for the current week.
+-- Creates the seven empty rows (Monday-Sunday) for any target week.
 -- =========================================================
 
-CREATE OR REPLACE FUNCTION
-ensure_current_weekly_data(
-  p_user_id UUID
+CREATE OR REPLACE FUNCTION ensure_weekly_data_for_date(
+  p_user_id UUID,
+  p_date DATE DEFAULT CURRENT_DATE
 )
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
-
 DECLARE
   v_week_start DATE;
-
 BEGIN
+  IF p_user_id IS NULL THEN
+    RETURN;
+  END IF;
 
-  v_week_start =
-    DATE_TRUNC(
-      'week',
-      CURRENT_DATE
-    )::DATE;
-
+  v_week_start := DATE_TRUNC('week', COALESCE(p_date, CURRENT_DATE))::DATE;
 
   INSERT INTO weekly_data (
     user_id,
@@ -1056,7 +1052,6 @@ BEGIN
     activity_count,
     sample_count
   )
-
   SELECT
     p_user_id,
     v_week_start,
@@ -1064,7 +1059,6 @@ BEGIN
     NULL,
     0,
     0
-
   FROM (
     VALUES
       ('Monday'),
@@ -1075,44 +1069,290 @@ BEGIN
       ('Saturday'),
       ('Sunday')
   ) AS days(day_name)
-
   ON CONFLICT (
     user_id,
     week_start,
     day_of_week
   )
-
   DO NOTHING;
+END;
+$$;
+
+
+-- Backward-compatible wrapper
+CREATE OR REPLACE FUNCTION ensure_current_weekly_data(
+  p_user_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM ensure_weekly_data_for_date(p_user_id, CURRENT_DATE);
+END;
+$$;
+
+
+-- =========================================================
+-- TRIGGER: INITIAL WEEKLY DATA ON USER CREATION
+-- =========================================================
+
+CREATE OR REPLACE FUNCTION create_initial_weekly_data()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM ensure_weekly_data_for_date(NEW.id, CURRENT_DATE);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS saathi_user_initial_weekly_data ON saathi_users;
+
+CREATE TRIGGER saathi_user_initial_weekly_data
+AFTER INSERT ON saathi_users
+FOR EACH ROW
+EXECUTE FUNCTION create_initial_weekly_data();
+
+
+-- =========================================================
+-- FUNCTION: refresh_weekly_data_day
+--
+-- Recalculates stats (activity_count, sample_count, avg_wellness)
+-- for a specific user and day from activity_history.
+-- Also syncs the overall summary to wellness_scores.
+-- =========================================================
+
+CREATE OR REPLACE FUNCTION refresh_weekly_data_day(
+  p_user_id UUID,
+  p_date TIMESTAMPTZ
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_week_start DATE;
+  v_day_of_week TEXT;
+  v_activity_count INTEGER;
+  v_sample_count INTEGER;
+  v_avg_wellness NUMERIC(5,2);
+BEGIN
+  IF p_user_id IS NULL OR p_date IS NULL THEN
+    RETURN;
+  END IF;
+
+  v_week_start := DATE_TRUNC('week', p_date)::DATE;
+  v_day_of_week := TRIM(TO_CHAR(p_date, 'Day'));
+
+  -- Ensure weekly slots exist
+  PERFORM ensure_weekly_data_for_date(p_user_id, p_date::DATE);
+
+  -- Aggregate all activity events for this day
+  SELECT
+    COUNT(*),
+    COUNT(energy_level),
+    CASE
+      WHEN COUNT(energy_level) > 0 THEN ROUND(AVG(energy_level)::numeric, 2)
+      ELSE NULL
+    END
+  INTO
+    v_activity_count,
+    v_sample_count,
+    v_avg_wellness
+  FROM activity_history
+  WHERE user_id = p_user_id
+    AND DATE_TRUNC('week', created_at)::DATE = v_week_start
+    AND TRIM(TO_CHAR(created_at, 'Day')) = v_day_of_week;
+
+  -- Upsert into weekly_data
+  INSERT INTO weekly_data (
+    user_id,
+    week_start,
+    day_of_week,
+    avg_wellness,
+    activity_count,
+    sample_count,
+    updated_at
+  )
+  VALUES (
+    p_user_id,
+    v_week_start,
+    v_day_of_week,
+    v_avg_wellness,
+    COALESCE(v_activity_count, 0),
+    COALESCE(v_sample_count, 0),
+    NOW()
+  )
+  ON CONFLICT (user_id, week_start, day_of_week)
+  DO UPDATE SET
+    avg_wellness = EXCLUDED.avg_wellness,
+    activity_count = EXCLUDED.activity_count,
+    sample_count = EXCLUDED.sample_count,
+    updated_at = NOW();
+
+  -- Update wellness_scores overall average for user
+  UPDATE wellness_scores
+  SET
+    final_energy_level = COALESCE(
+      (
+        SELECT ROUND(AVG(avg_wellness))::INTEGER
+        FROM weekly_data
+        WHERE user_id = p_user_id
+          AND week_start = v_week_start
+          AND avg_wellness IS NOT NULL
+      ),
+      final_energy_level
+    ),
+    computed_at = NOW()
+  WHERE user_id = p_user_id;
 
 END;
 $$;
 
 
 -- =========================================================
--- CREATE CURRENT WEEK FOR EXISTING USERS
+-- TRIGGER: AUTO-SYNC activity_history -> weekly_data
+-- =========================================================
+
+CREATE OR REPLACE FUNCTION sync_activity_to_weekly_data()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    PERFORM refresh_weekly_data_day(OLD.user_id, OLD.created_at);
+    RETURN OLD;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF (OLD.user_id != NEW.user_id)
+       OR (DATE_TRUNC('week', OLD.created_at)::DATE != DATE_TRUNC('week', NEW.created_at)::DATE)
+       OR (TRIM(TO_CHAR(OLD.created_at, 'Day')) != TRIM(TO_CHAR(NEW.created_at, 'Day'))) THEN
+      PERFORM refresh_weekly_data_day(OLD.user_id, OLD.created_at);
+    END IF;
+    PERFORM refresh_weekly_data_day(NEW.user_id, NEW.created_at);
+    RETURN NEW;
+  ELSE -- INSERT
+    PERFORM refresh_weekly_data_day(NEW.user_id, NEW.created_at);
+    RETURN NEW;
+  END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_activity_to_weekly_data ON activity_history;
+
+CREATE TRIGGER trg_sync_activity_to_weekly_data
+AFTER INSERT OR UPDATE OR DELETE ON activity_history
+FOR EACH ROW
+EXECUTE FUNCTION sync_activity_to_weekly_data();
+
+
+-- =========================================================
+-- TRIGGER: AUTO-RECORD moods -> activity_history
+-- Handles direct client inserts to moods table
+-- =========================================================
+
+CREATE OR REPLACE FUNCTION sync_mood_to_activity_history()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM activity_history
+    WHERE user_id = NEW.user_id
+      AND activity_type = 'mood'
+      AND metadata->>'mood_id' = NEW.id::text
+  ) THEN
+    INSERT INTO activity_history (
+      user_id,
+      activity_type,
+      title,
+      energy_level,
+      metadata,
+      created_at
+    )
+    VALUES (
+      NEW.user_id,
+      'mood',
+      COALESCE(NEW.mood, 'Mood Logged'),
+      NEW.energy_level,
+      jsonb_build_object(
+        'mood_id', NEW.id,
+        'mood', NEW.mood,
+        'energy_level', NEW.energy_level,
+        'source', 'moods_trigger'
+      ),
+      NEW.created_at
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_mood_to_activity_history ON moods;
+
+CREATE TRIGGER trg_sync_mood_to_activity_history
+AFTER INSERT ON moods
+FOR EACH ROW
+EXECUTE FUNCTION sync_mood_to_activity_history();
+
+
+-- =========================================================
+-- BACKFILL & REFRESH ALL EXISTING USERS & ACTIVITIES
 -- =========================================================
 
 DO $$
 DECLARE
-  user_record RECORD;
-
+  rec RECORD;
 BEGIN
-
-  FOR user_record IN
-    SELECT id
-    FROM saathi_users
-
-  LOOP
-
-    PERFORM
-      ensure_current_weekly_data(
-        user_record.id
-      );
-
+  -- 1. Ensure current week for all existing users
+  FOR rec IN SELECT id FROM saathi_users LOOP
+    PERFORM ensure_weekly_data_for_date(rec.id, CURRENT_DATE);
   END LOOP;
 
+  -- 2. Backfill moods into activity_history if not present
+  FOR rec IN
+    SELECT m.id, m.user_id, m.mood, m.energy_level, m.created_at
+    FROM moods m
+    WHERE NOT EXISTS (
+      SELECT 1 FROM activity_history a
+      WHERE a.user_id = m.user_id
+        AND a.activity_type = 'mood'
+        AND a.metadata->>'mood_id' = m.id::text
+    )
+  LOOP
+    INSERT INTO activity_history (
+      user_id,
+      activity_type,
+      title,
+      energy_level,
+      metadata,
+      created_at
+    )
+    VALUES (
+      rec.user_id,
+      'mood',
+      COALESCE(rec.mood, 'Mood Logged'),
+      rec.energy_level,
+      jsonb_build_object(
+        'mood_id', rec.id,
+        'mood', rec.mood,
+        'energy_level', rec.energy_level,
+        'source', 'backfill'
+      ),
+      rec.created_at
+    );
+  END LOOP;
+
+  -- 3. Refresh weekly_data for all distinct user/day events in activity_history
+  FOR rec IN
+    SELECT DISTINCT
+      user_id,
+      created_at
+    FROM activity_history
+  LOOP
+    PERFORM refresh_weekly_data_day(rec.user_id, rec.created_at);
+  END LOOP;
 END;
 $$;
+
 
 
 -- =========================================================
