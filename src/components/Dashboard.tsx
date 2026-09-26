@@ -1921,16 +1921,6 @@ export default function Dashboard(): JSX.Element {
 
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => pushInsightNotification(true)}
-                      disabled={remindLoading}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-5 py-2.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300 transition hover:bg-emerald-500/20 hover:shadow-sm disabled:opacity-50"
-                    >
-                      <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      {reminded ? "Notification active ✨" : "Send notification 🔔"}
-                    </button>
-
                   </div>
 
                   <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
