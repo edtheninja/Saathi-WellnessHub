@@ -130,9 +130,23 @@ export default function Dashboard(): JSX.Element {
      API CONFIG
   ========================================================== */
 
-  const API_BASE =
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:4000";
+  const buildApiUrl = (endpoint: string) => {
+    const raw = (import.meta.env.VITE_API_URL || "/api").trim().replace(/\/+$/, "");
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+    if (raw.endsWith("/api")) {
+      if (cleanEndpoint.startsWith("/api/")) {
+        return `${raw}${cleanEndpoint.slice(4)}`;
+      }
+      return `${raw}${cleanEndpoint}`;
+    }
+
+    if (!cleanEndpoint.startsWith("/api/")) {
+      return `${raw}/api${cleanEndpoint}`;
+    }
+
+    return `${raw}${cleanEndpoint}`;
+  };
 
   /* ==========================================================
      AUTH TOKEN
@@ -223,7 +237,7 @@ export default function Dashboard(): JSX.Element {
 
         const response =
           await fetch(
-            `${API_BASE}/api/wellness-prediction/generate`,
+            buildApiUrl("/api/wellness-prediction/generate"),
             {
               method: "POST",
 
@@ -279,55 +293,58 @@ export default function Dashboard(): JSX.Element {
   ========================================================== */
 
   useEffect(() => {
-    const loadLatestPrediction =
-      async () => {
-        try {
-          const token =
-            getAccessToken();
+    const loadLatestPrediction = async () => {
+      try {
+        const token = getAccessToken();
+        if (!token) return;
 
-          if (!token) {
+        // Try getting the latest saved prediction first
+        const latestResponse = await fetch(
+          buildApiUrl("/api/wellness-prediction/latest"),
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (latestResponse.ok) {
+          const latestData = await latestResponse.json().catch(() => ({}));
+          if (latestData?.data) {
+            setPrediction(latestData.data);
             return;
           }
-
-          const response = await fetch(
-  `${API_BASE}/api/wellness-prediction/generate`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  },
-);
-
-const contentType = response.headers.get("content-type") || "";
-
-const data = contentType.includes("application/json")
-  ? await response.json()
-  : { error: await response.text() };
-
-if (!response.ok) {
-  throw new Error(
-    data?.error ||
-      `Request failed with status ${response.status}`,
-  );
-}
-
-          // const data =
-          //   await response.json();
-
-          if (data?.data) {
-            setPrediction(
-              data.data,
-            );
-          }
-        } catch (error) {
-          console.error(
-            "Failed to load prediction:",
-            error,
-          );
         }
-      };
+
+        // If no existing prediction, generate one
+        const response = await fetch(
+          buildApiUrl("/api/wellness-prediction/generate"),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const pred = data?.prediction || data?.data || null;
+          if (pred) {
+            setPrediction(pred);
+          }
+          if (data?.notification) {
+            setNotification(data.notification);
+          }
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load prediction:",
+          error,
+        );
+      }
+    };
 
     loadLatestPrediction();
   }, []);
@@ -349,7 +366,7 @@ if (!response.ok) {
 
           const response =
             await fetch(
-              `${API_BASE}/api/notifications/latest`,
+              buildApiUrl("/api/notifications/latest"),
               {
                 headers: {
                   Authorization:
