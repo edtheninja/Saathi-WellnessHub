@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import type { HSL } from "@/context/ThemeContext";
 import ShareModal from "./ShareMomentModal";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 import {
   ArrowRight,
@@ -127,8 +127,12 @@ export default function Dashboard(): JSX.Element {
   const [showNotification, setShowNotification] =
     useState(false);
 
-  const [reminded, setReminded] = useState(false);
-  const [remindLoading, setRemindLoading] = useState(false);
+  const [autoNotification, setAutoNotification] = useState<{
+    title: string;
+    body: string;
+  } | null>(null);
+
+  const hasAutoPushedRef = useRef(false);
 
   /* ==========================================================
      API CONFIG
@@ -865,50 +869,74 @@ export default function Dashboard(): JSX.Element {
      AUTO-PUSH INSIGHT INTO NOTIFICATION (NO USER INTERACTION NEEDED)
   ========================================================== */
 
-  const pushInsightNotification = async (force = false) => {
+  const pushInsightNotification = async () => {
     if (!prediction && !recTitle) return;
 
-    const insightKey = `saathi_notified_insight_${prediction?.id || prediction?.prediction_date || recTitle}_${new Date().toISOString().slice(0, 10)}`;
-
-    if (!force && typeof window !== "undefined" && localStorage.getItem(insightKey)) {
-      return;
-    }
-
     try {
-      setRemindLoading(true);
-
       const title = `🌿 ${recTitle}`;
       const body = recBody;
 
-      // 1. Browser System Notification (Web Notification API)
-      if (typeof window !== "undefined" && "Notification" in window) {
-        if (Notification.permission === "granted") {
-          try {
-            new Notification(title, {
-              body,
-              icon: "/favicon.ico",
-            });
-          } catch (e) {
-            console.debug("Native notification skipped:", e);
-          }
-        } else if (Notification.permission === "default") {
-          try {
-            const perm = await Notification.requestPermission();
-            if (perm === "granted") {
+      // 1. Show floating in-app notification banner automatically
+      setAutoNotification({
+        title,
+        body,
+      });
+
+      // 2. Expand Dashboard in-app notification card & bell
+      setNotification({
+        title,
+        body,
+        notification_type: "wellness_insight",
+        created_at: new Date().toISOString(),
+      });
+      setShowNotification(true);
+
+      // Auto-dismiss floating banner after 8 seconds
+      setTimeout(() => {
+        setAutoNotification(null);
+      }, 8000);
+
+      // 3. Browser / System Push Notification (via Service Worker + Web Notification API)
+      if (typeof window !== "undefined") {
+        if ("serviceWorker" in navigator && "Notification" in window) {
+          navigator.serviceWorker.ready.then((reg) => {
+            if (Notification.permission === "granted") {
+              reg.showNotification(title, {
+                body,
+                icon: "/favicon.ico",
+                badge: "/favicon.ico",
+                tag: "wellness-insight-auto",
+              });
+            }
+          }).catch(() => null);
+        }
+
+        if ("Notification" in window) {
+          if (Notification.permission === "granted") {
+            try {
               new Notification(title, {
                 body,
                 icon: "/favicon.ico",
               });
+            } catch (e) {
+              console.debug("Native notification error:", e);
             }
-          } catch (e) {
-            console.debug("Permission request skipped:", e);
+          } else if (Notification.permission === "default") {
+            Notification.requestPermission().then((perm) => {
+              if (perm === "granted") {
+                new Notification(title, {
+                  body,
+                  icon: "/favicon.ico",
+                });
+              }
+            }).catch(() => null);
           }
         }
       }
 
-      // 2. Add to In-App Local Notification Store
+      // 4. Add to In-App Local Notification Store
       NotificationStore.add({
-        id: `insight-${Date.now()}`,
+        id: `insight-auto-${Date.now()}`,
         title,
         description: body,
         type: "mindfulness",
@@ -916,7 +944,7 @@ export default function Dashboard(): JSX.Element {
         read: false,
       });
 
-      // 3. Persist to Backend PostgreSQL if user is logged in
+      // 5. Persist to Backend PostgreSQL if user is logged in
       const token = getAccessToken();
       if (token) {
         await fetch(buildApiUrl("/api/data/notifications"), {
@@ -934,35 +962,16 @@ export default function Dashboard(): JSX.Element {
           console.debug("Backend notification insert skipped:", err);
         });
       }
-
-      // 4. Update In-App Dashboard Notification State & Bell
-      setNotification({
-        title,
-        body,
-        notification_type: "wellness_insight",
-        created_at: new Date().toISOString(),
-      });
-      setShowNotification(true);
-      setReminded(true);
-
-      if (typeof window !== "undefined") {
-        localStorage.setItem(insightKey, "true");
-      }
-
-      setTimeout(() => {
-        setReminded(false);
-      }, 4000);
     } catch (err) {
       console.error("Failed to push insight notification:", err);
-    } finally {
-      setRemindLoading(false);
     }
   };
 
   // Automatically push notification as soon as insight is loaded (no click required)
   useEffect(() => {
-    if (prediction && recTitle) {
-      pushInsightNotification(false);
+    if ((prediction || recTitle) && !hasAutoPushedRef.current) {
+      hasAutoPushedRef.current = true;
+      pushInsightNotification();
     }
   }, [prediction, recTitle, recBody]);
 
@@ -972,6 +981,51 @@ export default function Dashboard(): JSX.Element {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background pb-28 text-foreground">
+
+      {/* ======================================================
+          AUTOMATIC FLOATING NOTIFICATION BANNER (ZERO USER INTERACTION)
+      ====================================================== */}
+      <AnimatePresence>
+        {autoNotification && (
+          <motion.aside
+            role="alert"
+            aria-live="assertive"
+            initial={{ opacity: 0, y: -40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="fixed top-5 left-4 right-4 sm:left-auto sm:right-6 z-50 max-w-md rounded-2xl border border-violet-200/80 dark:border-violet-800/40 bg-card/95 p-4 shadow-[0_20px_60px_-15px_rgba(100,50,200,0.25)] backdrop-blur-xl"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-md shadow-violet-500/20">
+                <Bell className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0 pr-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                    Daily Wellness Insight
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">Just now</span>
+                </div>
+                <p className="text-sm font-bold text-foreground mt-0.5 truncate">
+                  {autoNotification.title}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                  {autoNotification.body}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoNotification(null)}
+                className="text-muted-foreground hover:text-foreground text-xs p-1 rounded-full transition"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       {/* ======================================================
           BACKGROUND
