@@ -141,7 +141,7 @@ function musicLibraryPlugin(): Plugin {
    VITE CONFIG
 ========================================================= */
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   base: "/",
 
 
