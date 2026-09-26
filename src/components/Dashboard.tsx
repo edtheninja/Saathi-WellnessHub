@@ -289,23 +289,32 @@ export default function Dashboard(): JSX.Element {
             return;
           }
 
-          const response =
-            await fetch(
-              `${API_BASE}/api/wellness-prediction/latest`,
-              {
-                headers: {
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-              },
-            );
+          const response = await fetch(
+  `${API_BASE}/api/wellness-prediction/generate`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  },
+);
 
-          if (!response.ok) {
-            return;
-          }
+const contentType = response.headers.get("content-type") || "";
 
-          const data =
-            await response.json();
+const data = contentType.includes("application/json")
+  ? await response.json()
+  : { error: await response.text() };
+
+if (!response.ok) {
+  throw new Error(
+    data?.error ||
+      `Request failed with status ${response.status}`,
+  );
+}
+
+          // const data =
+          //   await response.json();
 
           if (data?.data) {
             setPrediction(
