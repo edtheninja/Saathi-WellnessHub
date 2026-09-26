@@ -396,6 +396,228 @@ SELECT
   NULL
 FROM saathi_users
 ON CONFLICT (user_id) DO NOTHING;
+
+-- ---------------------------------------------------------
+-- Weekly Wellness Data
+-- ---------------------------------------------------------
+--
+-- One row = one user + one week + one day.
+--
+-- Monday    -> NULL
+-- Tuesday   -> NULL
+-- Wednesday -> NULL
+-- Thursday  -> NULL
+-- Friday    -> NULL
+-- Saturday  -> NULL
+-- Sunday    -> NULL
+--
+-- Previous weeks remain for ML historical analysis.
+-- ---------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS weekly_data (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID NOT NULL
+    REFERENCES saathi_users(id)
+    ON DELETE CASCADE,
+
+  week_start DATE NOT NULL,
+
+  day_of_week TEXT NOT NULL
+    CHECK (
+      day_of_week IN (
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday'
+      )
+    ),
+
+  avg_wellness NUMERIC(5,2)
+    CHECK (
+      avg_wellness IS NULL
+      OR (
+        avg_wellness >= 1
+        AND avg_wellness <= 100
+      )
+    ),
+
+  activity_count INTEGER NOT NULL DEFAULT 0
+    CHECK (activity_count >= 0),
+
+  sample_count INTEGER NOT NULL DEFAULT 0
+    CHECK (sample_count >= 0),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT weekly_data_unique_day
+    UNIQUE (
+      user_id,
+      week_start,
+      day_of_week
+    )
+);
+
+-- ---------------------------------------------------------
+-- Migrate an older weekly_data table if day_of_week was
+-- previously stored as SMALLINT (1=Monday ... 7=Sunday).
+-- ---------------------------------------------------------
+
+DO $$
+DECLARE
+  v_data_type TEXT;
+BEGIN
+  SELECT data_type
+  INTO v_data_type
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'weekly_data'
+    AND column_name = 'day_of_week';
+
+  IF v_data_type IN ('smallint', 'integer', 'bigint') THEN
+
+    ALTER TABLE weekly_data
+    DROP CONSTRAINT IF EXISTS weekly_data_unique_day;
+
+    ALTER TABLE weekly_data
+    DROP CONSTRAINT IF EXISTS weekly_data_day_of_week_check;
+
+    ALTER TABLE weekly_data
+    ALTER COLUMN day_of_week TYPE TEXT
+    USING CASE day_of_week::INTEGER
+      WHEN 1 THEN 'Monday'
+      WHEN 2 THEN 'Tuesday'
+      WHEN 3 THEN 'Wednesday'
+      WHEN 4 THEN 'Thursday'
+      WHEN 5 THEN 'Friday'
+      WHEN 6 THEN 'Saturday'
+      WHEN 7 THEN 'Sunday'
+      ELSE day_of_week::TEXT
+    END;
+
+  END IF;
+END;
+$$;
+
+-- Recreate the correct constraint after any migration.
+ALTER TABLE weekly_data
+DROP CONSTRAINT IF EXISTS weekly_data_day_of_week_check;
+
+ALTER TABLE weekly_data
+ADD CONSTRAINT weekly_data_day_of_week_check
+CHECK (
+  day_of_week IN (
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  )
+);
+
+ALTER TABLE weekly_data
+DROP CONSTRAINT IF EXISTS weekly_data_unique_day;
+
+ALTER TABLE weekly_data
+ADD CONSTRAINT weekly_data_unique_day
+UNIQUE (
+  user_id,
+  week_start,
+  day_of_week
+);
+
+CREATE INDEX IF NOT EXISTS weekly_data_user_week_idx
+ON weekly_data(user_id, week_start DESC);
+
+CREATE INDEX IF NOT EXISTS weekly_data_user_day_idx
+ON weekly_data(user_id, day_of_week);
+
+
+-- ---------------------------------------------------------
+-- Create the 7 days for the current week
+-- ---------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION ensure_current_weekly_data(
+  p_user_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_week_start DATE;
+BEGIN
+
+  v_week_start =
+    DATE_TRUNC('week', CURRENT_DATE)::DATE;
+
+  INSERT INTO weekly_data (
+    user_id,
+    week_start,
+    day_of_week,
+    avg_wellness,
+    activity_count,
+    sample_count
+  )
+  SELECT
+    p_user_id,
+    v_week_start,
+    day_name,
+    NULL,
+    0,
+    0
+  FROM (
+    VALUES
+      ('Monday'),
+      ('Tuesday'),
+      ('Wednesday'),
+      ('Thursday'),
+      ('Friday'),
+      ('Saturday'),
+      ('Sunday')
+  ) AS days(day_name)
+
+  ON CONFLICT (
+    user_id,
+    week_start,
+    day_of_week
+  )
+  DO NOTHING;
+
+END;
+$$;
+
+
+-- ---------------------------------------------------------
+-- Create current-week rows for existing users
+-- ---------------------------------------------------------
+
+DO $$
+DECLARE
+  user_record RECORD;
+BEGIN
+
+  FOR user_record IN
+    SELECT id
+    FROM saathi_users
+  LOOP
+
+    PERFORM ensure_current_weekly_data(
+      user_record.id
+    );
+
+  END LOOP;
+
+END;
+$$;
+
+
 -- ---------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------
@@ -408,3 +630,100 @@ INSERT INTO community_rooms (id, name, room_type, topic, description) VALUES
   ('mindfulness', 'Mindfulness Circle', 'support', 'Living in the present.', 'Daily mindfulness discussions.'),
   ('grief', 'Grief & Loss', 'support', 'Healing together.', 'Support from people who understand.')
 ON CONFLICT (id) DO NOTHING;
+
+
+-- ---------------------------------------------------------
+-- Weekly Energy Predictions
+-- ---------------------------------------------------------
+-- Current phase:
+-- Node/backend can create a simple rule-based prediction.
+--
+-- Future phase:
+-- ML/recommendation service can write predictions here.
+--
+-- One prediction per user per prediction date.
+-- ---------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS weekly_energy_predictions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  user_id UUID NOT NULL
+    REFERENCES saathi_users(id)
+    ON DELETE CASCADE,
+
+  prediction_date DATE,
+
+  predicted_energy_level NUMERIC(5,2)
+    CHECK (
+      predicted_energy_level IS NULL
+      OR (
+        predicted_energy_level >= 1
+        AND predicted_energy_level <= 100
+      )
+    )
+);
+
+-- ---------------------------------------------------------
+-- Safely migrate an older existing table.
+-- CREATE TABLE IF NOT EXISTS does not alter an existing table.
+-- ---------------------------------------------------------
+
+ALTER TABLE weekly_energy_predictions
+ADD COLUMN IF NOT EXISTS prediction_date DATE;
+
+ALTER TABLE weekly_energy_predictions
+ADD COLUMN IF NOT EXISTS predicted_energy_level NUMERIC(5,2);
+
+ALTER TABLE weekly_energy_predictions
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- Recreate the energy validation constraint safely.
+ALTER TABLE weekly_energy_predictions
+DROP CONSTRAINT IF EXISTS weekly_energy_predictions_predicted_energy_level_check;
+
+ALTER TABLE weekly_energy_predictions
+ADD CONSTRAINT weekly_energy_predictions_predicted_energy_level_check
+CHECK (
+  predicted_energy_level IS NULL
+  OR (
+    predicted_energy_level >= 1
+    AND predicted_energy_level <= 100
+  )
+);
+
+-- ---------------------------------------------------------
+-- Backfill prediction_date for existing rows.
+-- Existing prediction rows use their creation date.
+-- ---------------------------------------------------------
+
+UPDATE weekly_energy_predictions
+SET prediction_date = created_at::DATE
+WHERE prediction_date IS NULL;
+
+-- ---------------------------------------------------------
+-- prediction_date is required.
+-- ---------------------------------------------------------
+
+ALTER TABLE weekly_energy_predictions
+ALTER COLUMN prediction_date SET NOT NULL;
+
+-- ---------------------------------------------------------
+-- One prediction per user per date.
+-- ---------------------------------------------------------
+
+ALTER TABLE weekly_energy_predictions
+DROP CONSTRAINT IF EXISTS weekly_energy_predictions_unique_user_date;
+
+ALTER TABLE weekly_energy_predictions
+ADD CONSTRAINT weekly_energy_predictions_unique_user_date
+UNIQUE (user_id, prediction_date);
+
+-- ---------------------------------------------------------
+-- Index for user prediction history/latest prediction.
+-- ---------------------------------------------------------
+
+CREATE INDEX IF NOT EXISTS weekly_energy_predictions_user_date_idx
+ON weekly_energy_predictions(user_id, prediction_date DESC);
+

@@ -4398,6 +4398,337 @@ io.on("connection", (socket) => {
   });
 });
 
+// ============================================================
+// TEMPORARY WELLNESS PREDICTION + NOTIFICATION SYSTEM
+// ============================================================
+
+function getWellnessRecommendation(predictedEnergyLevel) {
+  const score = Number(predictedEnergyLevel);
+
+  if (!Number.isFinite(score)) {
+    return {
+      title: "Take a gentle reset",
+      activity: "10-minute reset",
+      body: "Take a few minutes to drink water, breathe slowly, and give yourself a short break.",
+    };
+  }
+
+  if (score <= 30) {
+    return {
+      title: "Take a gentle reset",
+      activity: "10-minute reset",
+      body: "Your current wellness pattern looks lower than usual. Try a 10-minute reset with water, slow breathing, and a short rest.",
+    };
+  }
+
+  if (score <= 55) {
+    return {
+      title: "Give yourself a small boost",
+      activity: "5-minute movement break",
+      body: "Take a short movement break, stretch, walk around, and give yourself a few minutes away from your current task.",
+    };
+  }
+
+  if (score <= 75) {
+    return {
+      title: "Keep your routine balanced",
+      activity: "5-minute mindful break",
+      body: "Your wellness level looks fairly balanced. A short mindful break can help you maintain your routine.",
+    };
+  }
+
+  return {
+    title: "Keep the positive routine going",
+    activity: "Positive routine",
+    body: "Your wellness level looks positive. Continue the activities and routines that are working well for you.",
+  };
+}
+
+async function createWellnessPredictionAndNotification(
+  userId,
+  predictedEnergyLevel,
+) {
+  const score = Math.max(
+    0,
+    Math.min(100, Math.round(Number(predictedEnergyLevel))),
+  );
+
+  const recommendation = getWellnessRecommendation(score);
+
+  // Store prediction
+  const predictionResult = await pool.query(
+    `
+      INSERT INTO weekly_energy_predictions
+      (
+        user_id,
+        predicted_energy_level,
+        recommendation_title,
+        recommendation_activity,
+        recommendation_body
+      )
+      VALUES
+      ($1, $2, $3, $4, $5)
+      RETURNING *
+    `,
+    [
+      userId,
+      score,
+      recommendation.title,
+      recommendation.activity,
+      recommendation.body,
+    ],
+  );
+
+  // Create notification
+  const notificationResult = await pool.query(
+    `
+      INSERT INTO notifications
+      (
+        user_id,
+        notification_type,
+        title,
+        body
+      )
+      VALUES
+      ($1, $2, $3, $4)
+      RETURNING *
+    `,
+    [
+      userId,
+      "wellness_prediction",
+      recommendation.title,
+      recommendation.body,
+    ],
+  );
+
+  return {
+    prediction: predictionResult.rows[0],
+    notification: notificationResult.rows[0],
+    recommendation,
+  };
+}
+
+
+// ------------------------------------------------------------
+// TEST ENDPOINT
+// ------------------------------------------------------------
+// This is intentionally hardcoded.
+// It does NOT perform ML prediction.
+// ------------------------------------------------------------
+
+app.post(
+  "/api/wellness-prediction/test",
+  authRequired,
+  async (req, res) => {
+    try {
+      const predictedEnergyLevel = Number(
+        req.body.predicted_energy_level,
+      );
+
+      if (
+        !Number.isFinite(predictedEnergyLevel) ||
+        predictedEnergyLevel < 0 ||
+        predictedEnergyLevel > 100
+      ) {
+        return res.status(400).json({
+          error: "predicted_energy_level must be between 0 and 100",
+        });
+      }
+
+      const result =
+        await createWellnessPredictionAndNotification(
+          req.auth.sub,
+          predictedEnergyLevel,
+        );
+
+      res.json({
+        mode: "hardcoded-test",
+        message:
+          "Temporary wellness prediction generated successfully.",
+        note:
+          "This is a rule-based demonstration and is NOT a clinical diagnosis or validated ML prediction.",
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        "Wellness prediction test error:",
+        error,
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  },
+);
+
+
+// ------------------------------------------------------------
+// GENERATE FROM CURRENT WELLNESS DATA
+// ------------------------------------------------------------
+// Temporary rule-based version.
+// Later this endpoint can call the actual ML service.
+// ------------------------------------------------------------
+
+app.post(
+  "/api/wellness-prediction/generate",
+  authRequired,
+  async (req, res) => {
+    try {
+      let predictedEnergyLevel = null;
+
+      // First try current weekly data
+      const weeklyResult = await pool.query(
+        `
+          SELECT AVG(avg_wellness) AS average_wellness
+          FROM weekly_data
+          WHERE user_id = $1
+            AND week_start = DATE_TRUNC(
+              'week',
+              CURRENT_DATE
+            )::date
+            AND avg_wellness IS NOT NULL
+        `,
+        [req.auth.sub],
+      );
+
+      if (weeklyResult.rows[0]?.average_wellness !== null) {
+        predictedEnergyLevel = Math.round(
+          Number(
+            weeklyResult.rows[0].average_wellness,
+          ),
+        );
+      }
+
+      // Fallback to latest wellness score
+      if (predictedEnergyLevel === null) {
+        const wellnessResult = await pool.query(
+          `
+            SELECT final_energy_level
+            FROM wellness_scores
+            WHERE user_id = $1
+            LIMIT 1
+          `,
+          [req.auth.sub],
+        );
+
+        if (wellnessResult.rows[0]) {
+          predictedEnergyLevel = Math.round(
+            Number(
+              wellnessResult.rows[0].final_energy_level,
+            ),
+          );
+        }
+      }
+
+      if (predictedEnergyLevel === null) {
+        return res.status(404).json({
+          error:
+            "Not enough wellness data available to generate a prediction.",
+        });
+      }
+
+      const result =
+        await createWellnessPredictionAndNotification(
+          req.auth.sub,
+          predictedEnergyLevel,
+        );
+
+      res.json({
+        mode: "temporary-rule-based",
+        message:
+          "Wellness recommendation generated from available wellness data.",
+        note:
+          "This is not a validated predictive ML model or clinical diagnosis.",
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        "Wellness prediction generation error:",
+        error,
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  },
+);
+
+
+// ------------------------------------------------------------
+// GET LATEST PREDICTION
+// ------------------------------------------------------------
+
+app.get(
+  "/api/wellness-prediction/latest",
+  authRequired,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `
+          SELECT *
+          FROM weekly_energy_predictions
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+        [req.auth.sub],
+      );
+
+      res.json({
+        data: result.rows[0] || null,
+      });
+    } catch (error) {
+      console.error(
+        "Latest wellness prediction error:",
+        error,
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  },
+);
+
+
+// ------------------------------------------------------------
+// GET LATEST NOTIFICATIONS
+// ------------------------------------------------------------
+
+app.get(
+  "/api/notifications/latest",
+  authRequired,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `
+          SELECT *
+          FROM notifications
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 20
+        `,
+        [req.auth.sub],
+      );
+
+      res.json({
+        data: result.rows,
+      });
+    } catch (error) {
+      console.error(
+        "Latest notifications error:",
+        error,
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  },
+);
+
 initializeDatabase()
   .then(() =>
     httpServer.listen(port, () =>
