@@ -139,37 +139,65 @@ export default function Dashboard(): JSX.Element {
   ========================================================== */
 
   const getAccessToken = () => {
-    try {
-      const storedUser =
-        localStorage.getItem("user");
+    const readStorage = (storage: Storage) => {
+      const directKeys = [
+        "access_token",
+        "accessToken",
+        "token",
+        "saathi_access_token",
+        "saathi_token",
+      ];
 
-      if (!storedUser) {
-        return (
-          localStorage.getItem(
-            "access_token",
-          ) || null
-        );
+      for (const key of directKeys) {
+        const value = storage.getItem(key);
+        if (value && value.trim()) return value.trim();
       }
 
-      const parsed = JSON.parse(
-        storedUser,
-      );
+      const objectKeys = [
+        "user",
+        "session",
+        "saathi_user",
+        "saathi_session",
+        "auth",
+        "auth_user",
+      ];
 
-      return (
-        parsed?.session?.access_token ||
-        parsed?.access_token ||
-        localStorage.getItem(
-          "access_token",
-        ) ||
-        null
-      );
-    } catch {
-      return (
-        localStorage.getItem(
-          "access_token",
-        ) || null
-      );
+      for (const key of objectKeys) {
+        const raw = storage.getItem(key);
+        if (!raw) continue;
+
+        try {
+          const parsed = JSON.parse(raw);
+          const token =
+            parsed?.session?.access_token ||
+            parsed?.session?.accessToken ||
+            parsed?.access_token ||
+            parsed?.accessToken ||
+            parsed?.token ||
+            null;
+
+          if (typeof token === "string" && token.trim()) {
+            return token.trim();
+          }
+        } catch {
+          // Ignore values that are not JSON.
+        }
+      }
+
+      return null;
+    };
+
+    try {
+      const localToken = readStorage(localStorage);
+      if (localToken) return localToken;
+
+      const sessionToken = readStorage(sessionStorage);
+      if (sessionToken) return sessionToken;
+    } catch (error) {
+      console.error("Unable to read authentication token:", error);
     }
+
+    return null;
   };
 
   /* ==========================================================
