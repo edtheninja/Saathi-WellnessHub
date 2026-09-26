@@ -816,17 +816,45 @@ export default function Dashboard(): JSX.Element {
   const startRecommendedActivity = () => {
     const activity = (recActivity || "").toLowerCase();
 
+    // Parse recommended duration from recommendation text or score
+    let duration = 5;
+    if (
+      activity.includes("10") ||
+      (prediction?.predicted_energy_level !== null &&
+        (prediction?.predicted_energy_level ?? 100) <= 30)
+    ) {
+      duration = 10;
+    } else if (activity.includes("15")) {
+      duration = 15;
+    } else if (activity.includes("3")) {
+      duration = 3;
+    } else if (activity.includes("20")) {
+      duration = 20;
+    }
+
     if (activity.includes("movement")) {
-      navigate("/wellness");
+      navigate("/wellness", {
+        state: { duration, source: "insight", activity: recActivity },
+      });
       return;
     }
 
-    if (activity.includes("mindful") || activity.includes("reset")) {
-      navigate("/meditation");
+    if (
+      activity.includes("mindful") ||
+      activity.includes("reset") ||
+      activity.includes("rest") ||
+      activity.includes("meditat") ||
+      activity.includes("break")
+    ) {
+      navigate(`/meditation?duration=${duration}`, {
+        state: { duration, source: "insight", activity: recActivity },
+      });
       return;
     }
 
-    navigate("/wellness");
+    navigate(`/meditation?duration=${duration}`, {
+      state: { duration, source: "insight", activity: recActivity },
+    });
   };
 
   /* ==========================================================

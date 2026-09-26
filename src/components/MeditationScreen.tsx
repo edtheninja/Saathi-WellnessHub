@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Play, Pause, RotateCcw, Check, MoreVertical } from "lucide-react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { Play, Pause, RotateCcw, Check, MoreVertical, Sparkles } from "lucide-react";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "")
   .trim()
@@ -49,6 +50,11 @@ const MeditationScreen = () => {
   /* =========================================================
      TIMER
   ========================================================= */
+
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const [insightReason, setInsightReason] = useState<string | null>(null);
+  const userOverrodeRef = useRef(false);
 
   const [isActive, setIsActive] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300);
@@ -359,13 +365,98 @@ const MeditationScreen = () => {
   };
 
   /* =========================================================
-     DURATION
+     INSIGHT-DRIVEN DURATION FETCHING
+  ========================================================= */
+
+  const applyDuration = (targetMinutes: number, reason?: string) => {
+    const matched =
+      durations.find((d) => d.value === targetMinutes) ||
+      durations.find((d) => Math.abs(d.value - targetMinutes) <= 2) ||
+      durations[1]; // default 5m
+
+    if (!isActive && elapsedMsRef.current === 0) {
+      setSelectedDuration(matched.value);
+      setTimeLeft(matched.seconds);
+      lastDisplayedSecondRef.current = matched.seconds;
+      if (reason) {
+        setInsightReason(reason);
+      }
+    }
+  };
+
+  useEffect(() => {
+    // 1. Check navigation param or router state
+    const paramDuration = searchParams.get("duration");
+    const stateDuration = (location.state as any)?.duration;
+    const targetMin = Number(paramDuration || stateDuration);
+
+    if (Number.isFinite(targetMin) && targetMin > 0) {
+      applyDuration(
+        targetMin,
+        `Suggested ${targetMin} min based on your daily insight`,
+      );
+      return;
+    }
+
+    // 2. If user already customized duration in this session, don't overwrite
+    if (userOverrodeRef.current) {
+      return;
+    }
+
+    // 3. Otherwise fetch from latest prediction insight API
+    let isCancelled = false;
+    const loadInsightDuration = async () => {
+      try {
+        const res = await apiFetch("/api/wellness-prediction/latest");
+        if (isCancelled || userOverrodeRef.current) return;
+
+        const pred = res?.data;
+        if (!pred) return;
+
+        const text = `${pred.recommendation_activity || ""} ${pred.recommendation_title || ""}`.toLowerCase();
+
+        let minutes = 5;
+        if (
+          text.includes("10") ||
+          (pred.predicted_energy_level !== null &&
+            Number(pred.predicted_energy_level) <= 30)
+        ) {
+          minutes = 10;
+        } else if (text.includes("15")) {
+          minutes = 15;
+        } else if (text.includes("3")) {
+          minutes = 3;
+        } else if (text.includes("20")) {
+          minutes = 20;
+        }
+
+        applyDuration(
+          minutes,
+          `Suggested ${minutes} min based on your daily insight`,
+        );
+      } catch (err) {
+        console.debug("Could not fetch latest insight for meditation:", err);
+      }
+    };
+
+    loadInsightDuration();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [location.search, location.state]);
+
+  /* =========================================================
+     DURATION SELECT
   ========================================================= */
 
   const handleDurationSelect = (duration: (typeof durations)[number]) => {
     if (isActive || isSaving) {
       return;
     }
+
+    userOverrodeRef.current = true;
+    setInsightReason(null);
 
     if (timerFrameRef.current) {
       cancelAnimationFrame(timerFrameRef.current);
@@ -1086,8 +1177,15 @@ const MeditationScreen = () => {
             </div>
 
             {/* =================================================
-                DURATION BUTTONS
+                DURATION BUTTONS & INSIGHT BADGE
             ================================================= */}
+
+            {insightReason && !isActive && (
+              <div className="flex items-center justify-center gap-1.5 mb-2 px-3.5 py-1 rounded-full text-xs font-medium text-emerald-600 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 max-w-fit mx-auto transition-all animate-in fade-in">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                <span>{insightReason}</span>
+              </div>
+            )}
 
             <div
               className="
@@ -1095,7 +1193,7 @@ const MeditationScreen = () => {
                 flex-wrap
                 justify-center
                 gap-3
-                mt-3
+                mt-1
                 mb-3
                 px-4
               "
