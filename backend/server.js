@@ -1007,7 +1007,6 @@ app.patch("/api/auth/password", authRequired, async (req, res) => {
 const profileColumns = [
   "full_name",
   "bio",
-  "avatar_url",
   "timezone",
   "preferred_mood",
   "wellness_goal",
@@ -1022,7 +1021,8 @@ const profileColumns = [
 
 app.get("/api/profile", authRequired, async (req, res) => {
   const result = await pool.query(
-    `SELECT profiles.*, saathi_users.full_name AS signup_name
+    `SELECT profiles.*, saathi_users.full_name AS signup_name,
+            saathi_users.avatar_url AS account_avatar_url
        FROM saathi_users
        LEFT JOIN profiles ON profiles.user_id = saathi_users.id
        WHERE saathi_users.id = $1`,
@@ -1031,45 +1031,68 @@ app.get("/api/profile", authRequired, async (req, res) => {
   const accountProfile = result.rows[0];
   if (!accountProfile) return res.json({ data: null });
 
-  const { signup_name, ...profile } = accountProfile;
+  const { signup_name, account_avatar_url, ...profile } = accountProfile;
 
   res.json({
     data: {
       ...profile,
       user_id: req.auth.sub,
       full_name: profile.full_name?.trim() ? profile.full_name : signup_name,
+      avatar_url: account_avatar_url,
     },
   });
 });
 
 app.patch("/api/profile", authRequired, async (req, res) => {
+  const { avatar_url: avatarUrl } = req.body;
   const columns = profileColumns.filter((column) => req.body[column] !== undefined);
   const values = [req.auth.sub, ...columns.map((column) => req.body[column])];
   const placeholders = columns.map((_, index) => `$${index + 2}`);
-  const assignments = [
-    "updated_at = NOW()",
-    ...columns.map((column) => `${column} = EXCLUDED.${column}`),
-  ];
+  const writesAvatar = avatarUrl !== undefined;
+  const avatarParameter = values.length + 1;
+  if (writesAvatar) values.push(avatarUrl);
 
-  if (!columns.includes("full_name")) {
-    columns.push("full_name");
-    placeholders.push("saathi_users.full_name");
+  const accountQuery = writesAvatar
+    ? `UPDATE saathi_users SET avatar_url = $${avatarParameter}
+       WHERE id = $1 RETURNING id, full_name, avatar_url`
+    : "SELECT id, full_name, avatar_url FROM saathi_users WHERE id = $1";
+
+  let profileQuery;
+  if (columns.length > 0 || !writesAvatar) {
+    const assignments = [
+      "updated_at = NOW()",
+      ...columns.map((column) => `${column} = EXCLUDED.${column}`),
+    ];
+    if (!columns.includes("full_name")) {
+      columns.push("full_name");
+      placeholders.push("account.full_name");
+    }
+    // An explicit clear also removes the legacy copy so backfill cannot restore it.
+    if (avatarUrl === null) assignments.push("avatar_url = NULL");
+
+    profileQuery = `INSERT INTO profiles (user_id, ${columns.join(", ")})
+      SELECT account.id, ${placeholders.join(", ")} FROM account
+      ON CONFLICT (user_id) DO UPDATE SET ${assignments.join(", ")}
+      RETURNING *`;
+  } else if (avatarUrl === null) {
+    profileQuery = `UPDATE profiles SET avatar_url = NULL FROM account
+      WHERE profiles.user_id = account.id RETURNING profiles.*`;
+  } else {
+    profileQuery = "SELECT profiles.* FROM profiles JOIN account ON profiles.user_id = account.id";
   }
 
   const result = await pool.query(
-    `INSERT INTO profiles (user_id, ${columns.join(", ")})
-       SELECT saathi_users.id, ${placeholders.join(", ")}
-       FROM saathi_users
-       WHERE saathi_users.id = $1
-       ON CONFLICT (user_id) DO UPDATE SET ${assignments.join(", ")}
-       RETURNING *`,
+    `WITH account AS (${accountQuery}), saved_profile AS (${profileQuery})
+     SELECT saved_profile.*, account.id AS account_id, account.avatar_url AS account_avatar_url
+       FROM account LEFT JOIN saved_profile ON saved_profile.user_id = account.id`,
     values,
   );
 
-  const profile = result.rows[0];
-  if (!profile) return res.status(404).json({ error: "User not found" });
+  const savedProfile = result.rows[0];
+  if (!savedProfile) return res.status(404).json({ error: "User not found" });
 
-  res.json({ data: profile });
+  const { account_id, account_avatar_url, ...profile } = savedProfile;
+  res.json({ data: { ...profile, user_id: account_id, avatar_url: account_avatar_url } });
 });
 
 app.get("/api/settings", authRequired, async (req, res) => {

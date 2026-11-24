@@ -49,6 +49,9 @@ ADD COLUMN IF NOT EXISTS oauth_provider TEXT;
 ALTER TABLE saathi_users
 ADD COLUMN IF NOT EXISTS oauth_subject TEXT;
 
+ALTER TABLE saathi_users
+ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
 
 CREATE TABLE IF NOT EXISTS profiles (
   user_id UUID PRIMARY KEY
@@ -93,6 +96,13 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+UPDATE saathi_users
+SET avatar_url = profiles.avatar_url
+FROM profiles
+WHERE saathi_users.id = profiles.user_id
+  AND saathi_users.avatar_url IS NULL
+  AND NULLIF(profiles.avatar_url, '') IS NOT NULL;
 
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS community_room_id TEXT;
